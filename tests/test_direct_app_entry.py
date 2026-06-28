@@ -54,16 +54,27 @@ def test_qt_app_matches_reference_ui_sections():
         "显存占用",
         "CPU占用",
         "内存占用",
+        "inline_field",
+        "inline_combo_field",
+        "short_gpu_name",
+        "left_shell = Card()",
     ]:
         assert expected in source
 
     assert 'start = QPushButton("开始训练")' in source
+    assert "sidebar.setFixedWidth(180)" in source
+    assert 'title = QLabel("模型训练")' not in source
+    assert 'title = QLabel("模型验证")' not in source
     assert "最近活动" not in source
     assert '"自动任务类型"' not in source
     assert '"导出格式"' not in source
     assert 'Card("训练控制")' not in source
     assert 'Card("系统状态")' not in source
     assert 'Card("任务类型")' not in source
+    assert 'Card("模型配置")' not in source
+    assert 'Card("检测源配置")' not in source
+    assert 'Card("检测控制")' not in source
+    assert 'Card("检测日志")' not in source
     assert "QProgressBar" in source
 
 
@@ -133,7 +144,7 @@ def test_qt_app_migrates_core_workbench_features():
         assert expected in qt_app
 
     assert "self.log.setPlainText(json.dumps(payload" not in qt_app
-    assert 'self.combo_field("基础模型"' in qt_app
-    assert 'self.combo_field("设备"' in qt_app
+    assert 'self.inline_combo_field("基础模型"' in qt_app
+    assert 'self.inline_combo_field("设备"' in qt_app
     assert '"输出方式"' in qt_app
     assert '"保存格式"' in qt_app

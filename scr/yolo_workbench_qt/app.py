@@ -290,6 +290,38 @@ def run_app() -> None:
             layout.addWidget(combo)
             return box, combo
 
+        def inline_field(self, label: str, value: str = "", browse=None):
+            box = QWidget()
+            layout = QHBoxLayout(box)
+            layout.setContentsMargins(0, 0, 0, 0)
+            caption = QLabel(label)
+            caption.setObjectName("inlineFieldLabel")
+            caption.setFixedWidth(88)
+            edit = QLineEdit(str(value))
+            layout.addWidget(caption)
+            layout.addWidget(edit, 1)
+            if browse:
+                button = QPushButton("选择")
+                button.setObjectName("softButton")
+                button.clicked.connect(lambda: browse(edit))
+                layout.addWidget(button)
+            return box, edit
+
+        def inline_combo_field(self, label: str, value: str, values: list[str]):
+            box = QWidget()
+            layout = QHBoxLayout(box)
+            layout.setContentsMargins(0, 0, 0, 0)
+            caption = QLabel(label)
+            caption.setObjectName("inlineFieldLabel")
+            caption.setFixedWidth(88)
+            combo = QComboBox()
+            combo.addItems(values)
+            if value in values:
+                combo.setCurrentText(value)
+            layout.addWidget(caption)
+            layout.addWidget(combo, 1)
+            return box, combo
+
         def choose_dir(self, edit: QLineEdit):
             path = QFileDialog.getExistingDirectory(self, "选择文件夹", edit.text() or str(ROOT))
             if path:
@@ -307,11 +339,12 @@ def run_app() -> None:
             layout.setContentsMargins(12, 8, 12, 8)
             name = QLabel(label)
             name.setObjectName("fieldLabel")
+            name.setFixedWidth(88)
             metric = QLabel(value)
             metric.setObjectName("statValue")
             metric.setWordWrap(True)
             layout.addWidget(name)
-            layout.addWidget(metric, 1, Qt.AlignmentFlag.AlignRight)
+            layout.addWidget(metric, 1)
             return card, metric
 
         def metric_card(self, label: str, value: str = "待检测"):
@@ -327,6 +360,11 @@ def run_app() -> None:
             layout.addWidget(name)
             layout.addWidget(metric)
             return card, metric
+
+        def short_gpu_name(self, name: str):
+            cleaned = str(name or "").replace("NVIDIA GeForce ", "").replace("NVIDIA ", "").replace(" Laptop GPU", "")
+            cleaned = cleaned.replace("RTX", "RTX ").replace("  ", " ").strip()
+            return cleaned or "待检测"
 
     def scroll_page(widget: QWidget):
         scroll = QScrollArea()
@@ -484,7 +522,7 @@ def run_app() -> None:
             layout.addLayout(content, 1)
             sidebar = QFrame()
             sidebar.setObjectName("dataSidebar")
-            sidebar.setFixedWidth(220)
+            sidebar.setFixedWidth(180)
             side_layout = QVBoxLayout(sidebar)
             side_layout.setContentsMargins(12, 18, 12, 18)
             title = QLabel("数据处理")
@@ -764,9 +802,6 @@ def run_app() -> None:
             self.poll_timer = QTimer(self)
             self.poll_timer.timeout.connect(self.poll_training_queue)
             layout = self.page_layout()
-            title = QLabel("模型训练")
-            title.setObjectName("pageTitle")
-            layout.addWidget(title)
             top = QGridLayout()
             top.setColumnStretch(0, 115)
             top.setColumnStretch(1, 85)
@@ -786,7 +821,7 @@ def run_app() -> None:
                 ("project", "项目输出", self.choose_dir),
                 ("model_yaml", "模型 YAML", self.choose_file),
             ]):
-                box, edit = self.field(label, training.get(key, ""), browse)
+                box, edit = self.inline_field(label, training.get(key, ""), browse)
                 self.edits[key] = edit
                 left_form.addWidget(box, index // 2, index % 2)
 
@@ -800,11 +835,11 @@ def run_app() -> None:
 
             params = QGridLayout()
             right.layout.addLayout(params)
-            self.base_model_box, self.base_model_combo = self.combo_field("基础模型", str(training.get("base_model", "yolo11n-obb")), ["yolo11n-obb", "yolo11s-obb", "yolo11m-obb", "yolov8m-obb.pt", "yolo11n.pt", "yolo11s.pt"])
-            self.device_box, self.device_combo = self.combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
+            self.base_model_box, self.base_model_combo = self.inline_combo_field("基础模型", str(training.get("base_model", "yolo11n-obb")), ["yolo11n-obb", "yolo11s-obb", "yolo11m-obb", "yolov8m-obb.pt", "yolo11n.pt", "yolo11s.pt"])
+            self.device_box, self.device_combo = self.inline_combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
             param_widgets = [self.base_model_box]
             for key, label in [("lr", "学习率"), ("epochs", "Epochs"), ("patience", "Patience"), ("workers", "Workers"), ("batch", "Batch"), ("imgsz", "图片尺寸")]:
-                box, edit = self.field(label, training.get(key, ""))
+                box, edit = self.inline_field(label, training.get(key, ""))
                 self.edits[key] = edit
                 param_widgets.append(box)
             param_widgets.append(self.device_box)
@@ -864,7 +899,7 @@ def run_app() -> None:
         def apply_train_status(self, payload):
             status = payload["status"]
             cuda = payload["cuda"]
-            self.metric_labels["gpu"].setText(f"{status.get('gpu') or cuda.get('gpu', '待检测')} · {status.get('gpu_usage', '待检测')}")
+            self.metric_labels["gpu"].setText(f"{self.short_gpu_name(status.get('gpu') or cuda.get('gpu', '待检测'))} · {status.get('gpu_usage', '待检测')}")
             self.metric_labels["vram"].setText(status.get("vram", "待检测"))
             self.metric_labels["cpu"].setText(status.get("cpu", "待检测"))
             self.metric_labels["memory"].setText(status.get("memory", "待检测"))
@@ -926,36 +961,36 @@ def run_app() -> None:
             self.detect_stop = threading.Event()
             self.detect_worker = None
             layout = self.page_layout()
-            title = QLabel("模型验证")
-            title.setObjectName("pageTitle")
-            layout.addWidget(title)
             split = QHBoxLayout()
             layout.addLayout(split, 1)
-            left_column = QVBoxLayout()
-            left_widget = QWidget()
-            left_widget.setLayout(left_column)
+            left_shell = Card()
+            left_column = left_shell.layout
             validation = app.settings["validation"]
-            model_card = Card("模型配置")
+            model_title = QLabel("模型配置")
+            model_title.setObjectName("sectionTitle")
+            left_column.addWidget(model_title)
             self.model_box, self.model_edit = self.field("选择模型", validation["model_path"], lambda edit: self.choose_file(edit, "选择模型"))
-            model_card.layout.addWidget(self.model_box)
+            left_column.addWidget(self.model_box)
             conf_row = QHBoxLayout()
             self.conf_box, self.conf_edit = self.field("置信度", str(validation["confidence"]))
             self.iou_box, self.iou_edit = self.field("IoU", str(validation["iou"]))
             conf_row.addWidget(self.conf_box)
             conf_row.addWidget(self.iou_box)
-            model_card.layout.addLayout(conf_row)
-            left_column.addWidget(model_card)
+            left_column.addLayout(conf_row)
 
-            source_card = Card("检测源配置")
+            source_title = QLabel("检测源配置")
+            source_title.setObjectName("sectionTitle")
+            left_column.addWidget(source_title)
             self.mode_box, self.mode_combo = self.combo_field("检测模式", "图片/视频文件夹", ["图片/视频文件夹", "摄像头"])
-            source_card.layout.addWidget(self.mode_box)
+            left_column.addWidget(self.mode_box)
             self.source_box, self.source_edit = self.field("输入源", validation["source_path"], self.choose_dir)
-            source_card.layout.addWidget(self.source_box)
+            left_column.addWidget(self.source_box)
             self.camera_box, self.camera_combo = self.combo_field("摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"])
-            source_card.layout.addWidget(self.camera_box)
-            left_column.addWidget(source_card)
+            left_column.addWidget(self.camera_box)
 
-            control_card = Card("检测控制")
+            control_title = QLabel("检测控制")
+            control_title.setObjectName("sectionTitle")
+            left_column.addWidget(control_title)
             controls = QHBoxLayout()
             start = QPushButton("开始检测")
             start.clicked.connect(self.start_detection)
@@ -967,15 +1002,15 @@ def run_app() -> None:
             controls.addWidget(start)
             controls.addWidget(pause)
             controls.addWidget(stop)
-            control_card.layout.addLayout(controls)
-            left_column.addWidget(control_card)
+            left_column.addLayout(controls)
 
-            log_card = Card("检测日志")
+            log_title = QLabel("检测日志")
+            log_title.setObjectName("sectionTitle")
+            left_column.addWidget(log_title)
             self.detect_log = QTextEdit()
             self.detect_log.setReadOnly(True)
-            log_card.layout.addWidget(self.detect_log, 1)
-            left_column.addWidget(log_card, 1)
-            split.addWidget(left_widget, 3)
+            left_column.addWidget(self.detect_log, 1)
+            split.addWidget(left_shell, 3)
 
             right = QVBoxLayout()
             toolbar = QHBoxLayout()
@@ -1161,7 +1196,7 @@ def run_app() -> None:
             module_summary = " / ".join(f"{name}:{'ok' if ok else '缺失'}" for name, ok in modules.items())
             self.set_status_card("Pixi", "可用" if payload["pixi"] else "不可用")
             self.set_status_card("Torch/CUDA", f"{cuda.get('torch', '未知')} / CUDA {cuda.get('cuda', '未知')}")
-            self.set_status_card("GPU", status.get("gpu") or cuda.get("gpu", "待检测"))
+            self.set_status_card("GPU", self.short_gpu_name(status.get("gpu") or cuda.get("gpu", "待检测")))
             self.set_status_card("显存", status.get("vram", "待检测"))
             self.set_status_card("CPU", status.get("cpu", "待检测"))
             self.set_status_card("内存", status.get("memory", "待检测"))
@@ -1185,7 +1220,9 @@ def run_app() -> None:
     #pageTitle { color: #1A3857; font-size: 28px; font-weight: 700; }
     #sectionTitle { color: #18344F; font-size: 18px; font-weight: 700; }
     #metricValue { color: #0D2B49; font-size: 16px; font-weight: 700; }
+    #statValue { color: #0D2B49; font-size: 14px; font-weight: 700; }
     #fieldLabel { color: #627286; font-size: 12px; }
+    #inlineFieldLabel { color: #14233A; font-size: 14px; font-weight: 600; }
     #imageView { background: #F8FBFD; border: 1px solid #D9E3EC; border-radius: 6px; color: #627286; }
     QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }
     QPushButton { background: #208FD4; color: white; border: 0; border-radius: 5px; padding: 9px 14px; }
