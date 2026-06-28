@@ -55,3 +55,18 @@ def test_app_starts_at_minimum_window_size():
     assert "min(int(self.settings[\"ui\"].get(\"window_height\", 780)), 780)" in app_source
     assert "\"window_width\": 1100" in settings_source
     assert "\"window_height\": 780" in settings_source
+
+
+def test_qt_app_entry_and_task_are_available():
+    qt_main = Path("scr/yolo_workbench_qt/main.py").read_text(encoding="utf-8")
+    qt_app = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+    pixi = Path("pixi.toml").read_text(encoding="utf-8")
+
+    assert "from .app import run_app" in qt_main
+    assert "QStackedWidget" in qt_app
+    assert "SettingsService" in qt_app
+    assert "build_train_command" in qt_app
+    assert 'app = "python -m scr.yolo_workbench_qt.main"' in pixi
+    assert 'app-qt = "python -m scr.yolo_workbench_qt.main"' in pixi
+    assert 'app-tk = "python -m scr.yolo_workbench.main"' in pixi
+    assert 'pyside6 = ' in pixi
