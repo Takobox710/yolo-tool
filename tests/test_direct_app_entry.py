@@ -2,57 +2,42 @@ from pathlib import Path
 
 
 def test_app_file_has_direct_script_import_bootstrap():
-    source = Path("scr/yolo_workbench/app.py").read_text(encoding="utf-8")
+    source = Path("scr/yolo_workbench/main.py").read_text(encoding="utf-8")
 
-    assert "if __package__ in {None, \"\"}" in source
-    assert "sys.path.insert" in source
+    assert "scr.yolo_workbench_qt.app" in source
+    assert "run_app" in source
 
 
-def test_app_matches_reference_ui_sections():
-    source = Path("scr/yolo_workbench/app.py").read_text(encoding="utf-8")
+def test_qt_app_matches_reference_ui_sections():
+    source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
 
     for expected in [
         "欢迎使用 YOLO 本地训练工作台",
-        "训练曲线",
         "马赛克",
         "图片/视频文件夹",
-        "默认项目模板",
-        "stat_card",
-        "metric_card",
-        "option_field",
-        "CTkComboBox",
-        "validate_layout",
+        "QTabWidget",
+        "QComboBox",
         "批量检测结果",
         "save_current_result",
         "clear_results",
-        "uniform=\"detect_buttons\"",
-        "uniform=\"train_buttons\"",
+        "模型配置 / 检测控制",
+        "status_cards",
+        "QStackedWidget",
     ]:
         assert expected in source
 
-    assert '"nav": ("Microsoft YaHei UI", 15, "bold")' in Path("scr/yolo_workbench/theme.py").read_text(encoding="utf-8")
-    assert 'text="开始训练", height=34, fg_color=COLORS["green"], text_color=COLORS["text"]' in source
+    assert 'start = QPushButton("开始训练")' in source
     assert "最近活动" not in source
-    assert "option_shell" not in source
-    assert 'self.panel(action, "训练控制")' not in source
-    assert 'self.panel(action, "系统状态")' not in source
     assert '"自动任务类型"' not in source
-    assert 'self.stat_card(left_body, "任务类型"' not in source
-    assert 'self.stat_card(overview_body, "任务类型"' not in source
-    assert 'ctk.CTkButton(log_controls' not in source
-    assert "header_builder=build_progress_header" in source
-    assert "progress_side" not in source
-    assert 'header.pack(fill="x", padx=8, pady=(8, 0))' in source
-    assert 'header = ctk.CTkFrame(frame, fg_color=COLORS["panel"]' in source
-    assert "progress_label" in source
+    assert "QProgressBar" in source
 
 
 def test_app_starts_at_minimum_window_size():
-    app_source = Path("scr/yolo_workbench/app.py").read_text(encoding="utf-8")
+    app_source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
     settings_source = Path("scr/yolo_workbench/services/settings_service.py").read_text(encoding="utf-8")
 
-    assert "min(int(self.settings[\"ui\"].get(\"window_width\", 1100)), 1100)" in app_source
-    assert "min(int(self.settings[\"ui\"].get(\"window_height\", 780)), 780)" in app_source
+    assert "self.resize(1100, 780)" in app_source
+    assert "self.setMinimumSize(1100, 780)" in app_source
     assert "\"window_width\": 1100" in settings_source
     assert "\"window_height\": 780" in settings_source
 
@@ -66,10 +51,12 @@ def test_qt_app_entry_and_task_are_available():
     assert "QStackedWidget" in qt_app
     assert "SettingsService" in qt_app
     assert "build_train_command" in qt_app
-    assert 'app = "python -m scr.yolo_workbench_qt.main"' in pixi
+    assert 'app = "python -m scr.yolo_workbench.main"' in pixi
     assert 'app-qt = "python -m scr.yolo_workbench_qt.main"' in pixi
-    assert 'app-tk = "python -m scr.yolo_workbench.main"' in pixi
     assert 'pyside6 = ' in pixi
+    assert "app-tk" not in pixi
+    assert "customtkinter" not in pixi
+    assert not Path("scr/yolo_workbench/app.py").exists()
 
 
 def test_qt_app_migrates_core_workbench_features():
@@ -112,3 +99,7 @@ def test_qt_app_migrates_core_workbench_features():
         assert expected in qt_app
 
     assert "self.log.setPlainText(json.dumps(payload" not in qt_app
+    assert 'self.combo_field("基础模型"' in qt_app
+    assert 'self.combo_field("设备"' in qt_app
+    assert '"输出方式"' in qt_app
+    assert '"保存格式"' in qt_app

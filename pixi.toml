@@ -7,9 +7,8 @@ version = "0.1.0"
 
 [tasks]
 test = "pytest tests -q"
-app = "python -m scr.yolo_workbench_qt.main"
+app = "python -m scr.yolo_workbench.main"
 app-qt = "python -m scr.yolo_workbench_qt.main"
-app-tk = "python -m scr.yolo_workbench.main"
 
 [dependencies]
 python = "3.12.*"
@@ -18,7 +17,6 @@ python = "3.12.*"
 torch = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 torchvision = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
-customtkinter = ">=6.0.0, <7"
 pyside6 = ">=6.10.0, <7"
 pillow = ">=12.2.0, <13"
 ultralytics = ">=8.4.80, <9"

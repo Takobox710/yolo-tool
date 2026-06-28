@@ -552,7 +552,9 @@ def run_app() -> None:
             self.long_box, self.long_edit = self.field("长边缩放", str(resize["long_edge"]))
             self.canvas_box, self.canvas_edit = self.field("画布尺寸", str(resize["canvas_size"]))
             self.bg_box, self.bg_combo = self.combo_field("背景颜色", resize["background"], ["white", "black"])
-            for index, widget in enumerate([self.source_box, self.backup_box, self.output_box, self.long_box, self.canvas_box, self.bg_box]):
+            self.output_mode_box, self.output_mode_combo = self.combo_field("输出方式", "输出到新文件夹", ["输出到新文件夹", "覆盖原文件"])
+            self.save_format_box, self.save_format_combo = self.combo_field("保存格式", "保持原格式", ["保持原格式", "jpg", "png"])
+            for index, widget in enumerate([self.source_box, self.backup_box, self.output_box, self.output_mode_box, self.long_box, self.canvas_box, self.bg_box, self.save_format_box]):
                 grid.addWidget(widget, index // 2, index % 2)
             layout.addLayout(grid)
             actions = QHBoxLayout()
@@ -580,7 +582,7 @@ def run_app() -> None:
 
         def preview(self):
             result = preview_resize(self.config())
-            self.log.setPlainText(f"计划处理 {len(result.items)} 张图片\n")
+            self.log.setPlainText(f"计划处理 {len(result.items)} 张图片\n输出方式: {self.output_mode_combo.currentText()}\n保存格式: {self.save_format_combo.currentText()}\n")
             for item in result.items[:80]:
                 self.log.append(f"{item.source.name}: {item.original_size} -> {item.resized_size}, scale={item.scale:.3f}")
 
@@ -603,12 +605,16 @@ def run_app() -> None:
             top = QGridLayout()
             layout.addLayout(top)
             training = self.app.settings["training"]
-            fields = ["model_yaml", "pretrained", "data", "project", "base_model", "epochs", "patience", "workers", "batch", "imgsz", "device", "lr"]
+            fields = ["model_yaml", "pretrained", "data", "project", "epochs", "patience", "workers", "batch", "imgsz", "lr"]
             for index, key in enumerate(fields):
                 browse = self.choose_file if key in {"model_yaml", "pretrained", "data"} else (self.choose_dir if key == "project" else None)
                 box, edit = self.field(key, training.get(key, ""), browse)
                 self.edits[key] = edit
                 top.addWidget(box, index // 3, index % 3)
+            self.base_model_box, self.base_model_combo = self.combo_field("基础模型", str(training.get("base_model", "yolo11n-obb")), ["yolo11n-obb", "yolo11s-obb", "yolo11m-obb", "yolov8m-obb.pt", "yolo11n.pt", "yolo11s.pt"])
+            self.device_box, self.device_combo = self.combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
+            top.addWidget(self.base_model_box, 3, 1)
+            top.addWidget(self.device_box, 3, 2)
             aug = QHBoxLayout()
             for key, label in [("mosaic", "马赛克"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("mixup", "MixUp"), ("scale", "缩放"), ("translate", "平移"), ("degrees", "旋转")]:
                 check = QCheckBox(label)
@@ -639,6 +645,8 @@ def run_app() -> None:
 
         def collect_config(self):
             config = {key: edit.text() for key, edit in self.edits.items()}
+            config["base_model"] = self.base_model_combo.currentText()
+            config["device"] = self.device_combo.currentText()
             for key in ("epochs", "patience", "workers", "batch", "imgsz"):
                 config[key] = int(config[key])
             config["lr"] = float(config["lr"])
@@ -726,6 +734,7 @@ def run_app() -> None:
 
             right = QVBoxLayout()
             toolbar = QHBoxLayout()
+            toolbar.addWidget(QLabel("批量检测结果"))
             for text, slot in [("上一张", self.prev_result), ("下一张", self.next_result), ("保存结果", self.save_current_result), ("清空结果", self.clear_results)]:
                 button = QPushButton(text)
                 button.setObjectName("softButton")

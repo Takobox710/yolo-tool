@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-本项目是一个独立于 `yolo-weld` 的 Windows 本地可视化 YOLO 训练工作台，使用 **Python + CustomTkinter** 开发桌面 GUI。
+本项目是一个独立于 `yolo-weld` 的 Windows 本地可视化 YOLO 训练工作台，使用 **Python + PySide6 / Qt** 开发桌面 GUI。
 
 定位是“通用 YOLO 优先，同时兼容焊缝 OBB 项目”：
 
@@ -26,21 +26,22 @@ yolo_tool/
 ├── pixi.lock
 ├── AGENTS.md
 ├── scr/
-│   └── yolo_workbench/
+│   ├── yolo_workbench/
+│   │   ├── main.py
+│   │   ├── runtime/
+│   │   └── services/
+│   │       ├── settings_service.py
+│   │       ├── conversion_service.py
+│   │       ├── annotation_service.py
+│   │       ├── rename_service.py
+│   │       ├── resize_service.py
+│   │       ├── training_service.py
+│   │       ├── detection_service.py
+│   │       ├── runtime_service.py
+│   │       └── environment_service.py
+│   └── yolo_workbench_qt/
 │       ├── main.py
-│       ├── app.py
-│       ├── theme.py
-│       ├── runtime/
-│       └── services/
-│           ├── settings_service.py
-│           ├── conversion_service.py
-│           ├── annotation_service.py
-│           ├── rename_service.py
-│           ├── resize_service.py
-│           ├── training_service.py
-│           ├── detection_service.py
-│           ├── runtime_service.py
-│           └── environment_service.py
+│       └── app.py
 └── tests/
 ```
 
@@ -69,7 +70,7 @@ pixi run python -m compileall scr tests
 
 `pixi.toml` 使用 Python 3.12，并配置了：
 
-- `customtkinter`
+- `pyside6`
 - `Pillow`
 - `opencv`
 - `ultralytics`
@@ -286,7 +287,7 @@ D:\ruanjian\User\Python\yolo-weld\data\yolov8m-obb.yaml
 ## 后续开发建议
 
 - 优先保持服务层可测试，不要把业务逻辑直接写死在 GUI 回调中。
-- GUI 可以逐步拆分到 `views/`，避免 `app.py` 继续变大。
+- Qt GUI 可以逐步拆分到 `scr/yolo_workbench_qt/views/`，避免 `app.py` 继续变大。
 - 训练进度条目前可以先基于日志解析，后续可读取 `results.csv` 做更准确进度与曲线。
 - GPU 利用率优先通过 `nvidia-smi` 获取；如果不可用，界面显示“待检测”即可。
 - 对任何会改文件的功能，继续坚持“先预览，再执行”。

@@ -25,7 +25,7 @@ def cached_call(key: str, ttl_seconds: float, loader: Callable[[], T], clock: Ca
 
 
 def detect_modules() -> dict[str, bool]:
-    return {name: importlib.util.find_spec(name) is not None for name in ("customtkinter", "ultralytics", "cv2", "PIL", "psutil")}
+    return {name: importlib.util.find_spec(name) is not None for name in ("PySide6", "ultralytics", "cv2", "PIL", "psutil")}
 
 
 def pixi_available() -> bool:

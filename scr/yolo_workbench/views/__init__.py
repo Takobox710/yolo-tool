@@ -1,2 +1,0 @@
-"""CustomTkinter view components."""
-
