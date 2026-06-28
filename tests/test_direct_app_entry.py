@@ -70,3 +70,41 @@ def test_qt_app_entry_and_task_are_available():
     assert 'app-qt = "python -m scr.yolo_workbench_qt.main"' in pixi
     assert 'app-tk = "python -m scr.yolo_workbench.main"' in pixi
     assert 'pyside6 = ' in pixi
+
+
+def test_qt_app_migrates_core_workbench_features():
+    qt_app = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+
+    for placeholder in [
+        "业务按钮将继续复用现有服务层迁移",
+        "后续迁移图像预览和结果表",
+    ]:
+        assert placeholder not in qt_app
+
+    for expected in [
+        "preview_conversion",
+        "run_conversion",
+        "render_annotation_preview",
+        "preview_rename",
+        "execute_rename",
+        "preview_resize",
+        "run_resize",
+        "spawn_logged_process",
+        "stop_process",
+        "run_prediction",
+        "QTabWidget",
+        "QTableWidget",
+        "QProgressBar",
+        "QScrollArea",
+        "QPixmap",
+        "QImage",
+        "QFileDialog",
+        "QMessageBox",
+        "DetectionWorker",
+        "result_payload",
+        "start_detection",
+        "show_detection_payload",
+        "save_current_result",
+        "clear_results",
+    ]:
+        assert expected in qt_app
