@@ -861,11 +861,24 @@ def run_app() -> None:
             title = QLabel("系统设置")
             title.setObjectName("pageTitle")
             layout.addWidget(title)
+            self.status_cards = {}
+            grid = QGridLayout()
+            layout.addLayout(grid)
+            for index, label in enumerate(["Pixi", "Torch/CUDA", "GPU", "显存", "CPU", "内存", "磁盘", "模块"]):
+                card = Card(label)
+                value = QLabel("待检测")
+                value.setObjectName("metricValue")
+                value.setWordWrap(True)
+                card.layout.addWidget(value)
+                self.status_cards[label] = value
+                grid.addWidget(card, index // 4, index % 4)
             self.log = QTextEdit()
             self.log.setReadOnly(True)
             layout.addWidget(self.log, 1)
 
         def on_show(self):
+            for label in self.status_cards:
+                self.set_status_card(label, "检测中...")
             self.log.setPlainText("正在后台检测环境...")
             self.app.run_background(
                 "env",
@@ -878,8 +891,23 @@ def run_app() -> None:
                 },
             )
 
+        def set_status_card(self, label: str, value: str):
+            self.status_cards[label].setText(value)
+
         def apply_env(self, payload):
-            self.log.setPlainText(json.dumps(payload, ensure_ascii=False, indent=2))
+            cuda = payload["cuda"]
+            status = payload["status"]
+            modules = payload["modules"]
+            module_summary = " / ".join(f"{name}:{'ok' if ok else '缺失'}" for name, ok in modules.items())
+            self.set_status_card("Pixi", "可用" if payload["pixi"] else "不可用")
+            self.set_status_card("Torch/CUDA", f"{cuda.get('torch', '未知')} / CUDA {cuda.get('cuda', '未知')}")
+            self.set_status_card("GPU", status.get("gpu") or cuda.get("gpu", "待检测"))
+            self.set_status_card("显存", status.get("vram", "待检测"))
+            self.set_status_card("CPU", status.get("cpu", "待检测"))
+            self.set_status_card("内存", status.get("memory", "待检测"))
+            self.set_status_card("磁盘", status.get("disk", "待检测"))
+            self.set_status_card("模块", module_summary)
+            self.log.setPlainText("当前设置:\n" + json.dumps(payload["settings"], ensure_ascii=False, indent=2))
 
     STYLE = """
     QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
@@ -892,6 +920,7 @@ def run_app() -> None:
     #card { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }
     #pageTitle { color: #1A3857; font-size: 28px; font-weight: 700; }
     #sectionTitle { color: #18344F; font-size: 18px; font-weight: 700; }
+    #metricValue { color: #0D2B49; font-size: 16px; font-weight: 700; }
     #fieldLabel { color: #627286; font-size: 12px; }
     #imageView { background: #F8FBFD; border: 1px solid #D9E3EC; border-radius: 6px; color: #627286; }
     QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }

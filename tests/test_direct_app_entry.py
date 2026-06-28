@@ -102,9 +102,13 @@ def test_qt_app_migrates_core_workbench_features():
         "QMessageBox",
         "DetectionWorker",
         "result_payload",
+        "status_cards",
+        "set_status_card",
         "start_detection",
         "show_detection_payload",
         "save_current_result",
         "clear_results",
     ]:
         assert expected in qt_app
+
+    assert "self.log.setPlainText(json.dumps(payload" not in qt_app

@@ -11,3 +11,6 @@ __pycache__/
 data/
 labels/
 result/
+
+# Local screenshots
+*_preview.png
