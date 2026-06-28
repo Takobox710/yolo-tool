@@ -300,6 +300,34 @@ def run_app() -> None:
             if path:
                 edit.setText(path)
 
+        def stat_card(self, label: str, value: str = "-"):
+            card = QFrame()
+            card.setObjectName("statCard")
+            layout = QHBoxLayout(card)
+            layout.setContentsMargins(12, 8, 12, 8)
+            name = QLabel(label)
+            name.setObjectName("fieldLabel")
+            metric = QLabel(value)
+            metric.setObjectName("statValue")
+            metric.setWordWrap(True)
+            layout.addWidget(name)
+            layout.addWidget(metric, 1, Qt.AlignmentFlag.AlignRight)
+            return card, metric
+
+        def metric_card(self, label: str, value: str = "待检测"):
+            card = QFrame()
+            card.setObjectName("metricCard")
+            layout = QVBoxLayout(card)
+            layout.setContentsMargins(12, 10, 12, 10)
+            name = QLabel(label)
+            name.setObjectName("fieldLabel")
+            metric = QLabel(value)
+            metric.setObjectName("metricValue")
+            metric.setWordWrap(True)
+            layout.addWidget(name)
+            layout.addWidget(metric)
+            return card, metric
+
     def scroll_page(widget: QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -312,21 +340,75 @@ def run_app() -> None:
         def __init__(self, app):
             super().__init__(app)
             layout = self.page_layout()
+            hero = QHBoxLayout()
+            copy = QVBoxLayout()
             title = QLabel("欢迎使用 YOLO 本地训练工作台")
             title.setObjectName("pageTitle")
-            layout.addWidget(title)
-            grid = QGridLayout()
-            layout.addLayout(grid, 1)
-            self.overview = QTextEdit()
-            self.overview.setReadOnly(True)
+            subtitle = QLabel("配置项目路径、检查数据状态、查看训练结果。")
+            subtitle.setObjectName("fieldLabel")
+            copy.addWidget(title)
+            copy.addWidget(subtitle)
+            hero.addLayout(copy, 1)
+            for text in ["pixi env: local", "Python 3.12", "CUDA 13.0"]:
+                pill = QLabel(text)
+                pill.setObjectName("envPill")
+                hero.addWidget(pill)
+            layout.addLayout(hero)
+
+            top = QGridLayout()
+            top.setColumnStretch(0, 0)
+            top.setColumnStretch(1, 1)
+            layout.addLayout(top, 1)
             overview = Card("项目概览")
-            overview.layout.addWidget(self.overview)
-            grid.addWidget(overview, 0, 0)
-            self.models = QTextEdit()
-            self.models.setReadOnly(True)
-            models = Card("训练结果模型")
-            models.layout.addWidget(self.models)
-            grid.addWidget(models, 0, 1)
+            overview_actions = QHBoxLayout()
+            pick = QPushButton("设置项目目录")
+            pick.setObjectName("softButton")
+            pick.clicked.connect(self.pick_project_root)
+            overview_actions.addStretch(1)
+            overview_actions.addWidget(pick)
+            overview.layout.addLayout(overview_actions)
+            self.overview_stats = {}
+            for key, label in [
+                ("project", "项目文件夹"),
+                ("images", "图片路径"),
+                ("annotations", "标注路径"),
+                ("result", "结果路径"),
+                ("image_count", "图片数量"),
+                ("label_count", "标签文件"),
+            ]:
+                card, value = self.stat_card(label)
+                overview.layout.addWidget(card)
+                self.overview_stats[key] = value
+            top.addWidget(overview, 0, 0)
+
+            distribution = Card("各类别图片分布")
+            self.distribution_view = QLabel()
+            self.distribution_view.setObjectName("chartView")
+            self.distribution_view.setMinimumHeight(250)
+            distribution.layout.addWidget(self.distribution_view, 1)
+            top.addWidget(distribution, 0, 1)
+
+            lower = QGridLayout()
+            lower.setColumnStretch(0, 0)
+            lower.setColumnStretch(1, 1)
+            layout.addLayout(lower, 1)
+            curve = Card("训练曲线")
+            self.curve_view = QLabel()
+            self.curve_view.setObjectName("chartView")
+            self.curve_view.setMinimumHeight(210)
+            curve.layout.addWidget(self.curve_view, 1)
+            lower.addWidget(curve, 0, 0)
+
+            history = Card("训练历史")
+            open_button = QPushButton("打开结果目录")
+            open_button.setObjectName("softButton")
+            open_button.clicked.connect(self.open_result_dir)
+            history.layout.addWidget(open_button, 0, Qt.AlignmentFlag.AlignRight)
+            self.history_table = QTableWidget(0, 6)
+            self.history_table.setHorizontalHeaderLabels(["训练ID", "任务", "模型", "Epochs", "mAP@0.5", "训练时长"])
+            self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            history.layout.addWidget(self.history_table, 1)
+            lower.addWidget(history, 0, 1)
 
         def on_show(self):
             paths = self.app.settings["paths"]
@@ -334,9 +416,65 @@ def run_app() -> None:
             labels = Path(paths["labels_dir"])
             image_count = len([p for p in images.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES]) if images.exists() else 0
             label_count = len(list(labels.glob("*.txt"))) if labels.exists() else 0
-            self.overview.setPlainText(f"项目路径: {self.app.settings['project']['root']}\n图片数量: {image_count}\n标签文件: {label_count}")
+            self.overview_stats["project"].setText(self.app.settings["project"]["root"])
+            self.overview_stats["images"].setText(paths["images_dir"])
+            self.overview_stats["annotations"].setText(paths["annotations_dir"])
+            self.overview_stats["result"].setText(paths["result_dir"])
+            self.overview_stats["image_count"].setText(str(image_count))
+            self.overview_stats["label_count"].setText(str(label_count))
+            self.draw_distribution(label_count)
+            self.draw_empty_curve()
             candidates = scan_candidate_models(Path(paths["result_dir"]))
-            self.models.setPlainText("\n".join(str(path) for path in candidates[:10]) or "暂无模型")
+            self.history_table.setRowCount(len(candidates[:8]))
+            for row, candidate in enumerate(candidates[:8]):
+                train_id = candidate.parent.parent.name
+                values = [train_id, infer_task_mode_from_model(candidate), candidate.name, "-", "-", "-"]
+                for column, value in enumerate(values):
+                    self.history_table.setItem(row, column, QTableWidgetItem(str(value)))
+
+        def pick_project_root(self):
+            path = QFileDialog.getExistingDirectory(self, "设置项目目录", self.app.settings["project"]["root"])
+            if path:
+                self.app.settings["project"]["root"] = path
+                self.app.settings_service.save(self.app.settings)
+                self.on_show()
+
+        def open_result_dir(self):
+            path = Path(self.app.settings["paths"]["result_dir"])
+            if path.exists():
+                os.startfile(path)  # type: ignore[attr-defined]
+
+        def draw_distribution(self, label_count: int):
+            pixmap = QPixmap(620, 250)
+            pixmap.fill(Qt.GlobalColor.white)
+            from PySide6.QtGui import QPainter, QColor, QPen
+
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(QColor("#14233A"), 2))
+            painter.drawText(0, 26, pixmap.width(), 24, Qt.AlignmentFlag.AlignCenter, f"{', '.join(self.app.settings['dataset']['class_names'])} / images")
+            painter.drawLine(50, 205, 590, 205)
+            painter.drawLine(50, 40, 50, 205)
+            bar_height = min(max(label_count, 1), 500) / 500 * 130
+            painter.fillRect(280, int(205 - bar_height), 80, int(bar_height), QColor("#5AAEE3"))
+            painter.drawText(0, int(190 - bar_height), pixmap.width(), 24, Qt.AlignmentFlag.AlignCenter, str(label_count))
+            painter.end()
+            self.distribution_view.setPixmap(pixmap)
+
+        def draw_empty_curve(self):
+            pixmap = QPixmap(400, 210)
+            pixmap.fill(Qt.GlobalColor.white)
+            from PySide6.QtGui import QPainter, QColor, QPen
+
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(QColor("#222222"), 2))
+            painter.drawLine(36, 26, 36, 174)
+            painter.drawLine(36, 174, 372, 174)
+            painter.setPen(QColor("#94A2AD"))
+            painter.drawText(0, 80, pixmap.width(), 60, Qt.AlignmentFlag.AlignCenter, "暂无训练记录\n请进行模型训练")
+            painter.end()
+            self.curve_view.setPixmap(pixmap)
 
     class DataPage(BasePage):
         def __init__(self, app):
@@ -595,6 +733,7 @@ def run_app() -> None:
             super().__init__(app)
             self.edits = {}
             self.checks = {}
+            self.metric_labels = {}
             self.log_queue: Queue | None = None
             self.poll_timer = QTimer(self)
             self.poll_timer.timeout.connect(self.poll_training_queue)
@@ -603,26 +742,54 @@ def run_app() -> None:
             title.setObjectName("pageTitle")
             layout.addWidget(title)
             top = QGridLayout()
+            top.setColumnStretch(0, 115)
+            top.setColumnStretch(1, 85)
             layout.addLayout(top)
             training = self.app.settings["training"]
-            fields = ["model_yaml", "pretrained", "data", "project", "epochs", "patience", "workers", "batch", "imgsz", "lr"]
-            for index, key in enumerate(fields):
-                browse = self.choose_file if key in {"model_yaml", "pretrained", "data"} else (self.choose_dir if key == "project" else None)
-                box, edit = self.field(key, training.get(key, ""), browse)
+
+            left = Card("数据集与增强配置")
+            right = Card("训练参数")
+            top.addWidget(left, 0, 0)
+            top.addWidget(right, 0, 1)
+
+            left_form = QGridLayout()
+            left.layout.addLayout(left_form)
+            for index, (key, label, browse) in enumerate([
+                ("data", "data.yaml", self.choose_file),
+                ("pretrained", "预训练权重", self.choose_file),
+                ("project", "项目输出", self.choose_dir),
+                ("model_yaml", "模型 YAML", self.choose_file),
+            ]):
+                box, edit = self.field(label, training.get(key, ""), browse)
                 self.edits[key] = edit
-                top.addWidget(box, index // 3, index % 3)
-            self.base_model_box, self.base_model_combo = self.combo_field("基础模型", str(training.get("base_model", "yolo11n-obb")), ["yolo11n-obb", "yolo11s-obb", "yolo11m-obb", "yolov8m-obb.pt", "yolo11n.pt", "yolo11s.pt"])
-            self.device_box, self.device_combo = self.combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
-            top.addWidget(self.base_model_box, 3, 1)
-            top.addWidget(self.device_box, 3, 2)
-            aug = QHBoxLayout()
-            for key, label in [("mosaic", "马赛克"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("mixup", "MixUp"), ("scale", "缩放"), ("translate", "平移"), ("degrees", "旋转")]:
+                left_form.addWidget(box, index // 2, index % 2)
+
+            aug = QGridLayout()
+            left.layout.addLayout(aug)
+            for index, (key, label) in enumerate([("mosaic", "马赛克"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("mixup", "MixUp"), ("scale", "缩放"), ("translate", "平移"), ("degrees", "旋转"), ("hsv", "HSV")]):
                 check = QCheckBox(label)
                 check.setChecked(float(training.get(key, 0)) > 0)
                 self.checks[key] = check
-                aug.addWidget(check)
-            layout.addLayout(aug)
+                aug.addWidget(check, index // 4, index % 4)
+
+            params = QGridLayout()
+            right.layout.addLayout(params)
+            self.base_model_box, self.base_model_combo = self.combo_field("基础模型", str(training.get("base_model", "yolo11n-obb")), ["yolo11n-obb", "yolo11s-obb", "yolo11m-obb", "yolov8m-obb.pt", "yolo11n.pt", "yolo11s.pt"])
+            self.device_box, self.device_combo = self.combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
+            param_widgets = [self.base_model_box]
+            for key, label in [("lr", "学习率"), ("epochs", "Epochs"), ("patience", "Patience"), ("workers", "Workers"), ("batch", "Batch"), ("imgsz", "图片尺寸")]:
+                box, edit = self.field(label, training.get(key, ""))
+                self.edits[key] = edit
+                param_widgets.append(box)
+            param_widgets.append(self.device_box)
+            for index, widget in enumerate(param_widgets):
+                params.addWidget(widget, index // 2, index % 2)
+
             actions = QHBoxLayout()
+            layout.addLayout(actions)
+            control = Card()
+            control_body = QGridLayout()
+            control.layout.addLayout(control_body)
             start = QPushButton("开始训练")
             start.clicked.connect(self.start)
             stop = QPushButton("停止训练")
@@ -631,17 +798,50 @@ def run_app() -> None:
             report = QPushButton("查看模型报告")
             report.setObjectName("softButton")
             report.clicked.connect(self.open_result)
-            actions.addWidget(start)
-            actions.addWidget(stop)
-            actions.addWidget(report)
+            control_body.addWidget(start, 0, 0, 1, 2)
+            control_body.addWidget(stop, 1, 0)
+            control_body.addWidget(report, 1, 1)
+            actions.addWidget(control, 1)
+
+            status = Card()
+            status_body = QGridLayout()
+            status.layout.addLayout(status_body)
+            for index, (key, label) in enumerate([("gpu", "GPU"), ("vram", "显存占用"), ("cpu", "CPU占用"), ("memory", "内存占用")]):
+                card, metric = self.metric_card(label)
+                status_body.addWidget(card, 0, index)
+                self.metric_labels[key] = metric
+            actions.addWidget(status, 3)
+
+            log_panel = Card("训练日志")
+            headerProgress = QHBoxLayout()
             self.progress = QProgressBar()
+            self.progress.setObjectName("headerProgress")
+            self.progress.setMaximumWidth(220)
             self.progress.setValue(0)
-            actions.addWidget(self.progress, 1)
-            layout.addLayout(actions)
+            self.progress_label = QLabel("0%")
+            self.progress_label.setObjectName("metricValue")
+            headerProgress.addStretch(1)
+            headerProgress.addWidget(self.progress)
+            headerProgress.addWidget(self.progress_label)
+            log_panel.layout.insertLayout(1, headerProgress)
             self.log = QTextEdit()
             self.log.setReadOnly(True)
-            layout.addWidget(self.log, 1)
+            log_panel.layout.addWidget(self.log, 1)
+            layout.addWidget(log_panel, 1)
             self.refresh_command_preview()
+
+        def on_show(self):
+            for metric in self.metric_labels.values():
+                metric.setText("检测中...")
+            self.app.run_background("train_status", lambda: {"status": system_status(), "cuda": torch_cuda_summary()})
+
+        def apply_train_status(self, payload):
+            status = payload["status"]
+            cuda = payload["cuda"]
+            self.metric_labels["gpu"].setText(f"{status.get('gpu') or cuda.get('gpu', '待检测')} · {status.get('gpu_usage', '待检测')}")
+            self.metric_labels["vram"].setText(status.get("vram", "待检测"))
+            self.metric_labels["cpu"].setText(status.get("cpu", "待检测"))
+            self.metric_labels["memory"].setText(status.get("memory", "待检测"))
 
         def collect_config(self):
             config = {key: edit.text() for key, edit in self.edits.items()}
@@ -679,6 +879,7 @@ def run_app() -> None:
                 elif event == "exit":
                     self.log.append(f"训练进程结束，退出码：{payload}")
                     self.progress.setValue(100)
+                    self.progress_label.setText("100%")
                     self.poll_timer.stop()
                     self.app.status.setText("训练结束")
 

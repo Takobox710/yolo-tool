@@ -13,6 +13,17 @@ def test_qt_app_matches_reference_ui_sections():
 
     for expected in [
         "欢迎使用 YOLO 本地训练工作台",
+        "配置项目路径、检查数据状态、查看训练结果。",
+        "项目概览",
+        "各类别图片分布",
+        "训练曲线",
+        "训练历史",
+        "项目文件夹",
+        "图片路径",
+        "标注路径",
+        "结果路径",
+        "图片数量",
+        "标签文件",
         "马赛克",
         "图片/视频文件夹",
         "QTabWidget",
@@ -23,12 +34,24 @@ def test_qt_app_matches_reference_ui_sections():
         "模型配置 / 检测控制",
         "status_cards",
         "QStackedWidget",
+        "数据集与增强配置",
+        "训练参数",
+        "训练日志",
+        "headerProgress",
+        "GPU",
+        "显存占用",
+        "CPU占用",
+        "内存占用",
     ]:
         assert expected in source
 
     assert 'start = QPushButton("开始训练")' in source
     assert "最近活动" not in source
     assert '"自动任务类型"' not in source
+    assert '"导出格式"' not in source
+    assert 'Card("训练控制")' not in source
+    assert 'Card("系统状态")' not in source
+    assert 'Card("任务类型")' not in source
     assert "QProgressBar" in source
 
 
