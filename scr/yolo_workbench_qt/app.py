@@ -480,15 +480,41 @@ def run_app() -> None:
         def __init__(self, app):
             super().__init__(app)
             layout = self.page_layout()
+            content = QHBoxLayout()
+            layout.addLayout(content, 1)
+            sidebar = QFrame()
+            sidebar.setObjectName("dataSidebar")
+            sidebar.setFixedWidth(220)
+            side_layout = QVBoxLayout(sidebar)
+            side_layout.setContentsMargins(12, 18, 12, 18)
             title = QLabel("数据处理")
-            title.setObjectName("pageTitle")
-            layout.addWidget(title)
-            tabs = QTabWidget()
-            tabs.addTab(ConvertTab(app), "标注转换")
-            tabs.addTab(PreviewTab(app), "标注预览")
-            tabs.addTab(RenameTab(app), "批量重命名")
-            tabs.addTab(ResizeTab(app), "图片压缩")
-            layout.addWidget(tabs, 1)
+            title.setObjectName("sideTitle")
+            side_layout.addWidget(title)
+            self.tool_stack = QStackedWidget()
+            self.tools = {
+                "convert": ConvertTab(app),
+                "preview": PreviewTab(app),
+                "rename": RenameTab(app),
+                "resize": ResizeTab(app),
+            }
+            self.tool_buttons = {}
+            for key, label in [("convert", "标注转换"), ("preview", "标注预览"), ("rename", "批量重命名"), ("resize", "图片压缩")]:
+                button = QPushButton(label)
+                button.setObjectName("dataNavButton")
+                button.setCheckable(True)
+                button.clicked.connect(lambda _checked=False, name=key: self.show_tool(name))
+                side_layout.addWidget(button)
+                self.tool_buttons[key] = button
+                self.tool_stack.addWidget(self.tools[key])
+            side_layout.addStretch(1)
+            content.addWidget(sidebar)
+            content.addWidget(self.tool_stack, 1)
+            self.show_tool("convert")
+
+        def show_tool(self, key: str):
+            self.tool_stack.setCurrentWidget(self.tools[key])
+            for name, button in self.tool_buttons.items():
+                button.setChecked(name == key)
 
     class ConvertTab(BasePage):
         def __init__(self, app):
@@ -905,33 +931,51 @@ def run_app() -> None:
             layout.addWidget(title)
             split = QHBoxLayout()
             layout.addLayout(split, 1)
-            left = Card("模型配置 / 检测控制")
+            left_column = QVBoxLayout()
+            left_widget = QWidget()
+            left_widget.setLayout(left_column)
             validation = app.settings["validation"]
+            model_card = Card("模型配置")
             self.model_box, self.model_edit = self.field("选择模型", validation["model_path"], lambda edit: self.choose_file(edit, "选择模型"))
-            left.layout.addWidget(self.model_box)
-            self.mode_box, self.mode_combo = self.combo_field("检测模式", "图片/视频文件夹", ["图片/视频文件夹", "摄像头"])
-            left.layout.addWidget(self.mode_box)
-            self.source_box, self.source_edit = self.field("输入源", validation["source_path"], self.choose_dir)
-            left.layout.addWidget(self.source_box)
-            self.camera_box, self.camera_combo = self.combo_field("摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"])
-            left.layout.addWidget(self.camera_box)
+            model_card.layout.addWidget(self.model_box)
+            conf_row = QHBoxLayout()
             self.conf_box, self.conf_edit = self.field("置信度", str(validation["confidence"]))
             self.iou_box, self.iou_edit = self.field("IoU", str(validation["iou"]))
-            left.layout.addWidget(self.conf_box)
-            left.layout.addWidget(self.iou_box)
+            conf_row.addWidget(self.conf_box)
+            conf_row.addWidget(self.iou_box)
+            model_card.layout.addLayout(conf_row)
+            left_column.addWidget(model_card)
+
+            source_card = Card("检测源配置")
+            self.mode_box, self.mode_combo = self.combo_field("检测模式", "图片/视频文件夹", ["图片/视频文件夹", "摄像头"])
+            source_card.layout.addWidget(self.mode_box)
+            self.source_box, self.source_edit = self.field("输入源", validation["source_path"], self.choose_dir)
+            source_card.layout.addWidget(self.source_box)
+            self.camera_box, self.camera_combo = self.combo_field("摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"])
+            source_card.layout.addWidget(self.camera_box)
+            left_column.addWidget(source_card)
+
+            control_card = Card("检测控制")
             controls = QHBoxLayout()
             start = QPushButton("开始检测")
             start.clicked.connect(self.start_detection)
+            pause = QPushButton("暂停")
+            pause.setObjectName("softButton")
             stop = QPushButton("停止")
             stop.setObjectName("softButton")
             stop.clicked.connect(self.stop_detection)
             controls.addWidget(start)
+            controls.addWidget(pause)
             controls.addWidget(stop)
-            left.layout.addLayout(controls)
+            control_card.layout.addLayout(controls)
+            left_column.addWidget(control_card)
+
+            log_card = Card("检测日志")
             self.detect_log = QTextEdit()
             self.detect_log.setReadOnly(True)
-            left.layout.addWidget(self.detect_log, 1)
-            split.addWidget(left, 3)
+            log_card.layout.addWidget(self.detect_log, 1)
+            left_column.addWidget(log_card, 1)
+            split.addWidget(left_widget, 3)
 
             right = QVBoxLayout()
             toolbar = QHBoxLayout()
@@ -946,15 +990,21 @@ def run_app() -> None:
             toolbar.addStretch(1)
             right.addLayout(toolbar)
             views = QHBoxLayout()
+            source_panel = Card("源")
             self.source_view = ImageView("源图")
+            source_panel.layout.addWidget(self.source_view, 1)
+            result_panel = Card("检测结果")
             self.result_view = ImageView("检测结果图")
-            views.addWidget(self.source_view)
-            views.addWidget(self.result_view)
+            result_panel.layout.addWidget(self.result_view, 1)
+            views.addWidget(source_panel)
+            views.addWidget(result_panel)
             right.addLayout(views, 1)
+            table_panel = Card("检测结果详情表")
             self.table = QTableWidget(0, 6)
             self.table.setHorizontalHeaderLabels(["序号", "类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"])
             self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-            right.addWidget(self.table)
+            table_panel.layout.addWidget(self.table)
+            right.addWidget(table_panel)
             right_widget = QWidget()
             right_widget.setLayout(right)
             split.addWidget(right_widget, 7)
@@ -1125,6 +1175,10 @@ def run_app() -> None:
     #brand { color: white; font-size: 24px; font-weight: 700; }
     #navButton { color: white; background: transparent; border: 0; padding: 10px 14px; font-weight: 700; }
     #navButton:checked, #navButton:hover { background: #344D66; border-radius: 6px; }
+    #dataSidebar { background: #26394D; border-radius: 8px; }
+    #sideTitle { color: white; font-size: 18px; font-weight: 700; padding: 8px; }
+    #dataNavButton { color: white; background: transparent; border: 0; padding: 10px 14px; text-align: left; }
+    #dataNavButton:checked, #dataNavButton:hover { background: #344D66; border-radius: 6px; }
     #stack { background: #EEF2F6; }
     #status { background: #F7FAFC; color: #627286; }
     #card { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }
