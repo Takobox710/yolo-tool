@@ -1,0 +1,74 @@
+{
+  "project": {
+    "root": "D:/ruanjian/User/Python/yolo_tool"
+  },
+  "paths": {
+    "images_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images",
+    "annotations_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images",
+    "labels_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\labels",
+    "dataset_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\data",
+    "result_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\result"
+  },
+  "task": {
+    "mode": "obb"
+  },
+  "dataset": {
+    "class_names": [
+      "weld"
+    ],
+    "split_ratios": {
+      "train": 0.7,
+      "val": 0.2,
+      "test": 0.1
+    },
+    "line_to_obb": {
+      "enabled": true,
+      "half_width": 10.0
+    },
+    "random_seed": 42
+  },
+  "image_resize": {
+    "long_edge": 960,
+    "canvas_size": 960,
+    "background": "white",
+    "output_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images_resized",
+    "backup_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images_backup"
+  },
+  "training": {
+    "model_yaml": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\yolov8m-obb.yaml",
+    "base_model": "yolo11n-obb",
+    "pretrained": "yolov8m-obb.pt",
+    "data": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\data.yaml",
+    "project": "D:\\ruanjian\\User\\Python\\yolo_tool\\result",
+    "export_format": "onnx",
+    "lr": 0.001,
+    "epochs": 800,
+    "patience": 150,
+    "workers": 2,
+    "batch": 16,
+    "imgsz": 640,
+    "device": "0",
+    "mosaic": 1.0,
+    "fliplr": 0.5,
+    "flipud": 0.0,
+    "mixup": 0.0,
+    "scale": 0.5,
+    "translate": 0.1,
+    "degrees": 0.0,
+    "hsv": 0.015
+  },
+  "validation": {
+    "model_path": "",
+    "source_mode": "图片文件夹",
+    "source_path": "",
+    "camera_index": 0,
+    "confidence": 0.25,
+    "iou": 0.45,
+    "save_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\result\\gui_predict"
+  },
+  "ui": {
+    "last_page": "settings",
+    "window_width": 1100,
+    "window_height": 780
+  }
+}

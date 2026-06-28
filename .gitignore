@@ -1,0 +1,13 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local working data and outputs
+data/
+labels/
+result/

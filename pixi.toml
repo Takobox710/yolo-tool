@@ -1,0 +1,27 @@
+[workspace]
+authors = ["zhengzaixuexi233 <wmoyouxiang@gmail.com>"]
+channels = ["conda-forge"]
+name = "yolo_tool"
+platforms = ["win-64", { name = "gpu-win-64", platform = "win-64", cuda = "13.0" }]
+version = "0.1.0"
+
+[tasks]
+test = "pytest tests -q"
+app = "python -m scr.yolo_workbench.main"
+
+[dependencies]
+python = "3.12.*"
+
+[pypi-dependencies]
+torch = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+torchvision = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+customtkinter = ">=6.0.0, <7"
+pillow = ">=12.2.0, <13"
+ultralytics = ">=8.4.80, <9"
+opencv-python = ">=4.13.0.92, <5"
+pyyaml = ">=6.0.3, <7"
+scikit-learn = ">=1.9.0, <2"
+psutil = ">=7.2.2, <8"
+pytest = ">=9.1.1, <10"
+matplotlib = ">=3.11.0, <4"
