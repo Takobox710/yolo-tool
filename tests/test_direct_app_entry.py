@@ -1,6 +1,20 @@
 from pathlib import Path
 
 
+def test_qt_app_uses_project_local_icon_assets_first():
+    source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+    icon_png = Path("scr/yolo_workbench_qt/assets/app_icon.png")
+    icon_ico = Path("scr/yolo_workbench_qt/assets/app_icon.ico")
+
+    assert "PACKAGE_ROOT = Path(__file__).resolve().parent" in source
+    assert "APP_ICON_PATHS = [" in source
+    assert 'PACKAGE_ROOT / "assets" / "app_icon.ico"' in source
+    assert 'PACKAGE_ROOT / "assets" / "app_icon.png"' in source
+    assert source.index('PACKAGE_ROOT / "assets" / "app_icon.ico"') < source.index('LEGACY_TOOL_ROOT / "icon.ico"')
+    assert icon_png.exists()
+    assert icon_ico.exists()
+
+
 def test_app_file_has_direct_script_import_bootstrap():
     source = Path("scr/yolo_workbench/main.py").read_text(encoding="utf-8")
 
@@ -38,8 +52,6 @@ def test_qt_app_matches_reference_ui_sections():
         "save_current_result",
         "clear_results",
         "模型配置",
-        "检测源配置",
-        "检测控制",
         "检测日志",
         "源",
         "检测结果",
@@ -48,8 +60,6 @@ def test_qt_app_matches_reference_ui_sections():
         "QStackedWidget",
         "数据集与增强配置",
         "训练参数",
-        "训练日志",
-        "headerProgress",
         "GPU",
         "显存占用",
         "CPU占用",
@@ -75,7 +85,83 @@ def test_qt_app_matches_reference_ui_sections():
     assert 'Card("检测源配置")' not in source
     assert 'Card("检测控制")' not in source
     assert 'Card("检测日志")' not in source
-    assert "QProgressBar" in source
+    assert 'log_panel = Card()' in source
+    assert 'Card("训练日志")' not in source
+
+
+def test_qt_app_keeps_latest_ui_regressions_fixed():
+    source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+
+    assert 'QLabel("检测源配置")' not in source
+    assert 'QLabel("检测控制")' not in source
+    assert 'box, edit = self.field(label, self.format_project_path(training.get(key, "")), browse)' in source
+    assert 'card, value = self.stat_card(label, multiline=True)' in source
+    assert 'history = Card()' in source
+    assert 'history_header = QHBoxLayout()' in source
+    assert 'history_header.addWidget(QLabel("训练历史"))' in source
+    assert 'overview = Card()' in source
+    assert 'overview_header = QHBoxLayout()' in source
+    assert 'overview_header.addWidget(QLabel("项目概览"))' in source
+    assert 'overview_header.addWidget(pick)' in source
+
+
+def test_qt_train_page_keeps_spacing_and_status_cards_layout():
+    source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+
+    assert 'label_width=72' in source
+    assert 'params.setHorizontalSpacing(28)' in source
+    assert 'params.setVerticalSpacing(12)' in source
+    assert 'status = Card()' in source
+    assert 'status_row = QHBoxLayout()' in source
+    assert 'status_row.setSpacing(12)' in source
+    assert 'card, metric = self.metric_card(label, outer=False)' in source
+    assert 'status.layout.addLayout(status_row)' in source
+    assert 'actions.addWidget(status, 3)' in source
+
+
+def test_qt_metric_cards_keep_border_style():
+    source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+
+    assert '#metricCard { background: #F5F8FB; border: 1px solid #D9E3EC; border-radius: 8px; }' in source
+    assert 'status.setObjectName("statusShell")' in source
+    assert '#statusShell { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }' in source
+
+
+def test_qt_home_and_training_polish_regressions():
+    source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+
+    assert "def format_project_path(self, value: str):" in source
+    assert 'return scroll_page(HomePage(self))' in source
+    assert 'card.setMinimumHeight(24)' in source
+    assert 'box, edit = self.field(label, self.format_project_path(training.get(key, "")), browse)' in source
+    assert 'layout = QHBoxLayout(card)' in source
+    assert 'name.setFixedWidth(74)' in source
+    assert 'metric.setWordWrap(True)' in source
+    assert '("project", self.app.settings["project"]["root"]),' in source
+    assert '("images", self.format_project_path(paths["images_dir"])),' in source
+    assert 'self.log = QTextEdit()' in source
+    assert 'log_panel = Card()' in source
+    assert 'Card("训练日志")' not in source
+    assert "headerProgress" not in source
+    assert 'self.status_refresh_inflight = False' in source
+    assert 'if self.status_refresh_inflight:' in source
+    assert 'self.status_refresh_inflight = True' in source
+    assert 'self.status_refresh_inflight = False' in source
+    assert 'self.setWindowIcon(' in source
+    assert 'brand_icon = QLabel()' in source
+    assert 'brand_row = QHBoxLayout()' in source
+    assert 'dashboard.setRowStretch(0, 58)' in source
+    assert 'dashboard.setRowStretch(1, 42)' in source
+    assert 'dashboard.setColumnStretch(0, 1)' in source
+    assert 'dashboard.setColumnStretch(1, 2)' in source
+    assert 'def update_dashboard_stretch(self):' in source
+    assert 'self.update_dashboard_stretch()' in source
+    assert 'self.distribution_view = PaintView(self.render_distribution_chart)' in source
+    assert 'self.curve_view = PaintView(self.render_training_curve)' in source
+    assert 'w = max(rect.width(), 320)' in source
+    assert 'h = max(rect.height(), 180)' in source
+    assert 'self.distribution_view.update()' in source
+    assert 'self.curve_view.update()' in source
 
 
 def test_app_starts_at_minimum_window_size():
@@ -148,3 +234,17 @@ def test_qt_app_migrates_core_workbench_features():
     assert 'self.inline_combo_field("设备"' in qt_app
     assert '"输出方式"' in qt_app
     assert '"保存格式"' in qt_app
+
+def test_qt_train_page_refreshes_system_status_every_3_seconds():
+    source = Path("scr/yolo_workbench_qt/app.py").read_text(encoding="utf-8")
+
+    assert "self.status_refresh_timer = QTimer(self)" in source
+    assert "self.status_refresh_timer.timeout.connect(self.request_train_status)" in source
+    assert "def request_train_status(self):" in source
+    assert "self.request_train_status()" in source
+    assert "self.status_refresh_timer.start(500)" in source
+    assert "def on_hide(self):" in source
+    assert "self.status_refresh_timer.stop()" in source
+    assert "self.status_refresh_inflight = False" in source
+    assert "previous = self.stack.currentWidget()" in source
+    assert 'hide_hook = getattr(previous_page, "on_hide", None)' in source

@@ -18,7 +18,7 @@ from scr.yolo_workbench.services.rename_service import execute_rename, preview_r
 from scr.yolo_workbench.services.resize_service import ResizeConfig, preview_resize, run_resize
 from scr.yolo_workbench.services.runtime_service import spawn_logged_process, stop_process
 from scr.yolo_workbench.services.settings_service import ROOT, SettingsService
-from scr.yolo_workbench.services.training_service import build_train_command, infer_task_mode_from_model
+from scr.yolo_workbench.services.training_service import build_train_command, infer_task_mode_from_model, read_train_metrics
 
 
 def run_app() -> None:
@@ -132,6 +132,24 @@ def run_app() -> None:
                 return
             scaled = self._pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.setPixmap(scaled)
+
+    class _SortItem(QTableWidgetItem):
+        """QTableWidgetItem with numeric-aware sorting via UserRole data."""
+
+        def __init__(self, text: str, sort_key: float = 0.0):
+            super().__init__(text)
+            self.setData(Qt.ItemDataRole.UserRole, sort_key)
+
+        def __lt__(self, other):
+            if isinstance(other, QTableWidgetItem):
+                a = self.data(Qt.ItemDataRole.UserRole)
+                b = other.data(Qt.ItemDataRole.UserRole)
+                if a is not None and b is not None:
+                    try:
+                        return float(a) < float(b)
+                    except (ValueError, TypeError):
+                        pass
+            return super().__lt__(other)
 
     class WorkbenchWindow(QMainWindow):
         def __init__(self):
@@ -442,9 +460,12 @@ def run_app() -> None:
             open_button.setObjectName("softButton")
             open_button.clicked.connect(self.open_result_dir)
             history.layout.addWidget(open_button, 0, Qt.AlignmentFlag.AlignRight)
-            self.history_table = QTableWidget(0, 6)
-            self.history_table.setHorizontalHeaderLabels(["训练ID", "任务", "模型", "Epochs", "mAP@0.5", "训练时长"])
+            self.history_table = QTableWidget(0, 7)
+            self.history_table.setHorizontalHeaderLabels(["模型ID", "Epochs", "Time", "mAP50", "mAP50-95", "Box Loss", "Recall"])
+            self.history_table.setSortingEnabled(True)
             self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            self.history_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+            self.history_table.setColumnWidth(0, 130)
             history.layout.addWidget(self.history_table, 1)
             lower.addWidget(history, 0, 1)
 
@@ -465,10 +486,46 @@ def run_app() -> None:
             candidates = scan_candidate_models(Path(paths["result_dir"]))
             self.history_table.setRowCount(len(candidates[:8]))
             for row, candidate in enumerate(candidates[:8]):
-                train_id = candidate.parent.parent.name
-                values = [train_id, infer_task_mode_from_model(candidate), candidate.name, "-", "-", "-"]
+                run_dir = candidate.parent.parent
+                train_id = run_dir.name
+                model_name = candidate.name
+                metrics = read_train_metrics(run_dir, model_name)
+                model_id = f"{train_id}（{model_name.replace(".pt", "")}）"
+                values = [
+                    model_id,
+                    str(metrics.get("epochs", "")),
+                    str(metrics.get("train_time", "")),
+                    str(metrics.get("map50", "")),
+                    str(metrics.get("map50_95", "")),
+                    str(metrics.get("box_loss", "")),
+                    str(metrics.get("recall", "")),
+                ]
                 for column, value in enumerate(values):
-                    self.history_table.setItem(row, column, QTableWidgetItem(str(value)))
+                    sort_key = float(row)
+                    if column == 1:  # Epochs
+                        try:
+                            sort_key = float(value)
+                        except (ValueError, TypeError):
+                            sort_key = 0.0
+                    elif column in (3, 4):  # mAP50, mAP50-95
+                        try:
+                            sort_key = float(value.replace('%', ''))
+                        except (ValueError, TypeError):
+                            sort_key = 0.0
+                    elif column == 5:  # Box Loss
+                        try:
+                            sort_key = -float(value)
+                        except (ValueError, TypeError):
+                            sort_key = 0.0
+                    elif column == 6:  # Recall
+                        try:
+                            sort_key = float(value.replace('%', ''))
+                        except (ValueError, TypeError):
+                            sort_key = 0.0
+                    item = _SortItem(value, sort_key)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.history_table.setItem(row, column, item)
+            self.history_table.sortItems(0, Qt.SortOrder.AscendingOrder)
 
         def pick_project_root(self):
             path = QFileDialog.getExistingDirectory(self, "设置项目目录", self.app.settings["project"]["root"])

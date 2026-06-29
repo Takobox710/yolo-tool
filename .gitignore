@@ -17,3 +17,8 @@ result/
 
 # Local model weights
 *.pt
+
+# Image data
+images/
+icon.svg
+scr/yolo_workbench_qt/assets/

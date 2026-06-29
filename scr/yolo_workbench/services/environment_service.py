@@ -50,7 +50,7 @@ def _load_torch_cuda_summary() -> dict[str, str]:
 
 
 def system_status() -> dict[str, str]:
-    return cached_call("system_status", 2.0, _load_system_status)
+    return cached_call("system_status", 0.5, _load_system_status)
 
 
 def _load_system_status() -> dict[str, str]:
@@ -60,7 +60,7 @@ def _load_system_status() -> dict[str, str]:
 
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage(str(Path.cwd().anchor or "."))
-        status["cpu"] = f"{psutil.cpu_percent(interval=0.0):.1f}% / {psutil.cpu_count()}核"
+        status["cpu"] = f"{psutil.cpu_percent(interval=0.1):.1f}% / {psutil.cpu_count()}核"
         status["memory"] = f"{memory.used / 1024**3:.1f}GB / {memory.total / 1024**3:.1f}GB"
         status["disk"] = f"{disk.used / 1024**3:.1f}GB / {disk.total / 1024**3:.1f}GB"
     except Exception:

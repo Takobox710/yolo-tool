@@ -251,6 +251,58 @@ def test_cached_call_reuses_value_until_ttl_expires(monkeypatch):
     assert third == {"count": 2}
 
 
+def test_system_status_uses_short_cache_and_nonzero_sampling(monkeypatch):
+    from scr.yolo_workbench.services import environment_service
+
+    calls = {}
+
+    class Mem:
+        used = 12 * 1024**3
+        total = 32 * 1024**3
+
+    class Disk:
+        used = 100 * 1024**3
+        total = 200 * 1024**3
+
+    monkeypatch.setattr(environment_service, "cached_call", lambda key, ttl_seconds, loader, clock=None: (calls.setdefault("ttl", ttl_seconds), loader())[1])
+
+    class PsutilStub:
+        @staticmethod
+        def virtual_memory():
+            return Mem()
+
+        @staticmethod
+        def disk_usage(_path):
+            return Disk()
+
+        @staticmethod
+        def cpu_percent(interval=0.0):
+            calls["interval"] = interval
+            return 7.5
+
+        @staticmethod
+        def cpu_count():
+            return 32
+
+    monkeypatch.setitem(environment_service._load_system_status.__globals__, "psutil", PsutilStub)
+    import builtins
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "psutil":
+            return PsutilStub
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(environment_service.subprocess, "run", lambda *args, **kwargs: type("R", (), {"returncode": 1, "stdout": ""})())
+
+    status = environment_service.system_status()
+
+    assert calls["ttl"] == 0.5
+    assert calls["interval"] == 0.1
+    assert status["cpu"] == "7.5% / 32核"
+
+
 def test_rename_can_include_matching_labels_and_blocks_label_conflicts(tmp_path):
     from scr.yolo_workbench.services.rename_service import execute_rename, preview_rename
 
