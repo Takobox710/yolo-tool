@@ -60,6 +60,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "translate": 0.1,
             "degrees": 0.0,
             "hsv": 0.015,
+            "optimizer": "auto",
         },
         "validation": {
             "model_path": "",
@@ -71,6 +72,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "save_dir": str(project_root / "result" / "gui_predict"),
         },
         "ui": {"last_page": "home", "window_width": 1100, "window_height": 780},
+        "features": {"custom_command_dialog": True},
     }
 
 

@@ -18,17 +18,75 @@ from scr.yolo_workbench.services.rename_service import execute_rename, preview_r
 from scr.yolo_workbench.services.resize_service import ResizeConfig, preview_resize, run_resize
 from scr.yolo_workbench.services.runtime_service import spawn_logged_process, stop_process
 from scr.yolo_workbench.services.settings_service import ROOT, SettingsService
-from scr.yolo_workbench.services.training_service import build_train_command, infer_task_mode_from_model, read_train_metrics
+from scr.yolo_workbench.services.training_service import (
+    build_train_command,
+    infer_task_mode_from_model,
+    read_train_metrics,
+    read_results_csv_for_curves,
+)
+
+# ---------------------------------------------------------------------------
+#  Helpers
+# ---------------------------------------------------------------------------
+_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
+
+# --- Task 3: path helpers ---
+def _relative_path(path_str: str, project_root: str | Path = ROOT) -> str:
+    """Return a display-friendly relative path from the project root."""
+    if not path_str:
+        return ""
+    try:
+        p = Path(path_str)
+        return str(p.relative_to(Path(project_root)))
+    except ValueError:
+        return str(path_str)
 
 
+def _simplified_model_path(path_str: str) -> str:
+    """Simplify result\\train-12\\weights\\best.pt -> train-12\\best.pt"""
+    rel = _relative_path(path_str)
+    parts = Path(rel).parts
+    if len(parts) >= 3 and parts[0].lower() == "result" and parts[-2].lower() == "weights":
+        return str(Path(*parts[1:-2] + (parts[-1],)))
+    return rel
+
+
+def _find_models_in_dir(result_dir: Path) -> list[str]:
+    """Scan for .pt models in result dir, return simplified display names."""
+    models = scan_candidate_models(result_dir)
+    return [_simplified_model_path(str(m)) for m in models]
+
+
+def _find_models_full_paths(result_dir: Path) -> list[Path]:
+    return scan_candidate_models(result_dir)
+
+
+def _find_model_yaml_files(data_dir: Path) -> list[str]:
+    """Find .yaml files in data/ for model YAML selection."""
+    if not data_dir.exists():
+        return []
+    return [str(f) for f in sorted(data_dir.glob("*.yaml")) if f.is_file()]
+
+
+def _find_pt_files_in_data_models(project_root: Path) -> list[str]:
+    """Find .pt files in data/models/ directory for pretrained model selection."""
+    models_dir = project_root / "data" / "models"
+    if not models_dir.exists():
+        return []
+    return [f.name for f in sorted(models_dir.glob("*.pt")) if f.is_file()]
+
+
+# ---------------------------------------------------------------------------
 def run_app() -> None:
     try:
         from PySide6.QtCore import Qt, QThread, QTimer, Signal
-        from PySide6.QtGui import QFont, QImage, QPixmap
+        from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap, QIcon, QPainterPath
         from PySide6.QtWidgets import (
             QApplication,
             QCheckBox,
             QComboBox,
+            QDialog,
+            QDialogButtonBox,
             QFileDialog,
             QFrame,
             QGridLayout,
@@ -53,13 +111,22 @@ def run_app() -> None:
     except ModuleNotFoundError as exc:
         raise SystemExit(f"缺少 Qt 依赖：{exc.name}。请先执行 pixi install 后运行 pixi run app。") from exc
 
-    IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
+    IMAGE_SUFFIXES = _IMAGE_SUFFIXES
 
     def pil_to_pixmap(image: Image.Image) -> QPixmap:
         rgba = image.convert("RGBA")
         data = rgba.tobytes("raw", "RGBA")
         qimage = QImage(data, rgba.width, rgba.height, rgba.width * 4, QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(qimage.copy())
+
+    # --- Task 1: helper to load nav icon ---
+    def _load_nav_icon() -> QPixmap | None:
+        icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.png"
+        if icon_path.exists():
+            pix = QPixmap(str(icon_path))
+            if not pix.isNull():
+                return pix.scaled(28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        return None
 
     class Worker(QThread):
         finished_with_payload = Signal(str, object)
@@ -110,6 +177,15 @@ def run_app() -> None:
                 label.setObjectName("sectionTitle")
                 self.layout.addWidget(label)
 
+    class CardNoPad(QFrame):
+        """Card with minimal padding for compact grid items."""
+        def __init__(self):
+            super().__init__()
+            self.setObjectName("card")
+            self.layout = QVBoxLayout(self)
+            self.layout.setContentsMargins(12, 10, 12, 10)
+            self.layout.setSpacing(6)
+
     class ImageView(QLabel):
         def __init__(self, text: str):
             super().__init__(text)
@@ -134,8 +210,6 @@ def run_app() -> None:
             self.setPixmap(scaled)
 
     class _SortItem(QTableWidgetItem):
-        """QTableWidgetItem with numeric-aware sorting via UserRole data."""
-
         def __init__(self, text: str, sort_key: float = 0.0):
             super().__init__(text)
             self.setData(Qt.ItemDataRole.UserRole, sort_key)
@@ -151,11 +225,37 @@ def run_app() -> None:
                         pass
             return super().__lt__(other)
 
+    # --- Task 10: Custom command dialog ---
+    class CommandDialog(QDialog):
+        def __init__(self, command: list[str], parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("确认训练命令")
+            self.setMinimumWidth(600)
+            self.setMinimumHeight(200)
+            layout = QVBoxLayout(self)
+            hint = QLabel("以下为本次训练将执行的命令，可直接修改：")
+            hint.setObjectName("fieldLabel")
+            layout.addWidget(hint)
+            self.command_edit = QTextEdit()
+            self.command_edit.setPlainText(" ".join(command))
+            self.command_edit.setFont(QFont("Consolas", 11))
+            layout.addWidget(self.command_edit, 1)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons.accepted.connect(self.accept)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+
+        def get_command(self) -> list[str]:
+            return self.command_edit.toPlainText().strip().split()
+
     class WorkbenchWindow(QMainWindow):
         def __init__(self):
             super().__init__()
             self.settings_service = SettingsService()
             self.settings = self.settings_service.load()
+            # Ensure new fields exist
+            self.settings.setdefault("features", {}).setdefault("custom_command_dialog", True)
+            self.settings.setdefault("training", {}).setdefault("optimizer", "auto")
             self.workers: list[Worker] = []
             self.pages: dict[str, QWidget] = {}
             self.training_handle = None
@@ -168,6 +268,11 @@ def run_app() -> None:
                 "validate": "模型验证",
                 "settings": "系统设置",
             }
+            # Task 1: set window icon
+            icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.png"
+            if icon_path.exists():
+                app_icon = QIcon(str(icon_path))
+                self.setWindowIcon(app_icon)
             self.setWindowTitle("YOLO 本地训练工作台")
             self.resize(1100, 780)
             self.setMinimumSize(1100, 780)
@@ -184,6 +289,12 @@ def run_app() -> None:
             nav_layout = QHBoxLayout(nav)
             nav_layout.setContentsMargins(22, 14, 22, 14)
             nav_layout.setSpacing(10)
+            # Task 1: icon in nav
+            nav_pix = _load_nav_icon()
+            if nav_pix is not None:
+                icon_label = QLabel()
+                icon_label.setPixmap(nav_pix)
+                nav_layout.addWidget(icon_label)
             brand = QLabel("YOLO 本地训练工作台")
             brand.setObjectName("brand")
             nav_layout.addWidget(brand)
@@ -389,13 +500,17 @@ def run_app() -> None:
         scroll.setWidgetResizable(True)
         scroll.setWidget(widget)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.inner_page = widget  # type: ignore[attr-defined]
+        scroll.inner_page = widget
         return scroll
 
+    # ===================================================================
+    #  Task 5: Home page with 2x2 grid (1:2 cols, 58:42 rows)
+    # ===================================================================
     class HomePage(BasePage):
         def __init__(self, app):
             super().__init__(app)
             layout = self.page_layout()
+            # Hero
             hero = QHBoxLayout()
             copy = QVBoxLayout()
             title = QLabel("欢迎使用 YOLO 本地训练工作台")
@@ -411,18 +526,28 @@ def run_app() -> None:
                 hero.addWidget(pill)
             layout.addLayout(hero)
 
-            top = QGridLayout()
-            top.setColumnStretch(0, 0)
-            top.setColumnStretch(1, 1)
-            layout.addLayout(top, 1)
-            overview = Card("项目概览")
-            overview_actions = QHBoxLayout()
+            # Task 5: 2-row grid with column stretch 1:2 and row stretch 58:42
+            grid = QGridLayout()
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 2)
+            grid.setRowStretch(0, 58)
+            grid.setRowStretch(1, 42)
+            grid.setSpacing(12)
+            layout.addLayout(grid, 1)
+
+            # --- Task 2: Project overview - title and button on same line ---
+            overview = Card()
+            header_row = QHBoxLayout()
+            ov_title = QLabel("项目概览")
+            ov_title.setObjectName("sectionTitle")
+            header_row.addWidget(ov_title)
+            header_row.addStretch(1)
             pick = QPushButton("设置项目目录")
             pick.setObjectName("softButton")
+            pick.setFixedWidth(100)
             pick.clicked.connect(self.pick_project_root)
-            overview_actions.addStretch(1)
-            overview_actions.addWidget(pick)
-            overview.layout.addLayout(overview_actions)
+            header_row.addWidget(pick)
+            overview.layout.addLayout(header_row)
             self.overview_stats = {}
             for key, label in [
                 ("project", "项目文件夹"),
@@ -435,62 +560,78 @@ def run_app() -> None:
                 card, value = self.stat_card(label)
                 overview.layout.addWidget(card)
                 self.overview_stats[key] = value
-            top.addWidget(overview, 0, 0)
+            grid.addWidget(overview, 0, 0)
 
+            # --- Task 6: Distribution with train/val/test ---
             distribution = Card("各类别图片分布")
             self.distribution_view = QLabel()
             self.distribution_view.setObjectName("chartView")
-            self.distribution_view.setMinimumHeight(250)
+            self.distribution_view.setMinimumHeight(200)
             distribution.layout.addWidget(self.distribution_view, 1)
-            top.addWidget(distribution, 0, 1)
+            grid.addWidget(distribution, 0, 1)
 
-            lower = QGridLayout()
-            lower.setColumnStretch(0, 0)
-            lower.setColumnStretch(1, 1)
-            layout.addLayout(lower, 1)
+            # --- Task 7: Training curves ---
             curve = Card("训练曲线")
             self.curve_view = QLabel()
             self.curve_view.setObjectName("chartView")
-            self.curve_view.setMinimumHeight(210)
+            self.curve_view.setMinimumHeight(180)
             curve.layout.addWidget(self.curve_view, 1)
-            lower.addWidget(curve, 0, 0)
+            grid.addWidget(curve, 1, 0)
 
-            history = Card("训练历史")
+            # --- Task 4: Training history - button same line as title, no sort triangles ---
+            history = Card()
+            hist_header = QHBoxLayout()
+            hist_title = QLabel("训练历史")
+            hist_title.setObjectName("sectionTitle")
+            hist_header.addWidget(hist_title)
+            hist_header.addStretch(1)
             open_button = QPushButton("打开结果目录")
             open_button.setObjectName("softButton")
+            open_button.setFixedWidth(100)
             open_button.clicked.connect(self.open_result_dir)
-            history.layout.addWidget(open_button, 0, Qt.AlignmentFlag.AlignRight)
+            hist_header.addWidget(open_button)
+            history.layout.addLayout(hist_header)
             self.history_table = QTableWidget(0, 7)
             self.history_table.setHorizontalHeaderLabels(["模型ID", "Epochs", "Time", "mAP50", "mAP50-95", "Box Loss", "Recall"])
             self.history_table.setSortingEnabled(True)
+            self.history_table.horizontalHeader().setSortIndicatorShown(False)
             self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             self.history_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
             self.history_table.setColumnWidth(0, 130)
             history.layout.addWidget(self.history_table, 1)
-            lower.addWidget(history, 0, 1)
+            grid.addWidget(history, 1, 1)
 
         def on_show(self):
             paths = self.app.settings["paths"]
+            project_root = self.app.settings["project"]["root"]
             images = Path(paths["images_dir"])
             labels = Path(paths["labels_dir"])
             image_count = len([p for p in images.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES]) if images.exists() else 0
             label_count = len(list(labels.glob("*.txt"))) if labels.exists() else 0
-            self.overview_stats["project"].setText(self.app.settings["project"]["root"])
-            self.overview_stats["images"].setText(paths["images_dir"])
-            self.overview_stats["annotations"].setText(paths["annotations_dir"])
-            self.overview_stats["result"].setText(paths["result_dir"])
+
+            # Task 3: relative paths (except project folder)
+            self.overview_stats["project"].setText(project_root)
+            self.overview_stats["images"].setText(_relative_path(paths["images_dir"], project_root))
+            self.overview_stats["annotations"].setText(_relative_path(paths["annotations_dir"], project_root))
+            self.overview_stats["result"].setText(_relative_path(paths["result_dir"], project_root))
             self.overview_stats["image_count"].setText(str(image_count))
             self.overview_stats["label_count"].setText(str(label_count))
-            self.draw_distribution(label_count)
-            self.draw_empty_curve()
-            candidates = scan_candidate_models(Path(paths["result_dir"]))
+
+            self.draw_distribution()
+            self.draw_training_curves()
+            self.refresh_history()
+
+        def refresh_history(self):
+            paths = self.app.settings["paths"]
+            result_dir = Path(paths["result_dir"])
+            candidates = scan_candidate_models(result_dir)
             self.history_table.setRowCount(len(candidates[:8]))
             for row, candidate in enumerate(candidates[:8]):
                 run_dir = candidate.parent.parent
                 train_id = run_dir.name
                 model_name = candidate.name
                 metrics = read_train_metrics(run_dir, model_name)
-                model_id = f"{train_id}（{model_name.replace(".pt", "")}）"
+                model_id = f"{train_id}（{model_name.replace('.pt', '')}）"
                 values = [
                     model_id,
                     str(metrics.get("epochs", "")),
@@ -502,22 +643,22 @@ def run_app() -> None:
                 ]
                 for column, value in enumerate(values):
                     sort_key = float(row)
-                    if column == 1:  # Epochs
+                    if column == 1:
                         try:
                             sort_key = float(value)
                         except (ValueError, TypeError):
                             sort_key = 0.0
-                    elif column in (3, 4):  # mAP50, mAP50-95
+                    elif column in (3, 4):
                         try:
                             sort_key = float(value.replace('%', ''))
                         except (ValueError, TypeError):
                             sort_key = 0.0
-                    elif column == 5:  # Box Loss
+                    elif column == 5:
                         try:
                             sort_key = -float(value)
                         except (ValueError, TypeError):
                             sort_key = 0.0
-                    elif column == 6:  # Recall
+                    elif column == 6:
                         try:
                             sort_key = float(value.replace('%', ''))
                         except (ValueError, TypeError):
@@ -537,40 +678,150 @@ def run_app() -> None:
         def open_result_dir(self):
             path = Path(self.app.settings["paths"]["result_dir"])
             if path.exists():
-                os.startfile(path)  # type: ignore[attr-defined]
+                os.startfile(path)
 
-        def draw_distribution(self, label_count: int):
+        # Task 6: distribution with train/val/test bars
+        def draw_distribution(self):
+            paths = self.app.settings["paths"]
+            project_root = Path(self.app.settings["project"]["root"])
+            dataset_dir = Path(paths["dataset_dir"])
+            class_names = self.app.settings["dataset"]["class_names"]
+
+            # Count images per split
+            split_counts = {}
+            for split in ("train", "val", "test"):
+                img_dir = dataset_dir / split / "images"
+                if img_dir.exists():
+                    split_counts[split] = len([p for p in img_dir.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES])
+                else:
+                    split_counts[split] = 0
+            total = sum(split_counts.values())
+
             pixmap = QPixmap(620, 250)
             pixmap.fill(Qt.GlobalColor.white)
-            from PySide6.QtGui import QPainter, QColor, QPen
-
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+            # Title
             painter.setPen(QPen(QColor("#14233A"), 2))
-            painter.drawText(0, 26, pixmap.width(), 24, Qt.AlignmentFlag.AlignCenter, f"{', '.join(self.app.settings['dataset']['class_names'])} / images")
-            painter.drawLine(50, 205, 590, 205)
-            painter.drawLine(50, 40, 50, 205)
-            bar_height = min(max(label_count, 1), 500) / 500 * 130
-            painter.fillRect(280, int(205 - bar_height), 80, int(bar_height), QColor("#5AAEE3"))
-            painter.drawText(0, int(190 - bar_height), pixmap.width(), 24, Qt.AlignmentFlag.AlignCenter, str(label_count))
+            painter.setFont(QFont("Microsoft YaHei UI", 11, QFont.Weight.Bold))
+            title_text = f"{', '.join(class_names)} | 总计 {total} 张"
+            painter.drawText(0, 26, pixmap.width(), 24, Qt.AlignmentFlag.AlignCenter, title_text)
+
+            # Axes
+            y_bottom = 210
+            y_top = 48
+            x_left = 70
+            x_right = 580
+            painter.setPen(QPen(QColor("#14233A"), 1))
+            painter.drawLine(x_left, y_bottom, x_right, y_bottom)
+            painter.drawLine(x_left, y_bottom, x_left, y_top)
+
+            max_count = max(max(split_counts.values()), 1)
+            bar_w = 80
+            colors = {"train": QColor("#4A90D9"), "val": QColor("#22B765"), "test": QColor("#F4B42E")}
+            labels_cn = {"train": "训练", "val": "验证", "test": "测试"}
+            total_w = len(split_counts) * bar_w + (len(split_counts) - 1) * 40
+            x_start = x_left + (x_right - x_left - total_w) // 2
+
+            painter.setFont(QFont("Microsoft YaHei UI", 10))
+            for i, (split, count) in enumerate(split_counts.items()):
+                x = x_start + i * (bar_w + 40)
+                h = int((count / max_count) * (y_bottom - y_top - 20))
+                painter.fillRect(x, y_bottom - h, bar_w, h, QBrush(colors[split]))
+                # Count label above bar
+                painter.setPen(QColor("#14233A"))
+                painter.drawText(x, y_bottom - h - 18, bar_w, 16, Qt.AlignmentFlag.AlignCenter, str(count))
+                # Category label below
+                painter.drawText(x, y_bottom + 6, bar_w, 16, Qt.AlignmentFlag.AlignCenter, labels_cn[split])
+
             painter.end()
             self.distribution_view.setPixmap(pixmap)
 
-        def draw_empty_curve(self):
-            pixmap = QPixmap(400, 210)
-            pixmap.fill(Qt.GlobalColor.white)
-            from PySide6.QtGui import QPainter, QColor, QPen
+        # Task 7: training curves from results.csv
+        def draw_training_curves(self):
+            result_dir = Path(self.app.settings["paths"]["result_dir"])
+            data = read_results_csv_for_curves(result_dir)
 
+            w, h = 420, 210
+            pixmap = QPixmap(w, h)
+            pixmap.fill(Qt.GlobalColor.white)
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(QPen(QColor("#222222"), 2))
-            painter.drawLine(36, 26, 36, 174)
-            painter.drawLine(36, 174, 372, 174)
-            painter.setPen(QColor("#94A2AD"))
-            painter.drawText(0, 80, pixmap.width(), 60, Qt.AlignmentFlag.AlignCenter, "暂无训练记录\n请进行模型训练")
+
+            if not data:
+                painter.setPen(QColor("#94A2AD"))
+                painter.setFont(QFont("Microsoft YaHei UI", 11))
+                painter.drawText(0, 0, w, h, Qt.AlignmentFlag.AlignCenter, "暂无训练记录\n请进行模型训练")
+                painter.end()
+                self.curve_view.setPixmap(pixmap)
+                return
+
+            # Select curves to plot
+            curve_defs = [
+                ("train/box_loss", QColor("#E74C3C"), "Box Loss"),
+                ("val/box_loss", QColor("#E67E22"), "Val Box Loss"),
+            ]
+            # Try to find mAP columns
+            for col_name in data:
+                if "mAP50(" in col_name and "95" not in col_name:
+                    curve_defs.append((col_name, QColor("#3498DB"), "mAP50"))
+                    break
+            for col_name in data:
+                if "mAP50-95(" in col_name:
+                    curve_defs.append((col_name, QColor("#2ECC71"), "mAP50-95"))
+                    break
+
+            x_left, x_right = 50, w - 20
+            y_top, y_bottom = 30, h - 30
+            x_range = x_right - x_left
+            y_range = y_bottom - y_top
+
+            # Axes
+            painter.setPen(QPen(QColor("#14233A"), 1))
+            painter.drawLine(x_left, y_bottom, x_right, y_bottom)
+            painter.drawLine(x_left, y_bottom, x_left, y_top)
+
+            for col_name, color, label in curve_defs:
+                vals = data.get(col_name, [])
+                if not vals:
+                    continue
+                mn, mx = min(vals), max(vals)
+                if mx == mn:
+                    mx = mn + 1
+                painter.setPen(QPen(color, 2))
+                path = QPainterPath()
+                for j, v in enumerate(vals):
+                    x = x_left + (j / max(len(vals) - 1, 1)) * x_range
+                    y = y_bottom - ((v - mn) / (mx - mn)) * y_range
+                    if j == 0:
+                        path.moveTo(x, y)
+                    else:
+                        path.lineTo(x, y)
+                painter.drawPath(path)
+
+            # Legend at top right
+            painter.setFont(QFont("Microsoft YaHei UI", 8))
+            lx = x_right - 10
+            ly = y_top + 4
+            for col_name, color, label in reversed(curve_defs):
+                vals = data.get(col_name, [])
+                if not vals:
+                    continue
+                lw = painter.fontMetrics().horizontalAdvance(label) + 24
+                lx -= lw
+                painter.setPen(QPen(color, 3))
+                painter.drawLine(lx, ly + 6, lx + 14, ly + 6)
+                painter.setPen(QColor("#14233A"))
+                painter.drawText(lx + 18, ly, lw - 18, 14, Qt.AlignmentFlag.AlignVCenter, label)
+                ly += 16
+
             painter.end()
             self.curve_view.setPixmap(pixmap)
 
+    # ===================================================================
+    #  Data page
+    # ===================================================================
     class DataPage(BasePage):
         def __init__(self, app):
             super().__init__(app)
@@ -849,6 +1100,11 @@ def run_app() -> None:
             result = run_resize(self.config())
             self.log.append(f"\n压缩完成: {result.processed_count} 张，输出目录: {result.output_dir}")
 
+    # ===================================================================
+    #  Task 12: Train page - reordered fields, optimizer, no log title/progress
+    #  Task 9: Prevent double-start
+    #  Task 10: Custom command dialog
+    # ===================================================================
     class TrainPage(BasePage):
         def __init__(self, app):
             super().__init__(app)
@@ -856,6 +1112,7 @@ def run_app() -> None:
             self.checks = {}
             self.metric_labels = {}
             self.log_queue: Queue | None = None
+            self.is_training = False
             self.poll_timer = QTimer(self)
             self.poll_timer.timeout.connect(self.poll_training_queue)
             layout = self.page_layout()
@@ -870,18 +1127,45 @@ def run_app() -> None:
             top.addWidget(left, 0, 0)
             top.addWidget(right, 0, 1)
 
+            # Task 12: Reordered layout
+            # Row 0: 基础模型 (model dropdown), 数据集YAML
+            # Row 1: 模型YAML (blank default), 项目输出
             left_form = QGridLayout()
             left.layout.addLayout(left_form)
-            for index, (key, label, browse) in enumerate([
-                ("data", "data.yaml", self.choose_file),
-                ("pretrained", "预训练权重", self.choose_file),
-                ("project", "项目输出", self.choose_dir),
-                ("model_yaml", "模型 YAML", self.choose_file),
-            ]):
-                box, edit = self.inline_field(label, training.get(key, ""), browse)
-                self.edits[key] = edit
-                left_form.addWidget(box, index // 2, index % 2)
 
+            # 基础模型 - dropdown from data/models/*.pt
+            model_files = _find_pt_files_in_data_models(Path(self.app.settings["project"]["root"]))
+            base_label = QLabel("基础模型")
+            base_label.setObjectName("inlineFieldLabel")
+            self.pretrained_combo = QComboBox()
+            self.pretrained_combo.setEditable(True)
+            if model_files:
+                self.pretrained_combo.addItems(model_files)
+            current_pretrained = training.get("pretrained", "")
+            # If current is just a filename, show it
+            current_name = Path(current_pretrained).name if current_pretrained else ""
+            if current_name:
+                self.pretrained_combo.setCurrentText(current_name)
+            left_form.addWidget(base_label, 0, 0)
+            left_form.addWidget(self.pretrained_combo, 0, 1)
+
+            # 数据集YAML
+            self.edits["data"], _ = None, None
+            data_box, data_edit = self.inline_field("数据集YAML", training.get("data", ""), self.choose_file)
+            self.edits["data"] = data_edit
+            left_form.addWidget(data_box, 0, 2, 1, 2)
+
+            # 模型YAML (default blank)
+            model_yaml_box, model_yaml_edit = self.inline_field("模型YAML", "", self.choose_file)
+            self.edits["model_yaml"] = model_yaml_edit
+            left_form.addWidget(model_yaml_box, 1, 0, 1, 2)
+
+            # 项目输出
+            project_box, project_edit = self.inline_field("项目输出", training.get("project", ""), self.choose_dir)
+            self.edits["project"] = project_edit
+            left_form.addWidget(project_box, 1, 2, 1, 2)
+
+            # Augmentation checkboxes
             aug = QGridLayout()
             left.layout.addLayout(aug)
             for index, (key, label) in enumerate([("mosaic", "马赛克"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("mixup", "MixUp"), ("scale", "缩放"), ("translate", "平移"), ("degrees", "旋转"), ("hsv", "HSV")]):
@@ -890,34 +1174,54 @@ def run_app() -> None:
                 self.checks[key] = check
                 aug.addWidget(check, index // 4, index % 4)
 
+            # Right side: training params
             params = QGridLayout()
             right.layout.addLayout(params)
-            self.base_model_box, self.base_model_combo = self.inline_combo_field("基础模型", str(training.get("base_model", "yolo11n-obb")), ["yolo11n-obb", "yolo11s-obb", "yolo11m-obb", "yolov8m-obb.pt", "yolo11n.pt", "yolo11s.pt"])
+
+            # Task 12: Optimizer combo
+            optimizer_box = QWidget()
+            optimizer_layout = QHBoxLayout(optimizer_box)
+            optimizer_layout.setContentsMargins(0, 0, 0, 0)
+            opt_label = QLabel("优化器")
+            opt_label.setObjectName("inlineFieldLabel")
+            opt_label.setFixedWidth(88)
+            self.optimizer_combo = QComboBox()
+            self.optimizer_combo.addItems(["auto", "SGD", "Adam", "AdamW", "RMSProp"])
+            current_opt = training.get("optimizer", "auto")
+            if current_opt in ["auto", "SGD", "Adam", "AdamW", "RMSProp"]:
+                self.optimizer_combo.setCurrentText(current_opt)
+            optimizer_layout.addWidget(opt_label)
+            optimizer_layout.addWidget(self.optimizer_combo, 1)
+            params.addWidget(optimizer_box, 0, 0, 1, 2)
+
+            # Device combo
             self.device_box, self.device_combo = self.inline_combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
-            param_widgets = [self.base_model_box]
+            params.addWidget(self.device_box, 1, 0, 1, 2)
+
+            # Other params
+            param_idx = 2
             for key, label in [("lr", "学习率"), ("epochs", "Epochs"), ("patience", "Patience"), ("workers", "Workers"), ("batch", "Batch"), ("imgsz", "图片尺寸")]:
                 box, edit = self.inline_field(label, training.get(key, ""))
                 self.edits[key] = edit
-                param_widgets.append(box)
-            param_widgets.append(self.device_box)
-            for index, widget in enumerate(param_widgets):
-                params.addWidget(widget, index // 2, index % 2)
+                params.addWidget(box, param_idx // 2, param_idx % 2)
+                param_idx += 1
 
+            # Task 9: Control buttons
             actions = QHBoxLayout()
             layout.addLayout(actions)
             control = Card()
             control_body = QGridLayout()
             control.layout.addLayout(control_body)
-            start = QPushButton("开始训练")
-            start.clicked.connect(self.start)
-            stop = QPushButton("停止训练")
-            stop.setObjectName("softButton")
-            stop.clicked.connect(self.stop)
+            self.start_btn = QPushButton("开始训练")
+            self.start_btn.clicked.connect(self.start)
+            self.stop_btn = QPushButton("停止训练")
+            self.stop_btn.setObjectName("softButton")
+            self.stop_btn.clicked.connect(self.stop)
             report = QPushButton("查看模型报告")
             report.setObjectName("softButton")
             report.clicked.connect(self.open_result)
-            control_body.addWidget(start, 0, 0, 1, 2)
-            control_body.addWidget(stop, 1, 0)
+            control_body.addWidget(self.start_btn, 0, 0, 1, 2)
+            control_body.addWidget(self.stop_btn, 1, 0)
             control_body.addWidget(report, 1, 1)
             actions.addWidget(control, 1)
 
@@ -930,18 +1234,8 @@ def run_app() -> None:
                 self.metric_labels[key] = metric
             actions.addWidget(status, 3)
 
-            log_panel = Card("训练日志")
-            headerProgress = QHBoxLayout()
-            self.progress = QProgressBar()
-            self.progress.setObjectName("headerProgress")
-            self.progress.setMaximumWidth(220)
-            self.progress.setValue(0)
-            self.progress_label = QLabel("0%")
-            self.progress_label.setObjectName("metricValue")
-            headerProgress.addStretch(1)
-            headerProgress.addWidget(self.progress)
-            headerProgress.addWidget(self.progress_label)
-            log_panel.layout.insertLayout(1, headerProgress)
+            # Task 11: No title, no progress bar - just the log text panel
+            log_panel = Card()
             self.log = QTextEdit()
             self.log.setReadOnly(True)
             log_panel.layout.addWidget(self.log, 1)
@@ -962,26 +1256,63 @@ def run_app() -> None:
             self.metric_labels["memory"].setText(status.get("memory", "待检测"))
 
         def collect_config(self):
-            config = {key: edit.text() for key, edit in self.edits.items()}
-            config["base_model"] = self.base_model_combo.currentText()
+            config = {}
+            config["data"] = self.edits["data"].text() if self.edits["data"] else ""
+            config["model_yaml"] = self.edits["model_yaml"].text() if self.edits["model_yaml"] else ""
+            config["project"] = self.edits["project"].text() if self.edits["project"] else ""
+            config["lr"] = self.edits["lr"].text() if self.edits.get("lr") else "0.001"
+            config["epochs"] = self.edits["epochs"].text() if self.edits.get("epochs") else "800"
+            config["patience"] = self.edits["patience"].text() if self.edits.get("patience") else "150"
+            config["workers"] = self.edits["workers"].text() if self.edits.get("workers") else "2"
+            config["batch"] = self.edits["batch"].text() if self.edits.get("batch") else "16"
+            config["imgsz"] = self.edits["imgsz"].text() if self.edits.get("imgsz") else "640"
             config["device"] = self.device_combo.currentText()
+            config["base_model"] = self.pretrained_combo.currentText()
+            config["pretrained"] = self.pretrained_combo.currentText()
+            config["optimizer"] = self.optimizer_combo.currentText()
             for key in ("epochs", "patience", "workers", "batch", "imgsz"):
-                config[key] = int(config[key])
-            config["lr"] = float(config["lr"])
+                try:
+                    config[key] = int(config[key])
+                except (ValueError, TypeError):
+                    config[key] = int(self.app.settings["training"].get(key, 0))
+            try:
+                config["lr"] = float(config["lr"])
+            except (ValueError, TypeError):
+                config["lr"] = float(self.app.settings["training"].get("lr", 0.001))
             config["task_mode"] = infer_task_mode_from_model(config.get("model_yaml") or config.get("base_model") or config.get("pretrained"))
             for key, check in self.checks.items():
                 config[key] = self.app.settings["training"].get(key, 0) if check.isChecked() else 0
+            # Resolve pretrained path - if just a name, look in data/models
+            pretrained_val = config.get("pretrained", "")
+            if pretrained_val and not Path(pretrained_val).exists():
+                models_dir = Path(self.app.settings["project"]["root"]) / "data" / "models"
+                candidate = models_dir / pretrained_val
+                if candidate.exists():
+                    config["pretrained"] = str(candidate)
             return config
 
         def refresh_command_preview(self):
             self.log.setPlainText(" ".join(build_train_command(self.collect_config())) + "\n等待开始训练...")
 
+        # Task 9: Only allow one training at a time
+        # Task 10: Custom command dialog
         def start(self):
+            if self.is_training:
+                return
             config = self.collect_config()
             command = build_train_command(config)
+
+            # Task 10: Custom command dialog if enabled
+            if self.app.settings.get("features", {}).get("custom_command_dialog", True):
+                dialog = CommandDialog(command, self)
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return
+                command = dialog.get_command()
+
+            self.is_training = True
+            self.start_btn.setEnabled(False)
             self.log.clear()
             self.log.append(" ".join(command))
-            self.progress.setValue(0)
             self.log_queue = Queue()
             self.app.training_handle = spawn_logged_process(command, str(ROOT), self.log_queue)
             self.poll_timer.start(150)
@@ -996,9 +1327,9 @@ def run_app() -> None:
                     self.log.append(payload)
                 elif event == "exit":
                     self.log.append(f"训练进程结束，退出码：{payload}")
-                    self.progress.setValue(100)
-                    self.progress_label.setText("100%")
                     self.poll_timer.stop()
+                    self.is_training = False
+                    self.start_btn.setEnabled(True)
                     self.app.status.setText("训练结束")
 
         def stop(self):
@@ -1006,10 +1337,15 @@ def run_app() -> None:
             self.log.append("已请求停止训练。")
 
         def open_result(self):
-            path = Path(self.edits["project"].text())
+            path = Path(self.edits["project"].text() if self.edits.get("project") else self.app.settings["paths"]["result_dir"])
             if path.exists():
-                os.startfile(path)  # type: ignore[attr-defined]
+                os.startfile(path)
 
+    # ===================================================================
+    #  Task 14: Validate page - model dropdown, first/last buttons
+    #  Task 9: Prevent double-start
+    #  Task 3: Relative paths
+    # ===================================================================
     class ValidatePage(BasePage):
         def __init__(self, app):
             super().__init__(app)
@@ -1017,17 +1353,32 @@ def run_app() -> None:
             self.detect_index = -1
             self.detect_stop = threading.Event()
             self.detect_worker = None
+            self.is_detecting = False
+            self._all_model_paths: list[Path] = []
             layout = self.page_layout()
             split = QHBoxLayout()
             layout.addLayout(split, 1)
+
+            # Left column
             left_shell = Card()
             left_column = left_shell.layout
             validation = app.settings["validation"]
+
+            # Model config - Task 14: dropdown for models
             model_title = QLabel("模型配置")
             model_title.setObjectName("sectionTitle")
             left_column.addWidget(model_title)
-            self.model_box, self.model_edit = self.field("选择模型", validation["model_path"], lambda edit: self.choose_file(edit, "选择模型"))
-            left_column.addWidget(self.model_box)
+            model_row = QHBoxLayout()
+            model_label = QLabel("选择模型")
+            model_label.setObjectName("inlineFieldLabel")
+            model_label.setFixedWidth(70)
+            self.model_combo = QComboBox()
+            self.model_combo.setEditable(True)
+            self.model_combo.setMinimumWidth(200)
+            model_row.addWidget(model_label)
+            model_row.addWidget(self.model_combo, 1)
+            left_column.addLayout(model_row)
+
             conf_row = QHBoxLayout()
             self.conf_box, self.conf_edit = self.field("置信度", str(validation["confidence"]))
             self.iou_box, self.iou_edit = self.field("IoU", str(validation["iou"]))
@@ -1035,6 +1386,7 @@ def run_app() -> None:
             conf_row.addWidget(self.iou_box)
             left_column.addLayout(conf_row)
 
+            # Source config
             source_title = QLabel("检测源配置")
             source_title.setObjectName("sectionTitle")
             left_column.addWidget(source_title)
@@ -1045,20 +1397,21 @@ def run_app() -> None:
             self.camera_box, self.camera_combo = self.combo_field("摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"])
             left_column.addWidget(self.camera_box)
 
+            # Control
             control_title = QLabel("检测控制")
             control_title.setObjectName("sectionTitle")
             left_column.addWidget(control_title)
             controls = QHBoxLayout()
-            start = QPushButton("开始检测")
-            start.clicked.connect(self.start_detection)
+            self.start_det_btn = QPushButton("开始检测")
+            self.start_det_btn.clicked.connect(self.start_detection)
             pause = QPushButton("暂停")
             pause.setObjectName("softButton")
-            stop = QPushButton("停止")
-            stop.setObjectName("softButton")
-            stop.clicked.connect(self.stop_detection)
-            controls.addWidget(start)
+            self.stop_det_btn = QPushButton("停止")
+            self.stop_det_btn.setObjectName("softButton")
+            self.stop_det_btn.clicked.connect(self.stop_detection)
+            controls.addWidget(self.start_det_btn)
             controls.addWidget(pause)
-            controls.addWidget(stop)
+            controls.addWidget(self.stop_det_btn)
             left_column.addLayout(controls)
 
             log_title = QLabel("检测日志")
@@ -1069,10 +1422,11 @@ def run_app() -> None:
             left_column.addWidget(self.detect_log, 1)
             split.addWidget(left_shell, 3)
 
+            # Right column
             right = QVBoxLayout()
             toolbar = QHBoxLayout()
             toolbar.addWidget(QLabel("批量检测结果"))
-            for text, slot in [("上一张", self.prev_result), ("下一张", self.next_result), ("保存结果", self.save_current_result), ("清空结果", self.clear_results)]:
+            for text, slot in [("上一张", self.prev_result), ("第一张", self.first_result), ("下一张", self.next_result), ("最后一张", self.last_result), ("保存结果", self.save_current_result), ("清空结果", self.clear_results)]:
                 button = QPushButton(text)
                 button.setObjectName("softButton")
                 button.clicked.connect(slot)
@@ -1100,6 +1454,7 @@ def run_app() -> None:
             right_widget = QWidget()
             right_widget.setLayout(right)
             split.addWidget(right_widget, 7)
+
             self.mode_combo.currentTextChanged.connect(self.update_source_mode)
             self.update_source_mode(self.mode_combo.currentText())
 
@@ -1109,16 +1464,37 @@ def run_app() -> None:
             self.camera_box.setVisible(camera)
 
         def on_show(self):
-            if not self.model_edit.text():
-                self.app.run_background("models", lambda: scan_candidate_models(Path(self.app.settings["paths"]["result_dir"])))
+            # Scan models and populate dropdown
+            result_dir = Path(self.app.settings["paths"]["result_dir"])
+            self._all_model_paths = _find_models_full_paths(result_dir)
+            display_names = [_simplified_model_path(str(m)) for m in self._all_model_paths]
+            self.model_combo.clear()
+            self.model_combo.addItems(display_names)
+            # Set current from settings
+            current = self.app.settings["validation"].get("model_path", "")
+            if current:
+                display = _simplified_model_path(current)
+                idx = self.model_combo.findText(display)
+                if idx >= 0:
+                    self.model_combo.setCurrentIndex(idx)
+                else:
+                    self.model_combo.setEditText(current)
 
-        def apply_models(self, models):
-            if models and not self.model_edit.text():
-                self.model_edit.setText(str(models[0]))
+        def _get_model_path(self) -> str:
+            """Resolve the selected model combo to an absolute path."""
+            text = self.model_combo.currentText()
+            # Try to find it in our known paths
+            for p in self._all_model_paths:
+                if _simplified_model_path(str(p)) == text or str(p) == text:
+                    return str(p)
+            # Maybe it's already a full path
+            if Path(text).exists():
+                return text
+            return text
 
         def config(self):
             return {
-                "model_path": self.model_edit.text(),
+                "model_path": self._get_model_path(),
                 "source_mode": "摄像头" if self.mode_combo.currentText() == "摄像头" else "图片文件夹",
                 "source_path": self.source_edit.text(),
                 "camera_index": int(self.camera_combo.currentText()),
@@ -1127,7 +1503,12 @@ def run_app() -> None:
                 "save_dir": self.app.settings["validation"]["save_dir"],
             }
 
+        # Task 9: Only allow one detection at a time
         def start_detection(self):
+            if self.is_detecting:
+                return
+            self.is_detecting = True
+            self.start_det_btn.setEnabled(False)
             self.detect_log.clear()
             self.detect_stop.clear()
             self.detect_results.clear()
@@ -1145,11 +1526,15 @@ def run_app() -> None:
             self.detect_log.append("检测任务结束。")
             self.app.status.setText("检测结束")
             self.detect_worker = None
+            self.is_detecting = False
+            self.start_det_btn.setEnabled(True)
 
         def apply_detect_error(self, message):
             self.detect_log.append(message)
             self.app.status.setText("检测异常")
             self.detect_worker = None
+            self.is_detecting = False
+            self.start_det_btn.setEnabled(True)
 
         def stop_detection(self):
             self.detect_stop.set()
@@ -1158,7 +1543,13 @@ def run_app() -> None:
         def handle_result(self, payload):
             self.detect_results.append(payload)
             self.detect_index = len(self.detect_results) - 1
-            self.show_detection_payload(payload)
+            # Task 14: For batch, always show the first image
+            if len(self.detect_results) == 1:
+                self.show_detection_payload(payload)
+            else:
+                # Just update counter and log, don't switch view
+                self.counter.setText(f"{self.detect_index + 1}/{len(self.detect_results)}")
+                self.detect_log.append(f"{payload.get('status')} | 结果: {len(payload['items'])} 个")
 
         def show_detection_payload(self, payload):
             self.source_view.set_pil_image(payload["source_image"])
@@ -1172,6 +1563,18 @@ def run_app() -> None:
             elapsed = payload.get("elapsed", 0.0)
             fps = (1 / elapsed) if elapsed else 0
             self.detect_log.append(f"{payload.get('status')} | 单张耗时: {elapsed * 1000:.1f}ms | FPS: {fps:.1f} | 结果: {len(payload['items'])} 个")
+
+        def first_result(self):
+            if not self.detect_results:
+                return
+            self.detect_index = 0
+            self.show_detection_payload(self.detect_results[0])
+
+        def last_result(self):
+            if not self.detect_results:
+                return
+            self.detect_index = len(self.detect_results) - 1
+            self.show_detection_payload(self.detect_results[-1])
 
         def prev_result(self):
             if not self.detect_results:
@@ -1206,27 +1609,80 @@ def run_app() -> None:
             self.table.setRowCount(0)
             self.detect_log.append("已清空检测结果。")
 
+    # ===================================================================
+    #  Task 13: Settings page - system info style + auto-refresh
+    #  Task 10: Custom command toggle
+    # ===================================================================
     class SettingsPage(BasePage):
         def __init__(self, app):
             super().__init__(app)
+            self._refresh_count = 0
             layout = self.page_layout()
             title = QLabel("系统设置")
             title.setObjectName("pageTitle")
             layout.addWidget(title)
+
+            # Task 10: Custom command dialog toggle
+            feat_row = QHBoxLayout()
+            feat_label = QLabel("训练前显示自定义命令框")
+            feat_label.setObjectName("inlineFieldLabel")
+            self.cmd_dialog_check = QCheckBox()
+            self.cmd_dialog_check.setChecked(self.app.settings.get("features", {}).get("custom_command_dialog", True))
+            self.cmd_dialog_check.stateChanged.connect(self._toggle_custom_cmd)
+            feat_row.addWidget(feat_label)
+            feat_row.addWidget(self.cmd_dialog_check)
+            feat_row.addStretch(1)
+            layout.addLayout(feat_row)
+
+            # Task 13: System info - white outer card, gray inner cards
+            info_outer = QFrame()
+            info_outer.setObjectName("systemInfoOuter")
+            info_outer_layout = QGridLayout(info_outer)
+            info_outer_layout.setContentsMargins(0, 0, 0, 0)
+            info_outer_layout.setSpacing(0)
+            info_grid = QGridLayout()
+            info_grid.setContentsMargins(12, 12, 12, 12)
+            info_grid.setSpacing(8)
             self.status_cards = {}
-            grid = QGridLayout()
-            layout.addLayout(grid)
             for index, label in enumerate(["Pixi", "Torch/CUDA", "GPU", "显存", "CPU", "内存", "磁盘", "模块"]):
-                card = Card(label)
+                inner = QFrame()
+                inner.setObjectName("systemInfoInner")
+                inner_layout = QVBoxLayout(inner)
+                inner_layout.setContentsMargins(10, 8, 10, 8)
+                lbl = QLabel(label)
+                lbl.setObjectName("fieldLabel")
                 value = QLabel("待检测")
                 value.setObjectName("metricValue")
                 value.setWordWrap(True)
-                card.layout.addWidget(value)
+                inner_layout.addWidget(lbl)
+                inner_layout.addWidget(value)
                 self.status_cards[label] = value
-                grid.addWidget(card, index // 4, index % 4)
+                info_grid.addWidget(inner, index // 4, index % 4)
+            info_outer_layout.addLayout(info_grid)
+            layout.addWidget(info_outer)
+
             self.log = QTextEdit()
             self.log.setReadOnly(True)
             layout.addWidget(self.log, 1)
+
+            # Task 13: Auto-refresh timer every 0.5s
+            self._auto_refresh_timer = QTimer(self)
+            self._auto_refresh_timer.timeout.connect(self._auto_refresh)
+            self._auto_refresh_timer.start(500)
+
+        def _toggle_custom_cmd(self, state):
+            self.app.settings.setdefault("features", {})["custom_command_dialog"] = state == Qt.CheckState.Checked.value
+            self.app.settings_service.save(self.app.settings)
+
+        def _auto_refresh(self):
+            self._refresh_count += 1
+            self.app.run_background("env_auto", lambda: {
+                "pixi": pixi_available(),
+                "modules": detect_modules(),
+                "cuda": torch_cuda_summary(),
+                "status": system_status(),
+                "settings": self.app.settings,
+            })
 
         def on_show(self):
             for label in self.status_cards:
@@ -1247,6 +1703,13 @@ def run_app() -> None:
             self.status_cards[label].setText(value)
 
         def apply_env(self, payload):
+            self._apply_env_data(payload)
+            self.log.setPlainText("当前设置:\n" + json.dumps(payload["settings"], ensure_ascii=False, indent=2))
+
+        def apply_env_auto(self, payload):
+            self._apply_env_data(payload)
+
+        def _apply_env_data(self, payload):
             cuda = payload["cuda"]
             status = payload["status"]
             modules = payload["modules"]
@@ -1259,8 +1722,10 @@ def run_app() -> None:
             self.set_status_card("内存", status.get("memory", "待检测"))
             self.set_status_card("磁盘", status.get("disk", "待检测"))
             self.set_status_card("模块", module_summary)
-            self.log.setPlainText("当前设置:\n" + json.dumps(payload["settings"], ensure_ascii=False, indent=2))
 
+    # ===================================================================
+    #  QSS Styles
+    # ===================================================================
     STYLE = """
     QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
     #nav { background: #26394D; }
@@ -1281,12 +1746,22 @@ def run_app() -> None:
     #fieldLabel { color: #627286; font-size: 12px; }
     #inlineFieldLabel { color: #14233A; font-size: 14px; font-weight: 600; }
     #imageView { background: #F8FBFD; border: 1px solid #D9E3EC; border-radius: 6px; color: #627286; }
+    #statCard { background: #F5F8FB; border: 1px solid #E8EDF2; border-radius: 6px; }
+    #metricCard { background: #F5F8FB; border: 1px solid #E8EDF2; border-radius: 6px; }
+    #chartView { background: white; border: 1px solid #D9E3EC; border-radius: 6px; }
+    #systemInfoOuter { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }
+    #systemInfoInner { background: #F0F2F5; border: 1px solid #E0E3E8; border-radius: 6px; }
     QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }
     QPushButton { background: #208FD4; color: white; border: 0; border-radius: 5px; padding: 9px 14px; }
+    QPushButton:hover { background: #1A7ABF; }
     QPushButton#softButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; }
+    QPushButton#softButton:hover { background: #E8EDF2; border-color: #B8C4D0; }
+    QPushButton:disabled { background: #C0CCD8; color: #8899AA; }
     QTabWidget::pane { border: 1px solid #D9E3EC; background: white; border-radius: 6px; }
     QTabBar::tab { padding: 9px 16px; background: #F5F8FB; border: 1px solid #D9E3EC; }
     QTabBar::tab:selected { background: white; color: #208FD4; }
+    QTableWidget::item:hover { background: #EBF2F8; }
+    QHeaderView::section { background: #F5F8FB; border: 1px solid #D9E3EC; padding: 6px; font-weight: 600; }
     """
 
     app = QApplication(sys.argv)

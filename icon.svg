@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="base-shape">
+      <rect x="32" y="32" width="448" height="448" rx="105" />
+    </clipPath>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="105" fill="#0091FF" />
+  
+  <g clip-path="url(#base-shape)">
+    <rect x="352" y="32" width="128" height="448" fill="#0052B3" />
+  </g>
+  
+  <rect x="160" y="160" width="192" height="192" rx="48" fill="#FFFFFF" />
+</svg>
