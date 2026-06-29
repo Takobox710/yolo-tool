@@ -56,6 +56,8 @@
     "translate": 0.1,
     "degrees": 0.0,
     "hsv_h": 0.015,
+    "hsv_s": 0.7,
+    "hsv_v": 0.4,
     "optimizer": "auto"
   },
   "validation": {

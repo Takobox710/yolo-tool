@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import math
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+
+
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
+VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
+SOURCE_SUFFIXES = IMAGE_SUFFIXES | VIDEO_SUFFIXES
+
+
+def _natural_sort_key(path: Path) -> list[object]:
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", path.name)]
 
 
 @dataclass
@@ -78,6 +88,20 @@ def build_save_dir(base_dir: Path) -> Path:
     return target
 
 
+def collect_prediction_sources(source_mode: str, source_path: str | Path) -> list[Path]:
+    source = Path(source_path)
+    if source_mode in {"图片文件夹", "图片/视频文件夹"}:
+        if not source.exists() or not source.is_dir():
+            return []
+        return sorted(
+            (path for path in source.iterdir() if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES),
+            key=_natural_sort_key,
+        )
+    if source_mode == "图片/视频":
+        return [source] if source.is_file() and source.suffix.lower() in SOURCE_SUFFIXES else []
+    return []
+
+
 def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -> None:
     from PIL import Image
     import cv2
@@ -86,39 +110,28 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
     model = YOLO(config["model_path"])
     mode = config.get("source_mode", "图片文件夹")
     save_dir = build_save_dir(Path(config.get("save_dir", "result/gui_predict")))
-    if mode in {"图片文件夹", "图片/视频文件夹"}:
-        paths = sorted(
-            path
-            for path in Path(config["source_path"]).iterdir()
-            if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".mp4", ".avi", ".mov", ".mkv"}
+
+    def predict_image(image_path: Path, index: int, total: int) -> None:
+        start = time.perf_counter()
+        result = model.predict(source=str(image_path), conf=config.get("confidence", 0.25), iou=config.get("iou", 0.45), verbose=False)[0]
+        elapsed = time.perf_counter() - start
+        plotted = result.plot()
+        cv2.imwrite(str(save_dir / image_path.name), plotted)
+        original = Image.open(image_path).convert("RGB")
+        callback(
+            {
+                "source_image": original,
+                "result_image": Image.fromarray(cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)),
+                "items": extract_detection_items(result),
+                "status": f"{index}/{total} {image_path.name}",
+                "source_name": image_path.name,
+                "source_path": str(image_path),
+                "elapsed": elapsed,
+            }
         )
-        total = len(paths)
-        image_suffixes = {".jpg", ".jpeg", ".png", ".bmp"}
-        for index, image_path in enumerate(paths, start=1):
-            if stop_event.is_set():
-                break
-            if image_path.suffix.lower() not in image_suffixes:
-                config = {**config, "source_mode": "视频", "source_path": str(image_path)}
-                run_prediction(config, stop_event, callback)
-                continue
-            start = time.perf_counter()
-            result = model.predict(source=str(image_path), conf=config.get("confidence", 0.25), iou=config.get("iou", 0.45), verbose=False)[0]
-            elapsed = time.perf_counter() - start
-            plotted = result.plot()
-            cv2.imwrite(str(save_dir / image_path.name), plotted)
-            original = Image.open(image_path).convert("RGB")
-            callback(
-                {
-                    "source_image": original,
-                    "result_image": Image.fromarray(cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)),
-                    "items": extract_detection_items(result),
-                    "status": f"{index}/{total} {image_path.name}",
-                    "elapsed": elapsed,
-                }
-            )
-    else:
-        source = int(config.get("camera_index", 0)) if mode == "摄像头" else config.get("source_path")
-        cap = cv2.VideoCapture(source)
+
+    def predict_video(video_source: int | str, source_name: str) -> None:
+        cap = cv2.VideoCapture(video_source)
         frame_index = 0
         try:
             while cap.isOpened() and not stop_event.is_set():
@@ -130,14 +143,31 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
                 result = model.predict(source=frame, conf=config.get("confidence", 0.25), iou=config.get("iou", 0.45), verbose=False)[0]
                 elapsed = time.perf_counter() - start
                 plotted = result.plot()
+                display_name = f"{source_name} #{frame_index}" if source_name else f"frame {frame_index}"
                 callback(
                     {
                         "source_image": Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)),
                         "result_image": Image.fromarray(cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)),
                         "items": extract_detection_items(result),
-                        "status": f"frame {frame_index}",
+                        "status": display_name,
+                        "source_name": display_name,
+                        "source_path": str(video_source),
                         "elapsed": elapsed,
                     }
                 )
         finally:
             cap.release()
+
+    if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
+        paths = collect_prediction_sources(mode, config["source_path"])
+        total = len(paths)
+        for index, image_path in enumerate(paths, start=1):
+            if stop_event.is_set():
+                break
+            if image_path.suffix.lower() in IMAGE_SUFFIXES:
+                predict_image(image_path, index, total)
+            else:
+                predict_video(str(image_path), image_path.name)
+    else:
+        source = int(config.get("camera_index", 0)) if mode == "摄像头" else config.get("source_path")
+        predict_video(source, "")

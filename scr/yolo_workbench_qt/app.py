@@ -13,7 +13,7 @@ from PIL import Image
 
 from scr.yolo_workbench.services.annotation_service import load_yolo_annotations, render_annotation_preview
 from scr.yolo_workbench.services.conversion_service import ConversionConfig, preview_conversion, run_conversion
-from scr.yolo_workbench.services.detection_service import run_prediction, scan_candidate_models
+from scr.yolo_workbench.services.detection_service import collect_prediction_sources, run_prediction, scan_candidate_models
 from scr.yolo_workbench.services.environment_service import detect_modules, pixi_available, system_status, torch_cuda_summary
 from scr.yolo_workbench.services.rename_service import execute_rename, preview_rename
 from scr.yolo_workbench.services.resize_service import ResizeConfig, preview_resize, run_resize
@@ -33,15 +33,36 @@ from scr.yolo_workbench_qt.home_charts import DatasetDistributionWidget, Trainin
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
 
 # --- Task 3: path helpers ---
-def _relative_path(path_str: str, project_root: str | Path = ROOT) -> str:
-    """Return a display-friendly relative path from the project root."""
+def _resolve_project_path(path_str: str, project_root: str | Path = ROOT) -> str:
+    """Resolve user-entered relative or absolute path text against project root."""
+    text = str(path_str or "").strip().strip('"')
+    if not text:
+        return ""
+    root = Path(project_root).expanduser().resolve()
+    path = Path(os.path.expandvars(text)).expanduser()
+    if path.is_absolute():
+        return str(path.resolve())
+    return str((root / path).resolve())
+
+
+def _display_project_path(path_str: str, project_root: str | Path = ROOT) -> str:
+    """Display project-local paths as relative and external paths as absolute."""
     if not path_str:
         return ""
+    root = Path(project_root).expanduser().resolve()
+    resolved = Path(_resolve_project_path(path_str, root))
     try:
-        p = Path(path_str)
-        return str(p.relative_to(Path(project_root)))
+        common = os.path.commonpath([str(root), str(resolved)])
     except ValueError:
-        return str(path_str)
+        return str(resolved)
+    if os.path.normcase(common) == os.path.normcase(str(root)):
+        return os.path.relpath(str(resolved), str(root))
+    return str(resolved)
+
+
+def _relative_path(path_str: str, project_root: str | Path = ROOT) -> str:
+    """Return a display-friendly relative path from the project root."""
+    return _display_project_path(path_str, project_root)
 
 
 def _simplified_model_path(path_str: str) -> str:
@@ -91,6 +112,13 @@ def _home_column_widths(total_width: int, margins: int = 32, spacing: int = 12) 
     return left, right
 
 
+def _history_model_sort_key(train_id: str, model_name: str) -> float:
+    match = re.fullmatch(r"train(?:-(\d+))?", str(train_id).strip())
+    run_number = int(match.group(1) or 1) if match else 0
+    model_priority = 1 if str(model_name).lower() == "best.pt" else 0
+    return float(-(run_number * 10 + model_priority))
+
+
 # ---------------------------------------------------------------------------
 def run_app() -> None:
     try:
@@ -109,6 +137,7 @@ def run_app() -> None:
             QHeaderView,
             QLabel,
             QLineEdit,
+            QListWidget,
             QMainWindow,
             QMessageBox,
             QPushButton,
@@ -354,7 +383,7 @@ def run_app() -> None:
             root_layout.addWidget(self.status)
             self.setCentralWidget(root)
             self.setStyleSheet(STYLE)
-            self.show_page(self.settings["ui"].get("last_page", "home"))
+            self.show_page("home")
 
         def show_page(self, key: str):
             if key not in self.page_titles:
@@ -415,13 +444,25 @@ def run_app() -> None:
             super().__init__()
             self.app = app
 
+        def project_root(self) -> Path:
+            return Path(self.app.settings["project"]["root"])
+
+        def display_path(self, path: str | Path) -> str:
+            return _display_project_path(str(path), self.project_root())
+
+        def resolve_path_text(self, edit: QLineEdit) -> str:
+            return _resolve_project_path(edit.text(), self.project_root())
+
+        def path_from_edit(self, edit: QLineEdit) -> Path:
+            return Path(self.resolve_path_text(edit))
+
         def page_layout(self):
             layout = QVBoxLayout(self)
             layout.setContentsMargins(16, 16, 16, 16)
             layout.setSpacing(14)
             return layout
 
-        def field(self, label: str, value: str = "", browse=None):
+        def field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
             box = QWidget()
             layout = QVBoxLayout(box)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -430,6 +471,8 @@ def run_app() -> None:
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
             edit = QLineEdit(str(value))
+            if placeholder:
+                edit.setPlaceholderText(placeholder)
             row.addWidget(edit, 1)
             if browse:
                 button = QPushButton("选择")
@@ -439,6 +482,9 @@ def run_app() -> None:
             layout.addWidget(caption)
             layout.addLayout(row)
             return box, edit
+
+        def path_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+            return self.field(label, self.display_path(value), browse, placeholder)
 
         def combo_field(self, label: str, value: str, values: list[str]):
             box = QWidget()
@@ -454,7 +500,7 @@ def run_app() -> None:
             layout.addWidget(combo)
             return box, combo
 
-        def inline_field(self, label: str, value: str = "", browse=None):
+        def inline_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
             box = QWidget()
             layout = QHBoxLayout(box)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -462,6 +508,8 @@ def run_app() -> None:
             caption.setObjectName("inlineFieldLabel")
             caption.setFixedWidth(88)
             edit = QLineEdit(str(value))
+            if placeholder:
+                edit.setPlaceholderText(placeholder)
             layout.addWidget(caption)
             layout.addWidget(edit, 1)
             if browse:
@@ -487,7 +535,7 @@ def run_app() -> None:
             return box, combo
 
 
-        def stacked_field(self, label: str, value: str = "", browse=None):
+        def stacked_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
             """Label on top, input + optional browse button below."""
             box = QWidget()
             outer = QVBoxLayout(box)
@@ -499,6 +547,8 @@ def run_app() -> None:
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
             edit = QLineEdit(str(value))
+            if placeholder:
+                edit.setPlaceholderText(placeholder)
             row.addWidget(edit, 1)
             if browse:
                 btn = QPushButton("选择")
@@ -508,7 +558,10 @@ def run_app() -> None:
             outer.addLayout(row)
             return box, edit
 
-        def stacked_combo_field(self, label: str, value: str, values: list[str], browse=None):
+        def stacked_path_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+            return self.stacked_field(label, self.display_path(value), browse, placeholder)
+
+        def stacked_combo_field(self, label: str, value: str, values: list[str], browse=None, placeholder: str = ""):
             """Label on top, combo + optional browse button below."""
             box = QWidget()
             outer = QVBoxLayout(box)
@@ -522,6 +575,8 @@ def run_app() -> None:
             combo = QComboBox()
             combo.setEditable(True)
             combo.addItems(values)
+            if placeholder and combo.lineEdit():
+                combo.lineEdit().setPlaceholderText(placeholder)
             if value in values:
                 combo.setCurrentText(value)
             row.addWidget(combo, 1)
@@ -534,19 +589,21 @@ def run_app() -> None:
             return box, combo
 
         def choose_dir(self, edit: QLineEdit):
-            path = QFileDialog.getExistingDirectory(self, "选择文件夹", edit.text() or str(ROOT))
+            current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
+            path = QFileDialog.getExistingDirectory(self, "选择文件夹", current)
             if path:
-                edit.setText(path)
+                edit.setText(self.display_path(path))
 
         def choose_file(self, edit: QLineEdit, caption: str = "选择文件"):
-            path, _ = QFileDialog.getOpenFileName(self, caption, edit.text() or str(ROOT), "All Files (*)")
+            current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
+            path, _ = QFileDialog.getOpenFileName(self, caption, current, "All Files (*)")
             if path:
-                edit.setText(path)
+                edit.setText(self.display_path(path))
 
         def _choose_pt_for_combo(self, combo: QComboBox):
             path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", str(ROOT), "PyTorch 模型 (*.pt);;所有文件 (*)")
             if path:
-                combo.setCurrentText(Path(path).name)
+                combo.setCurrentText(self.display_path(path))
 
 
         def stat_card(self, label: str, value: str = "-"):
@@ -706,7 +763,7 @@ def run_app() -> None:
             self._overview_raw_values = {}
             self._apply_home_column_widths()
             QTimer.singleShot(0, self._apply_history_column_widths)
-            QTimer.singleShot(80, self._apply_history_column_widths)
+            QTimer.singleShot(50, self._apply_history_column_widths)
 
         def resizeEvent(self, event):
             super().resizeEvent(event)
@@ -803,7 +860,9 @@ def run_app() -> None:
                 ]
                 for column, value in enumerate(values):
                     sort_key = float(row)
-                    if column == 1:
+                    if column == 0:
+                        sort_key = _history_model_sort_key(train_id, model_name)
+                    elif column == 1:
                         sort_key = _history_number_sort_key(value)
                     elif column == 2:
                         sort_key = _history_time_sort_key(value)
@@ -815,7 +874,7 @@ def run_app() -> None:
             self.history_table.setSortingEnabled(was_sorting)
             self.history_table.sortItems(0, Qt.SortOrder.AscendingOrder)
             self._apply_history_column_widths()
-            QTimer.singleShot(80, self._apply_history_column_widths)
+            QTimer.singleShot(50, self._apply_history_column_widths)
 
         def pick_project_root(self):
             path = QFileDialog.getExistingDirectory(self, "设置项目目录", self.app.settings["project"]["root"])
@@ -879,9 +938,9 @@ def run_app() -> None:
             paths = app.settings["paths"]
             dataset = app.settings["dataset"]
             grid = QGridLayout()
-            self.images_box, self.images_edit = self.field("图片目录", paths["images_dir"], self.choose_dir)
-            self.annotations_box, self.annotations_edit = self.field("Labelme目录", paths["annotations_dir"], self.choose_dir)
-            self.output_box, self.output_edit = self.field("输出目录", paths["dataset_dir"], self.choose_dir)
+            self.images_box, self.images_edit = self.path_field("图片目录", paths["images_dir"], self.choose_dir)
+            self.annotations_box, self.annotations_edit = self.path_field("Labelme目录", paths["annotations_dir"], self.choose_dir)
+            self.output_box, self.output_edit = self.path_field("输出目录", paths["dataset_dir"], self.choose_dir)
             self.classes_box, self.classes_edit = self.field("类别名称", ",".join(dataset["class_names"]))
             self.task_box, self.task_combo = self.combo_field("任务类型", app.settings["task"]["mode"], ["obb", "detect"])
             ratios = dataset["split_ratios"]
@@ -908,9 +967,9 @@ def run_app() -> None:
             train, val, test = [float(item.strip()) for item in self.ratio_edit.text().split(",")]
             return ConversionConfig(
                 task_mode=self.task_combo.currentText(),
-                images_dir=Path(self.images_edit.text()),
-                annotations_dir=Path(self.annotations_edit.text()),
-                output_dir=Path(self.output_edit.text()),
+                images_dir=self.path_from_edit(self.images_edit),
+                annotations_dir=self.path_from_edit(self.annotations_edit),
+                output_dir=self.path_from_edit(self.output_edit),
                 labels_dir=Path(self.app.settings["paths"]["labels_dir"]),
                 class_names=[item.strip() for item in self.classes_edit.text().split(",") if item.strip()],
                 train_ratio=train,
@@ -942,8 +1001,8 @@ def run_app() -> None:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(12, 12, 12, 12)
             grid = QGridLayout()
-            self.image_box, self.image_edit = self.field("图片文件夹", app.settings["paths"]["images_dir"], self.choose_dir)
-            self.label_box, self.label_edit = self.field("标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir)
+            self.image_box, self.image_edit = self.path_field("图片文件夹", app.settings["paths"]["images_dir"], self.choose_dir)
+            self.label_box, self.label_edit = self.path_field("标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir)
             grid.addWidget(self.image_box, 0, 0)
             grid.addWidget(self.label_box, 0, 1)
             layout.addLayout(grid)
@@ -963,7 +1022,7 @@ def run_app() -> None:
             layout.addLayout(images, 1)
 
         def load_preview_items(self):
-            image_dir = Path(self.image_edit.text())
+            image_dir = self.path_from_edit(self.image_edit)
             self.preview_items = sorted(path for path in image_dir.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES) if image_dir.exists() else []
             self.preview_index = 0
             self.render_current()
@@ -987,7 +1046,7 @@ def run_app() -> None:
                 self.current_label.setText("未找到图片")
                 return
             image_path = self.preview_items[self.preview_index]
-            label_path = Path(self.label_edit.text()) / f"{image_path.stem}.txt"
+            label_path = self.path_from_edit(self.label_edit) / f"{image_path.stem}.txt"
             self.current_label.setText(f"{self.preview_index + 1}/{len(self.preview_items)}  {image_path.name}")
             image = Image.open(image_path).convert("RGB")
             annotations = load_yolo_annotations(image.size, label_path, self.app.settings["task"]["mode"], self.app.settings["dataset"]["class_names"])
@@ -1002,8 +1061,8 @@ def run_app() -> None:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(12, 12, 12, 12)
             grid = QGridLayout()
-            self.folder_box, self.folder_edit = self.field("文件夹", app.settings["paths"]["images_dir"], self.choose_dir)
-            self.label_box, self.label_edit = self.field("标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir)
+            self.folder_box, self.folder_edit = self.path_field("文件夹", app.settings["paths"]["images_dir"], self.choose_dir)
+            self.label_box, self.label_edit = self.path_field("标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir)
             self.prefix_box, self.prefix_edit = self.field("命名前缀", "A")
             self.start_box, self.start_edit = self.field("起始编号", "1")
             self.padding_box, self.padding_edit = self.field("编号位数", "3")
@@ -1035,11 +1094,11 @@ def run_app() -> None:
         def preview(self):
             try:
                 self.plan = preview_rename(
-                    Path(self.folder_edit.text()),
+                    self.path_from_edit(self.folder_edit),
                     self.prefix_edit.text(),
                     int(self.start_edit.text()),
                     int(self.padding_edit.text()),
-                    labels_dir=Path(self.label_edit.text()),
+                    labels_dir=self.path_from_edit(self.label_edit),
                     include_labels=self.include_labels.isChecked(),
                 )
             except Exception:
@@ -1066,9 +1125,9 @@ def run_app() -> None:
             layout.setContentsMargins(12, 12, 12, 12)
             resize = app.settings["image_resize"]
             grid = QGridLayout()
-            self.source_box, self.source_edit = self.field("图片目录", app.settings["paths"]["images_dir"], self.choose_dir)
-            self.backup_box, self.backup_edit = self.field("备份目录", resize["backup_dir"], self.choose_dir)
-            self.output_box, self.output_edit = self.field("输出目录", resize["output_dir"], self.choose_dir)
+            self.source_box, self.source_edit = self.path_field("图片目录", app.settings["paths"]["images_dir"], self.choose_dir)
+            self.backup_box, self.backup_edit = self.path_field("备份目录", resize["backup_dir"], self.choose_dir)
+            self.output_box, self.output_edit = self.path_field("输出目录", resize["output_dir"], self.choose_dir)
             self.long_box, self.long_edit = self.field("长边缩放", str(resize["long_edge"]))
             self.canvas_box, self.canvas_edit = self.field("画布尺寸", str(resize["canvas_size"]))
             self.bg_box, self.bg_combo = self.combo_field("背景颜色", resize["background"], ["white", "black"])
@@ -1092,9 +1151,9 @@ def run_app() -> None:
 
         def config(self):
             return ResizeConfig(
-                source_dir=Path(self.source_edit.text()),
-                output_dir=Path(self.output_edit.text()),
-                backup_dir=Path(self.backup_edit.text()),
+                source_dir=self.path_from_edit(self.source_edit),
+                output_dir=self.path_from_edit(self.output_edit),
+                backup_dir=self.path_from_edit(self.backup_edit),
                 long_edge=int(self.long_edit.text()),
                 canvas_size=int(self.canvas_edit.text()),
                 background=self.bg_combo.currentText(),
@@ -1125,6 +1184,9 @@ def run_app() -> None:
             self.is_training = False
             self.poll_timer = QTimer(self)
             self.poll_timer.timeout.connect(self.poll_training_queue)
+            self.train_status_timer = QTimer(self)
+            self.train_status_timer.timeout.connect(self.refresh_train_status)
+            self.train_status_timer.start(500)
             layout = self.page_layout()
             top = QGridLayout()
             top.setColumnStretch(0, 115)
@@ -1150,29 +1212,30 @@ def run_app() -> None:
             current_name = Path(current_pretrained).name if current_pretrained else ""
             base_box, self.pretrained_combo = self.stacked_combo_field(
                 "基础模型", current_name, model_files,
-                browse=lambda combo: self._choose_pt_for_combo(combo))
+                browse=lambda combo: self._choose_pt_for_combo(combo),
+                placeholder="选择或输入 .pt 模型")
             left_form.addWidget(base_box, 0, 0)
 
             # 数据集YAML
             self.edits["data"], _ = None, None
-            data_box, data_edit = self.stacked_field("数据集YAML", training.get("data", ""), self.choose_file)
+            data_box, data_edit = self.stacked_path_field("数据集YAML", training.get("data", ""), self.choose_file, "选择 data.yaml")
             self.edits["data"] = data_edit
             left_form.addWidget(data_box, 0, 1)
 
             # 模型YAML (default blank)
-            model_yaml_box, model_yaml_edit = self.stacked_field("模型YAML", "", self.choose_file)
+            model_yaml_box, model_yaml_edit = self.stacked_path_field("模型YAML", "", self.choose_file, "可选，留空使用基础模型")
             self.edits["model_yaml"] = model_yaml_edit
             left_form.addWidget(model_yaml_box, 1, 0)
 
             # 项目输出
-            project_box, project_edit = self.stacked_field("项目输出", training.get("project", ""), self.choose_dir)
+            project_box, project_edit = self.stacked_path_field("项目输出", training.get("project", ""), self.choose_dir, "选择训练结果输出目录")
             self.edits["project"] = project_edit
             left_form.addWidget(project_box, 1, 1)
 
             # Augmentation checkboxes
             aug = QGridLayout()
             left.layout.addLayout(aug)
-            for index, (key, label) in enumerate([("mosaic", "马赛克"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("mixup", "MixUp"), ("scale", "缩放"), ("translate", "平移"), ("degrees", "旋转"), ("hsv_h", "HSV")]):
+            for index, (key, label) in enumerate([("mosaic", "马赛克"), ("scale", "缩放"), ("translate", "平移"), ("hsv_h", "HSV"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("degrees", "旋转"), ("mixup", "MixUp")]):
                 check = QCheckBox(label)
                 check.setChecked(float(training.get(key, 0)) > 0)
                 self.checks[key] = check
@@ -1250,6 +1313,9 @@ def run_app() -> None:
         def on_show(self):
             for metric in self.metric_labels.values():
                 metric.setText("检测中...")
+            self.refresh_train_status()
+
+        def refresh_train_status(self):
             self.app.run_background("train_status", lambda: {"status": system_status(), "cuda": torch_cuda_summary()})
 
         def apply_train_status(self, payload):
@@ -1262,9 +1328,9 @@ def run_app() -> None:
 
         def collect_config(self):
             config = {}
-            config["data"] = self.edits["data"].text() if self.edits["data"] else ""
-            config["model_yaml"] = self.edits["model_yaml"].text() if self.edits["model_yaml"] else ""
-            config["project"] = self.edits["project"].text() if self.edits["project"] else ""
+            config["data"] = self.resolve_path_text(self.edits["data"]) if self.edits["data"] else ""
+            config["model_yaml"] = self.resolve_path_text(self.edits["model_yaml"]) if self.edits["model_yaml"] else ""
+            config["project"] = self.resolve_path_text(self.edits["project"]) if self.edits["project"] else ""
             config["lr"] = self.edits["lr"].text() if self.edits.get("lr") else "0.001"
             config["epochs"] = self.edits["epochs"].text() if self.edits.get("epochs") else "800"
             config["patience"] = self.edits["patience"].text() if self.edits.get("patience") else "150"
@@ -1286,7 +1352,13 @@ def run_app() -> None:
                 config["lr"] = float(self.app.settings["training"].get("lr", 0.001))
             config["task_mode"] = infer_task_mode_from_model(config.get("model_yaml") or config.get("base_model") or config.get("pretrained"))
             for key, check in self.checks.items():
+                if key == "hsv_h":
+                    continue
                 config[key] = self.app.settings["training"].get(key, 0) if check.isChecked() else 0
+            hsv_enabled = self.checks["hsv_h"].isChecked()
+            config["hsv_h"] = self.app.settings["training"].get("hsv_h", 0) if hsv_enabled else 0
+            config["hsv_s"] = self.app.settings["training"].get("hsv_s", 0) if hsv_enabled else 0
+            config["hsv_v"] = self.app.settings["training"].get("hsv_v", 0) if hsv_enabled else 0
             # Resolve pretrained path - check project root then data/models
             pretrained_val = config.get("pretrained", "")
             if pretrained_val and not Path(pretrained_val).exists():
@@ -1347,7 +1419,7 @@ def run_app() -> None:
             self.log.append("已请求停止训练。")
 
         def open_result(self):
-            path = Path(self.edits["project"].text() if self.edits.get("project") else self.app.settings["paths"]["result_dir"])
+            path = Path(self.resolve_path_text(self.edits["project"]) if self.edits.get("project") else self.app.settings["paths"]["result_dir"])
             if path.exists():
                 os.startfile(path)
 
@@ -1364,7 +1436,12 @@ def run_app() -> None:
             self.detect_stop = threading.Event()
             self.detect_worker = None
             self.is_detecting = False
+            self.is_batch_detection = False
             self._all_model_paths: list[Path] = []
+            self.source_items: list[Path] = []
+            self.source_index = -1
+            self.result_by_source: dict[str, dict] = {}
+            self.user_selected_result = False
             layout = self.page_layout()
             split = QHBoxLayout()
             layout.addLayout(split, 1)
@@ -1378,16 +1455,12 @@ def run_app() -> None:
             model_title = QLabel("模型配置")
             model_title.setObjectName("sectionTitle")
             left_column.addWidget(model_title)
-            model_row = QHBoxLayout()
-            model_label = QLabel("选择模型")
-            model_label.setObjectName("inlineFieldLabel")
-            model_label.setFixedWidth(70)
-            self.model_combo = QComboBox()
-            self.model_combo.setEditable(True)
-            self.model_combo.setMinimumWidth(200)
-            model_row.addWidget(model_label)
-            model_row.addWidget(self.model_combo, 1)
-            left_column.addLayout(model_row)
+            model_box, self.model_combo = self.stacked_combo_field(
+                "选择模型", "", [],
+                browse=lambda combo: self._choose_pt_for_combo(combo),
+                placeholder="选择或输入模型路径")
+            self.model_combo.setMinimumWidth(140)
+            left_column.addWidget(model_box)
 
             conf_row = QHBoxLayout()
             self.conf_box, self.conf_edit = self.field("置信度", str(validation["confidence"]))
@@ -1397,12 +1470,9 @@ def run_app() -> None:
             left_column.addLayout(conf_row)
 
             # Source config
-            source_title = QLabel("检测源配置")
-            source_title.setObjectName("sectionTitle")
-            left_column.addWidget(source_title)
-            self.mode_box, self.mode_combo = self.combo_field("检测模式", "图片/视频文件夹", ["图片/视频文件夹", "摄像头"])
+            self.mode_box, self.mode_combo = self.combo_field("检测模式", "图片/视频文件夹", ["图片/视频文件夹", "图片/视频", "摄像头"])
             left_column.addWidget(self.mode_box)
-            self.source_box, self.source_edit = self.field("输入源", validation["source_path"], self.choose_dir)
+            self.source_box, self.source_edit = self.path_field("输入源", validation["source_path"], self.choose_detection_source)
             left_column.addWidget(self.source_box)
             self.camera_box, self.camera_combo = self.combo_field("摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"])
             left_column.addWidget(self.camera_box)
@@ -1412,7 +1482,7 @@ def run_app() -> None:
             control_title.setObjectName("sectionTitle")
             left_column.addWidget(control_title)
             controls = QHBoxLayout()
-            self.start_det_btn = QPushButton("开始检测")
+            self.start_det_btn = QPushButton("批量检测")
             self.start_det_btn.clicked.connect(self.start_detection)
             pause = QPushButton("暂停")
             pause.setObjectName("softButton")
@@ -1430,13 +1500,13 @@ def run_app() -> None:
             self.detect_log = QTextEdit()
             self.detect_log.setReadOnly(True)
             left_column.addWidget(self.detect_log, 1)
-            split.addWidget(left_shell, 3)
+            split.addWidget(left_shell)
 
             # Right column
             right = QVBoxLayout()
             toolbar = QHBoxLayout()
             toolbar.addWidget(QLabel("批量检测结果"))
-            for text, slot in [("上一张", self.prev_result), ("第一张", self.first_result), ("下一张", self.next_result), ("最后一张", self.last_result), ("保存结果", self.save_current_result), ("清空结果", self.clear_results)]:
+            for text, slot in [("上一张", self.prev_result), ("下一张", self.next_result), ("第一张", self.first_result), ("最后一张", self.last_result), ("列表", self.show_result_list), ("打开保存文件夹", self.open_detection_save_dir)]:
                 button = QPushButton(text)
                 button.setObjectName("softButton")
                 button.clicked.connect(slot)
@@ -1454,25 +1524,61 @@ def run_app() -> None:
             result_panel.layout.addWidget(self.result_view, 1)
             views.addWidget(source_panel)
             views.addWidget(result_panel)
-            right.addLayout(views, 1)
+            right.addLayout(views, 2)
             table_panel = Card("检测结果详情表")
-            self.table = QTableWidget(0, 6)
-            self.table.setHorizontalHeaderLabels(["序号", "类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"])
+            self.table = QTableWidget(0, 5)
+            self.table.setHorizontalHeaderLabels(["类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"])
             self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             table_panel.layout.addWidget(self.table)
-            right.addWidget(table_panel)
+            right.addWidget(table_panel, 1)
             right_widget = QWidget()
             right_widget.setLayout(right)
-            split.addWidget(right_widget, 7)
+            split.addWidget(right_widget)
+            split.setStretch(0, 2)
+            split.setStretch(1, 7)
 
             self.mode_combo.currentTextChanged.connect(self.update_source_mode)
             self.update_source_mode(self.mode_combo.currentText())
+            self.update_detection_button_text()
 
         def update_source_mode(self, value):
             camera = value == "摄像头"
             self.source_box.setVisible(not camera)
             self.camera_box.setVisible(camera)
+            self.update_detection_button_text()
+            self.refresh_source_items()
+
+        def update_detection_button_text(self):
+            self.start_det_btn.setText("开始检测" if self.mode_combo.currentText() == "图片/视频" else "批量检测")
+
+        def choose_detection_source(self, edit: QLineEdit):
+            current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
+            if self.mode_combo.currentText() == "图片/视频":
+                path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    "选择图片或视频",
+                    current,
+                    "图片/视频 (*.jpg *.jpeg *.png *.bmp *.mp4 *.avi *.mov *.mkv);;所有文件 (*)",
+                )
+                if path:
+                    edit.setText(self.display_path(path))
+                    self.refresh_source_items()
+                return
+            self.choose_dir(edit)
+            self.refresh_source_items()
+
+        def refresh_source_items(self):
+            if self.mode_combo.currentText() == "摄像头":
+                self.source_items = []
+                self.source_index = -1
+                return
+            self.source_items = collect_prediction_sources(self.mode_combo.currentText(), self.resolve_path_text(self.source_edit))
+            if not self.source_items:
+                self.source_index = -1
+                return
+            if self.source_index < 0 or self.source_index >= len(self.source_items):
+                self.source_index = 0
 
         def on_show(self):
             # Scan models and populate dropdown
@@ -1496,38 +1602,86 @@ def run_app() -> None:
             text = self.model_combo.currentText()
             # Try to find it in our known paths
             for p in self._all_model_paths:
-                if _simplified_model_path(str(p)) == text or str(p) == text:
+                if _simplified_model_path(str(p)) == text or self.display_path(p) == text or str(p) == text:
                     return str(p)
             # Maybe it's already a full path
             if Path(text).exists():
                 return text
-            return text
+            resolved = self.resolve_combo_path_text(text)
+            return resolved if resolved else text
+
+        def resolve_combo_path_text(self, text: str) -> str:
+            return _resolve_project_path(text, self.project_root())
 
         def config(self):
             return {
                 "model_path": self._get_model_path(),
-                "source_mode": "摄像头" if self.mode_combo.currentText() == "摄像头" else "图片文件夹",
-                "source_path": self.source_edit.text(),
+                "source_mode": self.mode_combo.currentText(),
+                "source_path": self.resolve_path_text(self.source_edit),
                 "camera_index": int(self.camera_combo.currentText()),
                 "confidence": float(self.conf_edit.text()),
                 "iou": float(self.iou_edit.text()),
                 "save_dir": self.app.settings["validation"]["save_dir"],
             }
 
+        def single_file_config(self, path: Path) -> dict:
+            config = self.config()
+            config["source_mode"] = "图片/视频"
+            config["source_path"] = str(path)
+            return config
+
         # Task 9: Only allow one detection at a time
         def start_detection(self):
             if self.is_detecting:
+                return
+            self.refresh_source_items()
+            if self.mode_combo.currentText() == "图片/视频":
+                if not self.source_items:
+                    QMessageBox.information(self, "输入源为空", "请选择一张图片或一段视频。")
+                    return
+                self.source_index = max(0, min(self.source_index, len(self.source_items) - 1))
+                self.start_current_source_detection()
                 return
             self.is_detecting = True
             self.start_det_btn.setEnabled(False)
             self.detect_log.clear()
             self.detect_stop.clear()
             self.detect_results.clear()
+            self.result_by_source.clear()
+            self.user_selected_result = False
+            self.is_batch_detection = True
             self.detect_index = -1
             self.counter.setText("0/0")
             self.table.setRowCount(0)
             self.app.status.setText("检测中")
             self.detect_worker = DetectionWorker(self.config(), self.detect_stop)
+            self.detect_worker.result_payload.connect(self.handle_result)
+            self.detect_worker.finished_with_results.connect(self.apply_detect_done)
+            self.detect_worker.failed.connect(self.apply_detect_error)
+            self.detect_worker.start()
+
+        def start_current_source_detection(self):
+            if not self.source_items:
+                return
+            self.source_index = max(0, min(self.source_index, len(self.source_items) - 1))
+            self.start_single_detection(self.source_items[self.source_index])
+
+        def start_single_detection(self, path: Path):
+            if self.is_detecting:
+                return
+            self.refresh_source_items()
+            source_key = str(Path(path).resolve())
+            cached = self.result_by_source.get(source_key)
+            if cached:
+                self.detect_index = self.detect_results.index(cached) if cached in self.detect_results else self.detect_index
+                self.show_detection_payload(cached)
+                return
+            self.is_detecting = True
+            self.is_batch_detection = False
+            self.start_det_btn.setEnabled(False)
+            self.detect_stop.clear()
+            self.app.status.setText("检测中")
+            self.detect_worker = DetectionWorker(self.single_file_config(path), self.detect_stop)
             self.detect_worker.result_payload.connect(self.handle_result)
             self.detect_worker.finished_with_results.connect(self.apply_detect_done)
             self.detect_worker.failed.connect(self.apply_detect_error)
@@ -1553,9 +1707,12 @@ def run_app() -> None:
 
         def handle_result(self, payload):
             self.detect_results.append(payload)
-            self.detect_index = len(self.detect_results) - 1
+            source_path = payload.get("source_path")
+            if source_path:
+                self.result_by_source[str(Path(source_path).resolve())] = payload
             # Task 14: For batch, always show the first image
-            if len(self.detect_results) == 1:
+            if len(self.detect_results) == 1 or (not self.is_batch_detection and not self.user_selected_result):
+                self.detect_index = len(self.detect_results) - 1
                 self.show_detection_payload(payload)
             else:
                 # Just update counter and log, don't switch view
@@ -1567,7 +1724,7 @@ def run_app() -> None:
             self.result_view.set_pil_image(payload["result_image"])
             self.table.setRowCount(len(payload["items"]))
             for row, item in enumerate(payload["items"]):
-                values = [row + 1, item.label, f"{item.confidence:.3f}", f"({item.center_x:.1f}, {item.center_y:.1f})", f"{item.width:.1f}×{item.height:.1f}", f"{item.angle:.1f}"]
+                values = [item.label, f"{item.confidence:.3f}", f"({item.center_x:.1f}, {item.center_y:.1f})", f"{item.width:.1f}×{item.height:.1f}", f"{item.angle:.1f}"]
                 for column, value in enumerate(values):
                     self.table.setItem(row, column, QTableWidgetItem(str(value)))
             self.counter.setText(f"{self.detect_index + 1}/{len(self.detect_results)}")
@@ -1578,47 +1735,96 @@ def run_app() -> None:
         def first_result(self):
             if not self.detect_results:
                 return
+            self.user_selected_result = True
             self.detect_index = 0
             self.show_detection_payload(self.detect_results[0])
 
         def last_result(self):
             if not self.detect_results:
                 return
+            self.user_selected_result = True
             self.detect_index = len(self.detect_results) - 1
             self.show_detection_payload(self.detect_results[-1])
 
         def prev_result(self):
             if not self.detect_results:
                 return
+            self.user_selected_result = True
             self.detect_index = (self.detect_index - 1) % len(self.detect_results)
             self.show_detection_payload(self.detect_results[self.detect_index])
 
         def next_result(self):
             if not self.detect_results:
                 return
+            self.user_selected_result = True
             self.detect_index = (self.detect_index + 1) % len(self.detect_results)
             self.show_detection_payload(self.detect_results[self.detect_index])
 
-        def save_current_result(self):
-            if not self.detect_results or self.detect_index < 0:
+        def show_source_index(self, index: int):
+            self.refresh_source_items()
+            if not self.source_items:
                 return
-            payload = self.detect_results[self.detect_index]
+            self.source_index = index % len(self.source_items)
+
+        def show_cached_source_result(self, path: Path) -> bool:
+            cached = self.result_by_source.get(str(Path(path).resolve()))
+            if not cached:
+                return False
+            self.user_selected_result = True
+            self.detect_index = self.detect_results.index(cached)
+            self.show_detection_payload(cached)
+            return True
+
+        def show_result_list(self):
+            self.refresh_source_items()
+            if not self.source_items:
+                QMessageBox.information(self, "输入源列表", "当前输入源没有可选择的图片或视频。")
+                return
+            dialog = QDialog(self)
+            dialog.setWindowTitle("输入源列表")
+            dialog.resize(320, 520)
+            dialog.setMinimumSize(200, 200)
+            layout = QVBoxLayout(dialog)
+            listing = QListWidget()
+            layout.addWidget(listing, 1)
+            search = QLineEdit()
+            search.setPlaceholderText("搜索文件名")
+            layout.addWidget(search)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            layout.addWidget(buttons)
+            visible_paths: list[Path] = []
+
+            def filter_items(text: str = ""):
+                nonlocal visible_paths
+                needle = text.strip().lower()
+                visible_paths = [path for path in self.source_items if not needle or needle in path.name.lower()]
+                listing.clear()
+                for path in visible_paths:
+                    listing.addItem(path.name)
+                if visible_paths:
+                    current_path = self.source_items[self.source_index] if 0 <= self.source_index < len(self.source_items) else visible_paths[0]
+                    current_row = visible_paths.index(current_path) if current_path in visible_paths else 0
+                    listing.setCurrentRow(current_row)
+
+            def jump_to_current():
+                row = listing.currentRow()
+                if 0 <= row < len(visible_paths):
+                    path = visible_paths[row]
+                    self.source_index = self.source_items.index(path)
+                    self.show_cached_source_result(path)
+                dialog.accept()
+
+            filter_items()
+            search.textChanged.connect(filter_items)
+            listing.itemDoubleClicked.connect(lambda _item: jump_to_current())
+            buttons.accepted.connect(jump_to_current)
+            buttons.rejected.connect(dialog.reject)
+            dialog.exec()
+
+        def open_detection_save_dir(self):
             save_dir = Path(self.app.settings["validation"]["save_dir"])
             save_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"gui_result_{self.detect_index + 1:04d}.png"
-            payload["result_image"].save(save_dir / filename)
-            self.detect_log.append(f"已保存结果: {save_dir / filename}")
-
-        def clear_results(self):
-            self.detect_results.clear()
-            self.detect_index = -1
-            self.counter.setText("0/0")
-            self.source_view.clear()
-            self.source_view.setText("源图")
-            self.result_view.clear()
-            self.result_view.setText("检测结果图")
-            self.table.setRowCount(0)
-            self.detect_log.append("已清空检测结果。")
+            os.startfile(save_dir)
 
     # ===================================================================
     #  Task 13: Settings page - system info style + auto-refresh

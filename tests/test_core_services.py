@@ -228,6 +228,59 @@ def test_training_command_and_detection_helpers(tmp_path):
     assert item.height == 2
 
 
+def test_training_command_includes_all_hsv_params_when_configured():
+    from scr.yolo_workbench.services.training_service import build_train_command
+
+    command = build_train_command(
+        {
+            "model_yaml": "data/yolov8m-obb.yaml",
+            "data": "data.yaml",
+            "hsv_h": 0.015,
+            "hsv_s": 0.7,
+            "hsv_v": 0.4,
+        }
+    )
+
+    assert "hsv_h=0.015" in command
+    assert "hsv_s=0.7" in command
+    assert "hsv_v=0.4" in command
+
+
+def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
+    from scr.yolo_workbench.services.detection_service import collect_prediction_sources
+
+    folder = tmp_path / "inputs"
+    folder.mkdir()
+    image = folder / "a.jpg"
+    video = folder / "b.mp4"
+    ignored = folder / "c.txt"
+    image.write_bytes(b"image")
+    video.write_bytes(b"video")
+    ignored.write_text("skip", encoding="utf-8")
+
+    assert collect_prediction_sources("图片/视频文件夹", folder) == [image, video]
+    assert collect_prediction_sources("图片/视频", image) == [image]
+    assert collect_prediction_sources("图片/视频", video) == [video]
+    assert collect_prediction_sources("摄像头", folder) == []
+
+
+def test_detection_source_collection_uses_natural_numeric_sort(tmp_path):
+    from scr.yolo_workbench.services.detection_service import collect_prediction_sources
+
+    folder = tmp_path / "inputs"
+    folder.mkdir()
+    for name in ["1.jpg", "10.jpg", "100.jpg", "2.jpg", "3.jpg"]:
+        (folder / name).write_bytes(b"image")
+
+    assert [path.name for path in collect_prediction_sources("图片/视频文件夹", folder)] == [
+        "1.jpg",
+        "2.jpg",
+        "3.jpg",
+        "10.jpg",
+        "100.jpg",
+    ]
+
+
 def test_cached_call_reuses_value_until_ttl_expires(monkeypatch):
     from scr.yolo_workbench.services.environment_service import cached_call
 

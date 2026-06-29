@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 
 APP = Path("scr/yolo_workbench_qt/app.py")
@@ -14,6 +15,18 @@ def _read_app():
 
 def _read_home_charts():
     return HOME_CHARTS.read_text(encoding="utf-8")
+
+
+def test_project_path_helpers_display_relative_and_resolve_user_text(tmp_path):
+    from scr.yolo_workbench_qt.app import _display_project_path, _resolve_project_path
+
+    inside = tmp_path / "data" / "data.yaml"
+    outside = tmp_path.parent / "outside" / "model.pt"
+
+    assert _display_project_path(str(inside), tmp_path) == str(Path("data") / "data.yaml")
+    assert _display_project_path(str(outside), tmp_path) == str(outside.resolve())
+    assert Path(_resolve_project_path("data/data.yaml", tmp_path)) == inside.resolve()
+    assert Path(_resolve_project_path(str(inside).replace(os.sep, "/"), tmp_path)) == inside.resolve()
 
 
 def test_qt_app_uses_project_local_icon_assets():
@@ -38,7 +51,7 @@ def test_qt_app_matches_reference_ui_sections():
         "项目文件夹", "图片路径", "标注路径", "结果路径", "图片数量", "标签文件",
         "马赛克", "图片/视频文件夹", "QComboBox", "tool_stack", "dataNavButton", "show_tool",
         "标注转换", "标注预览", "批量重命名", "图片压缩",
-        "批量检测结果", "save_current_result", "clear_results",
+        "批量检测结果", "show_result_list", "open_detection_save_dir",
         "模型配置", "检测日志", "源", "检测结果", "检测结果详情表",
         "status_cards", "QStackedWidget", "数据集与增强配置", "训练参数",
         "GPU", "显存占用", "CPU占用", "内存占用",
@@ -88,6 +101,121 @@ def test_qt_train_page_keeps_spacing_and_status_cards_layout():
     assert '"优化器"' in src
     assert 'Card("训练日志")' not in src
     assert 'headerProgress' not in src
+
+
+def test_training_path_fields_and_augment_order_are_locked():
+    src = _read_app()
+    assert 'base_box, self.pretrained_combo = self.stacked_combo_field(\n                "基础模型", current_name, model_files,\n                browse=lambda combo: self._choose_pt_for_combo(combo),\n                placeholder="选择或输入 .pt 模型")' in src
+    assert 'self.stacked_path_field("数据集YAML", training.get("data", ""), self.choose_file, "选择 data.yaml")' in src
+    assert 'self.stacked_path_field("模型YAML", "", self.choose_file, "可选，留空使用基础模型")' in src
+    assert 'self.stacked_path_field("项目输出", training.get("project", ""), self.choose_dir, "选择训练结果输出目录")' in src
+    assert '[("mosaic", "马赛克"), ("scale", "缩放"), ("translate", "平移"), ("hsv_h", "HSV"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("degrees", "旋转"), ("mixup", "MixUp")]' in src
+
+
+def test_training_history_default_sort_uses_newer_ids_and_best_first():
+    from scr.yolo_workbench_qt.app import _history_model_sort_key
+
+    ordered = sorted(
+        [
+            ("train", "best.pt"),
+            ("train-2", "last.pt"),
+            ("train-2", "best.pt"),
+            ("train", "last.pt"),
+        ],
+        key=lambda item: _history_model_sort_key(*item),
+    )
+
+    assert ordered == [
+        ("train-2", "best.pt"),
+        ("train-2", "last.pt"),
+        ("train", "best.pt"),
+        ("train", "last.pt"),
+    ]
+
+
+def test_hsv_checkbox_controls_all_hsv_train_command_params():
+    src = _read_app()
+    assert 'config["hsv_h"] = self.app.settings["training"].get("hsv_h", 0) if hsv_enabled else 0' in src
+    assert 'config["hsv_s"] = self.app.settings["training"].get("hsv_s", 0) if hsv_enabled else 0' in src
+    assert 'config["hsv_v"] = self.app.settings["training"].get("hsv_v", 0) if hsv_enabled else 0' in src
+
+
+def test_validation_layout_keeps_left_column_compact_and_results_two_to_one():
+    src = _read_app()
+    assert 'self.model_combo.setMinimumWidth(140)' in src
+    assert 'split.setStretch(0, 2)' in src
+    assert 'split.setStretch(1, 7)' in src
+    assert 'right.addLayout(views, 2)' in src
+    assert 'right.addWidget(table_panel, 1)' in src
+
+
+def test_validation_model_picker_uses_stacked_combo_and_no_source_title():
+    src = _read_app()
+    assert 'model_box, self.model_combo = self.stacked_combo_field(\n                "选择模型", "", [],\n                browse=lambda combo: self._choose_pt_for_combo(combo),\n                placeholder="选择或输入模型路径")' in src
+    assert 'left_column.addWidget(model_box)' in src
+    assert 'model_row = QHBoxLayout()' not in src
+    assert 'QLabel("检测源配置")' not in src
+    assert '"检测源配置"' not in src
+
+
+def test_validation_detection_toolbar_modes_and_table_columns():
+    src = _read_app()
+    assert '["图片/视频文件夹", "图片/视频", "摄像头"]' in src
+    assert '"source_mode": self.mode_combo.currentText()' in src
+    assert 'self.choose_detection_source' in src
+    assert 'self.start_det_btn = QPushButton("批量检测")' in src
+    assert 'self.update_detection_button_text()' in src
+    assert '[("上一张", self.prev_result), ("下一张", self.next_result), ("第一张", self.first_result), ("最后一张", self.last_result), ("列表", self.show_result_list), ("打开保存文件夹", self.open_detection_save_dir)]' in src
+    assert 'self.table = QTableWidget(0, 5)' in src
+    assert 'self.table.setHorizontalHeaderLabels(["类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"])' in src
+    assert 'row + 1, item.label' not in src
+    assert 'clear_results' not in src
+    assert 'QPushButton("清空结果")' not in src
+
+
+def test_validation_source_list_drives_single_file_detection():
+    src = _read_app()
+    assert 'self.source_items: list[Path] = []' in src
+    assert 'self.result_by_source: dict[str, dict] = {}' in src
+    assert 'def refresh_source_items(self):' in src
+    assert 'self.source_items = collect_prediction_sources(self.mode_combo.currentText(), self.resolve_path_text(self.source_edit))' in src
+    assert 'dialog.resize(320, 520)' in src
+    assert 'dialog.setMinimumSize(200, 200)' in src
+    assert 'search = QLineEdit()' in src
+    assert 'search.setPlaceholderText("搜索文件名")' in src
+    assert 'listing.addItem(path.name)' in src
+    assert 'listing.addItem(f"{index}. {name}")' not in src
+    assert 'search.textChanged.connect(filter_items)' in src
+    assert 'def show_source_index(self, index: int):' in src
+    assert 'self.show_source_index(self.source_index + 1)' not in src
+    assert 'self.show_source_index(self.source_index - 1)' not in src
+    assert 'def update_detection_button_text(self):' in src
+    assert 'self.start_det_btn.setText("开始检测" if self.mode_combo.currentText() == "图片/视频" else "批量检测")' in src
+    assert 'def start_current_source_detection(self):' in src
+    assert 'self.show_detection_payload(self.detect_results[self.detect_index])' in src
+    assert 'self.start_single_detection(path)' not in src
+    assert 'self.show_cached_source_result(path)' in src
+    assert 'def show_cached_source_result(self, path: Path) -> bool:' in src
+    assert 'self.detect_index = self.detect_results.index(cached)' in src
+
+
+def test_detection_batch_navigation_keeps_user_selected_result_visible():
+    src = _read_app()
+    assert 'self.is_batch_detection = False' in src
+    assert 'self.is_batch_detection = True' in src
+    assert 'self.user_selected_result = False' in src
+    assert 'self.user_selected_result = True' in src
+    assert 'if len(self.detect_results) == 1 or (not self.is_batch_detection and not self.user_selected_result):' in src
+    assert 'if len(self.detect_results) == 1 or (not self.is_batch_detection and not self.user_selected_result):\n                self.detect_index = len(self.detect_results) - 1\n                self.show_detection_payload(payload)' in src
+    assert 'else:\n                # Just update counter and log, don\'t switch view' in src
+
+
+def test_path_inputs_resolve_relative_text_before_running_services():
+    src = _read_app()
+    assert 'return Path(self.resolve_path_text(edit))' in src
+    assert 'config["data"] = self.resolve_path_text(self.edits["data"]) if self.edits["data"] else ""' in src
+    assert 'config["project"] = self.resolve_path_text(self.edits["project"]) if self.edits["project"] else ""' in src
+    assert '"source_path": self.resolve_path_text(self.source_edit),' in src
 
 
 def test_qt_metric_cards_keep_border_style():
@@ -263,7 +391,7 @@ def test_qt_app_migrates_core_workbench_features():
         "QTableWidget", "QScrollArea", "QPixmap", "QImage",
         "QFileDialog", "QMessageBox", "DetectionWorker", "result_payload",
         "status_cards", "set_status_card", "start_detection",
-        "show_detection_payload", "save_current_result", "clear_results",
+        "show_detection_payload", "show_result_list", "open_detection_save_dir",
     ]:
         assert expected in src
     assert "self.log.setPlainText(json.dumps(payload" not in src
@@ -275,6 +403,11 @@ def test_qt_app_migrates_core_workbench_features():
 
 def test_qt_train_page_refreshes_system_status():
     src = _read_app()
+    assert 'self.train_status_timer = QTimer(self)' in src
+    assert 'self.train_status_timer.timeout.connect(self.refresh_train_status)' in src
+    assert 'self.train_status_timer.start(500)' in src
+    assert 'def refresh_train_status(self):' in src
+    assert 'self.app.run_background("train_status", lambda: {"status": system_status(), "cuda": torch_cuda_summary()})' in src
     assert 'self._auto_refresh_timer = QTimer(self)' in src
     assert 'self._auto_refresh_timer.start(500)' in src
     assert 'def _auto_refresh' in src
@@ -305,7 +438,7 @@ def test_new_features_present():
     assert '#systemInfoInner' in src
     assert '_auto_refresh' in src
     # Task 14: batch processing optimization
-    assert 'if len(self.detect_results) == 1:' in src
+    assert 'if len(self.detect_results) == 1 or (not self.is_batch_detection and not self.user_selected_result):' in src
     assert '"第一张"' in src
     assert '"最后一张"' in src
 
@@ -341,6 +474,6 @@ def test_horizontal_scroll_is_locked_and_history_time_fits():
     assert 'self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)' in src
     assert 'header.resizeSection(column, max(1, width))' in src
     assert 'QTimer.singleShot(0, self._apply_history_column_widths)' in src
-    assert 'QTimer.singleShot(80, self._apply_history_column_widths)' in src
+    assert 'QTimer.singleShot(50, self._apply_history_column_widths)' in src
     assert 'available = max(1, self.history_table.viewport().width() - 2)' in src
     assert 'verticalScrollBar().sizeHint().width()' not in src
