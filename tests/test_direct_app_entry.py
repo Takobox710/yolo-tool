@@ -62,6 +62,12 @@ def test_qt_app_matches_reference_ui_sections():
     assert "配置项目路径、检查数据状态、查看训练结果。" not in src
 
 
+def test_page_on_show_runs_after_initial_layout_settles():
+    src = _read_app()
+    assert "QTimer.singleShot(0, hook)" in src
+    assert "hook()" not in src
+
+
 def test_qt_app_keeps_latest_ui_regressions_fixed():
     src = _read_app()
     assert 'history = Card()' in src
@@ -90,8 +96,10 @@ def test_qt_metric_cards_keep_border_style():
     assert '#systemInfoOuter { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }' in src
     assert '#systemInfoInner { background: #F0F2F5; border: 1px solid #E0E3E8; border-radius: 6px; }' in src
     assert 'QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }' in src
-    assert 'QTableWidget::item:hover' not in src
-    assert 'QHeaderView::section' not in src
+    assert 'QTableWidget { background: #FFFFFF; alternate-background-color: #F7FAFC; gridline-color: #E1E8F0; selection-background-color: #DCEEFF; selection-color: #0D2B49; }' in src
+    assert 'QTableWidget::item { padding: 6px; border-bottom: 1px solid #E8EDF2; }' in src
+    assert 'QTableWidget::item:hover { background: #EEF6FF; }' in src
+    assert 'QHeaderView::section { background: #EAF1F8; color: #0D2B49; border: 0; border-right: 1px solid #D8E2EC; border-bottom: 1px solid #CBD8E4; padding: 7px 6px; font-weight: 700; }' in src
 
 
 def test_qt_home_and_training_polish_regressions():
@@ -185,8 +193,12 @@ def test_home_page_uses_compact_left_column():
     assert "self._home_right_cards" in src
     assert "def resizeEvent(self, event)" in src
     assert "self._apply_home_column_widths()" in src
-    assert ".setFixedWidth(left_width)" in src
-    assert ".setFixedWidth(right_width)" in src
+    assert ".setFixedWidth(left_width)" not in src
+    assert ".setFixedWidth(right_width)" not in src
+    assert "card.setMinimumWidth(0)" in src
+    assert "card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)" in src
+    assert "card.setMaximumWidth(left_width)" in src
+    assert "card.setMaximumWidth(right_width)" in src
 
 
 def test_home_page_scrolls_in_minimum_window_height():
@@ -206,8 +218,9 @@ def test_home_overview_text_fits_in_narrow_column():
     assert "pick.setFixedHeight(30)" in src
     assert 'pick.setObjectName("compactSoftButton")' in src
     assert 'open_button.setObjectName("compactSoftButton")' in src
-    assert 'open_button.setFixedHeight(30)' in src
-    assert 'QPushButton#compactSoftButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; border-radius: 5px; padding: 3px 8px; font-size: 12px; }' in src
+    assert 'open_button.setFixedWidth(120)' in src
+    assert 'open_button.setFixedHeight(32)' in src
+    assert 'QPushButton#compactSoftButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; border-radius: 5px; padding: 4px 10px; font-size: 14px; }' in src
     assert "self.overview_stats[key].setToolTip(text)" in src
     assert "def set_overview_stat(" in src
     assert "def _elide_overview_text(" in src
@@ -295,3 +308,39 @@ def test_new_features_present():
     assert 'if len(self.detect_results) == 1:' in src
     assert '"第一张"' in src
     assert '"最后一张"' in src
+
+
+def test_training_history_refresh_and_sorting_regressions():
+    src = _read_app()
+    assert 'def _history_time_sort_key(' in src
+    assert 'was_sorting = self.history_table.isSortingEnabled()' in src
+    assert 'self.history_table.setSortingEnabled(False)' in src
+    assert 'self.history_table.setSortingEnabled(was_sorting)' in src
+    assert 'elif column == 2:' in src
+    assert 'sort_key = _history_time_sort_key(value)' in src
+    assert 'self.history_table.sortItems(0, Qt.SortOrder.AscendingOrder)' in src
+    assert 'QPushButton#compactSoftButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; border-radius: 5px; padding: 4px 10px; font-size: 14px;' in src
+
+
+def test_training_history_hides_sort_arrows_and_offsets_table():
+    src = _read_app()
+    assert 'history.layout.addSpacing(3)' in src
+    assert 'QHeaderView::up-arrow { image: none; width: 0px; height: 0px; }' in src
+    assert 'QHeaderView::down-arrow { image: none; width: 0px; height: 0px; }' in src
+
+
+def test_horizontal_scroll_is_locked_and_history_time_fits():
+    src = _read_app()
+    assert "class PageScrollArea(QScrollArea):" in src
+    assert "self.inner_page.setMaximumWidth(self.viewport().width())" in src
+    assert 'scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)' in src
+    assert 'self.history_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)' in src
+    assert 'self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)' in src
+    assert 'def _apply_history_column_widths(self):' in src
+    assert 'weights = [170, 82, 128, 88, 112, 98, 88]' in src
+    assert 'self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)' in src
+    assert 'header.resizeSection(column, max(1, width))' in src
+    assert 'QTimer.singleShot(0, self._apply_history_column_widths)' in src
+    assert 'QTimer.singleShot(80, self._apply_history_column_widths)' in src
+    assert 'available = max(1, self.history_table.viewport().width() - 2)' in src
+    assert 'verticalScrollBar().sizeHint().width()' not in src

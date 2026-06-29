@@ -59,7 +59,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "scale": 0.5,
             "translate": 0.1,
             "degrees": 0.0,
-            "hsv": 0.015,
+            "hsv_h": 0.015,
             "optimizer": "auto",
         },
         "validation": {

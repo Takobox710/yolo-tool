@@ -55,7 +55,7 @@
     "scale": 0.5,
     "translate": 0.1,
     "degrees": 0.0,
-    "hsv": 0.015,
+    "hsv_h": 0.015,
     "optimizer": "auto"
   },
   "validation": {
@@ -68,7 +68,7 @@
     "save_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\result\\gui_predict"
   },
   "ui": {
-    "last_page": "validate",
+    "last_page": "home",
     "window_width": 1100,
     "window_height": 780
   },

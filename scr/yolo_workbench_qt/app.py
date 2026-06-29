@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
 import traceback
@@ -239,6 +240,26 @@ def run_app() -> None:
                         pass
             return super().__lt__(other)
 
+    def _history_number_sort_key(value: object) -> float:
+        try:
+            return float(str(value).strip().replace("%", ""))
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _history_time_sort_key(value: object) -> float:
+        text = str(value).strip()
+        if not text:
+            return 0.0
+        try:
+            return float(text)
+        except ValueError:
+            pass
+        match = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", text)
+        if not match:
+            return 0.0
+        hours, minutes, seconds = (int(part or 0) for part in match.groups())
+        return float(hours * 3600 + minutes * 60 + seconds)
+
     # --- Task 10: Custom command dialog ---
     class CommandDialog(QDialog):
         def __init__(self, command: list[str], parent=None):
@@ -350,7 +371,7 @@ def run_app() -> None:
             active_page = getattr(self.pages[key], "inner_page", self.pages[key])
             hook = getattr(active_page, "on_show", None)
             if hook:
-                hook()
+                QTimer.singleShot(0, hook)
 
         def create_page(self, key: str):
             if key == "home":
@@ -565,12 +586,23 @@ def run_app() -> None:
             cleaned = cleaned.replace("RTX", "RTX ").replace("  ", " ").strip()
             return cleaned or "待检测"
 
+    class PageScrollArea(QScrollArea):
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            if hasattr(self, "inner_page"):
+                self.inner_page.setMaximumWidth(self.viewport().width())
+                relayout = getattr(self.inner_page, "_apply_home_column_widths", None)
+                if relayout:
+                    relayout()
+
     def scroll_page(widget: QWidget):
-        scroll = QScrollArea()
+        scroll = PageScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidget(widget)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.inner_page = widget
+        widget.setMaximumWidth(scroll.viewport().width())
         return scroll
 
     # ===================================================================
@@ -654,38 +686,59 @@ def run_app() -> None:
             hist_header.addStretch(1)
             open_button = QPushButton("打开结果目录")
             open_button.setObjectName("compactSoftButton")
-            open_button.setFixedWidth(100)
-            open_button.setFixedHeight(30)
+            open_button.setFixedWidth(120)
+            open_button.setFixedHeight(32)
             open_button.clicked.connect(self.open_result_dir)
             hist_header.addWidget(open_button)
             history.layout.addLayout(hist_header)
+            history.layout.addSpacing(3)
             self.history_table = QTableWidget(0, 7)
             self.history_table.setHorizontalHeaderLabels(["模型ID", "Epochs", "Time", "mAP50", "mAP50-95", "Box Loss", "Recall"])
+            self.history_table.setAlternatingRowColors(True)
+            self.history_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.history_table.setSortingEnabled(True)
             self.history_table.horizontalHeader().setSortIndicatorShown(False)
-            self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-            self.history_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-            self.history_table.setColumnWidth(0, 130)
+            self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
             history.layout.addWidget(self.history_table, 1)
             grid.addWidget(history, 1, 1)
             self._home_left_cards = [overview, curve]
             self._home_right_cards = [distribution, history]
             self._overview_raw_values = {}
             self._apply_home_column_widths()
+            QTimer.singleShot(0, self._apply_history_column_widths)
+            QTimer.singleShot(80, self._apply_history_column_widths)
 
         def resizeEvent(self, event):
             super().resizeEvent(event)
             self._apply_home_column_widths()
+            self._apply_history_column_widths()
+
+        def _apply_history_column_widths(self):
+            if not hasattr(self, "history_table"):
+                return
+            available = max(1, self.history_table.viewport().width() - 2)
+            weights = [170, 82, 128, 88, 112, 98, 88]
+            total = sum(weights)
+            widths = [available * weight // total for weight in weights]
+            widths[-1] += available - sum(widths)
+            header = self.history_table.horizontalHeader()
+            for column, width in enumerate(widths):
+                header.resizeSection(column, max(1, width))
 
         def _apply_home_column_widths(self):
             margins = self.layout().contentsMargins()
             total_margins = margins.left() + margins.right()
             left_width, right_width = _home_column_widths(self.width(), total_margins, self._home_grid_spacing)
             for card in self._home_left_cards:
-                card.setFixedWidth(left_width)
+                card.setMinimumWidth(0)
+                card.setMaximumWidth(left_width)
+                card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             for card in self._home_right_cards:
-                card.setFixedWidth(right_width)
+                card.setMinimumWidth(0)
+                card.setMaximumWidth(right_width)
+                card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self._refresh_overview_elides()
+            self._apply_history_column_widths()
 
         def _elide_overview_text(self, text: str, label: QLabel) -> str:
             available_width = max(label.width(), 24)
@@ -729,6 +782,9 @@ def run_app() -> None:
             paths = self.app.settings["paths"]
             result_dir = Path(paths["result_dir"])
             candidates = scan_candidate_models(result_dir)
+            was_sorting = self.history_table.isSortingEnabled()
+            self.history_table.setSortingEnabled(False)
+            self.history_table.clearContents()
             self.history_table.setRowCount(len(candidates[:8]))
             for row, candidate in enumerate(candidates[:8]):
                 run_dir = candidate.parent.parent
@@ -748,29 +804,18 @@ def run_app() -> None:
                 for column, value in enumerate(values):
                     sort_key = float(row)
                     if column == 1:
-                        try:
-                            sort_key = float(value)
-                        except (ValueError, TypeError):
-                            sort_key = 0.0
-                    elif column in (3, 4):
-                        try:
-                            sort_key = float(value.replace('%', ''))
-                        except (ValueError, TypeError):
-                            sort_key = 0.0
-                    elif column == 5:
-                        try:
-                            sort_key = -float(value)
-                        except (ValueError, TypeError):
-                            sort_key = 0.0
-                    elif column == 6:
-                        try:
-                            sort_key = float(value.replace('%', ''))
-                        except (ValueError, TypeError):
-                            sort_key = 0.0
+                        sort_key = _history_number_sort_key(value)
+                    elif column == 2:
+                        sort_key = _history_time_sort_key(value)
+                    elif column in (3, 4, 5, 6):
+                        sort_key = _history_number_sort_key(value)
                     item = _SortItem(value, sort_key)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.history_table.setItem(row, column, item)
+            self.history_table.setSortingEnabled(was_sorting)
             self.history_table.sortItems(0, Qt.SortOrder.AscendingOrder)
+            self._apply_history_column_widths()
+            QTimer.singleShot(80, self._apply_history_column_widths)
 
         def pick_project_root(self):
             path = QFileDialog.getExistingDirectory(self, "设置项目目录", self.app.settings["project"]["root"])
@@ -979,6 +1024,7 @@ def run_app() -> None:
             layout.addLayout(actions)
             self.table = QTableWidget(0, 5)
             self.table.setHorizontalHeaderLabels(["序号", "原文件名", "新文件名", "图片冲突", "标注状态"])
+            self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             layout.addWidget(self.table, 1)
             for edit in [self.folder_edit, self.label_edit, self.prefix_edit, self.start_edit, self.padding_edit]:
@@ -1412,6 +1458,7 @@ def run_app() -> None:
             table_panel = Card("检测结果详情表")
             self.table = QTableWidget(0, 6)
             self.table.setHorizontalHeaderLabels(["序号", "类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"])
+            self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             table_panel.layout.addWidget(self.table)
             right.addWidget(table_panel)
@@ -1716,11 +1763,17 @@ def run_app() -> None:
     #systemInfoOuter { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }
     #systemInfoInner { background: #F0F2F5; border: 1px solid #E0E3E8; border-radius: 6px; }
     QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }
+    QTableWidget { background: #FFFFFF; alternate-background-color: #F7FAFC; gridline-color: #E1E8F0; selection-background-color: #DCEEFF; selection-color: #0D2B49; }
+    QTableWidget::item { padding: 6px; border-bottom: 1px solid #E8EDF2; }
+    QTableWidget::item:hover { background: #EEF6FF; }
+    QHeaderView::section { background: #EAF1F8; color: #0D2B49; border: 0; border-right: 1px solid #D8E2EC; border-bottom: 1px solid #CBD8E4; padding: 7px 6px; font-weight: 700; }
+    QHeaderView::up-arrow { image: none; width: 0px; height: 0px; }
+    QHeaderView::down-arrow { image: none; width: 0px; height: 0px; }
     QPushButton { background: #208FD4; color: white; border: 0; border-radius: 5px; padding: 9px 14px; }
     QPushButton:hover { background: #1A7ABF; }
     QPushButton#softButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; }
     QPushButton#softButton:hover { background: #E8EDF2; border-color: #B8C4D0; }
-    QPushButton#compactSoftButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; border-radius: 5px; padding: 3px 8px; font-size: 12px; }
+    QPushButton#compactSoftButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; border-radius: 5px; padding: 4px 10px; font-size: 14px; }
     QPushButton#compactSoftButton:hover { background: #E8EDF2; border-color: #B8C4D0; }
     QPushButton:disabled { background: #C0CCD8; color: #8899AA; }
     QTabWidget::pane { border: 1px solid #D9E3EC; background: white; border-radius: 6px; }

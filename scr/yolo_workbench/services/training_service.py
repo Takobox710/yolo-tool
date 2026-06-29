@@ -33,7 +33,7 @@ def build_train_command(config: dict) -> list[str]:
         ("scale", config.get("scale")),
         ("translate", config.get("translate")),
         ("degrees", config.get("degrees")),
-        ("hsv", config.get("hsv")),
+        ("hsv_h", config.get("hsv_h", config.get("hsv"))),
     ]
     for key, value in fields:
         if value in (None, ""):
