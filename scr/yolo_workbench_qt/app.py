@@ -24,6 +24,7 @@ from scr.yolo_workbench.services.training_service import (
     read_train_metrics,
     read_results_csv_for_curves,
 )
+from scr.yolo_workbench_qt.home_charts import DatasetDistributionWidget, TrainingCurveWidget
 
 # ---------------------------------------------------------------------------
 #  Helpers
@@ -69,18 +70,31 @@ def _find_model_yaml_files(data_dir: Path) -> list[str]:
 
 
 def _find_pt_files_in_data_models(project_root: Path) -> list[str]:
-    """Find .pt files in data/models/ directory for pretrained model selection."""
+    """Find .pt files in project root and data/models/ directory."""
+    names: list[str] = []
+    for f in sorted(project_root.glob("*.pt")):
+        if f.is_file():
+            names.append(f.name)
     models_dir = project_root / "data" / "models"
-    if not models_dir.exists():
-        return []
-    return [f.name for f in sorted(models_dir.glob("*.pt")) if f.is_file()]
+    if models_dir.exists():
+        for f in sorted(models_dir.glob("*.pt")):
+            if f.is_file() and f.name not in names:
+                names.append(f.name)
+    return names
+
+
+def _home_column_widths(total_width: int, margins: int = 32, spacing: int = 12) -> tuple[int, int]:
+    content_width = max(int(total_width) - margins - spacing, 3)
+    left = content_width * 3 // 10
+    right = content_width - left
+    return left, right
 
 
 # ---------------------------------------------------------------------------
 def run_app() -> None:
     try:
         from PySide6.QtCore import Qt, QThread, QTimer, Signal
-        from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap, QIcon, QPainterPath
+        from PySide6.QtGui import QFont, QImage, QPixmap, QIcon
         from PySide6.QtWidgets import (
             QApplication,
             QCheckBox,
@@ -275,7 +289,7 @@ def run_app() -> None:
                 self.setWindowIcon(app_icon)
             self.setWindowTitle("YOLO 本地训练工作台")
             self.resize(1100, 780)
-            self.setMinimumSize(1100, 780)
+            self.setMinimumSize(980, 720)
             self._build()
 
         def _build(self):
@@ -340,7 +354,7 @@ def run_app() -> None:
 
         def create_page(self, key: str):
             if key == "home":
-                return HomePage(self)
+                return scroll_page(HomePage(self))
             if key == "data":
                 return scroll_page(DataPage(self))
             if key == "train":
@@ -451,6 +465,53 @@ def run_app() -> None:
             layout.addWidget(combo, 1)
             return box, combo
 
+
+        def stacked_field(self, label: str, value: str = "", browse=None):
+            """Label on top, input + optional browse button below."""
+            box = QWidget()
+            outer = QVBoxLayout(box)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.setSpacing(4)
+            lbl = QLabel(label)
+            lbl.setObjectName("fieldLabel")
+            outer.addWidget(lbl)
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            edit = QLineEdit(str(value))
+            row.addWidget(edit, 1)
+            if browse:
+                btn = QPushButton("选择")
+                btn.setObjectName("softButton")
+                btn.clicked.connect(lambda: browse(edit))
+                row.addWidget(btn)
+            outer.addLayout(row)
+            return box, edit
+
+        def stacked_combo_field(self, label: str, value: str, values: list[str], browse=None):
+            """Label on top, combo + optional browse button below."""
+            box = QWidget()
+            outer = QVBoxLayout(box)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.setSpacing(4)
+            lbl = QLabel(label)
+            lbl.setObjectName("fieldLabel")
+            outer.addWidget(lbl)
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            combo = QComboBox()
+            combo.setEditable(True)
+            combo.addItems(values)
+            if value in values:
+                combo.setCurrentText(value)
+            row.addWidget(combo, 1)
+            if browse:
+                btn = QPushButton("选择")
+                btn.setObjectName("softButton")
+                btn.clicked.connect(lambda: browse(combo))
+                row.addWidget(btn)
+            outer.addLayout(row)
+            return box, combo
+
         def choose_dir(self, edit: QLineEdit):
             path = QFileDialog.getExistingDirectory(self, "选择文件夹", edit.text() or str(ROOT))
             if path:
@@ -461,17 +522,26 @@ def run_app() -> None:
             if path:
                 edit.setText(path)
 
+        def _choose_pt_for_combo(self, combo: QComboBox):
+            path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", str(ROOT), "PyTorch 模型 (*.pt);;所有文件 (*)")
+            if path:
+                combo.setCurrentText(Path(path).name)
+
+
         def stat_card(self, label: str, value: str = "-"):
             card = QFrame()
             card.setObjectName("statCard")
             layout = QHBoxLayout(card)
             layout.setContentsMargins(12, 8, 12, 8)
+            layout.setSpacing(8)
             name = QLabel(label)
             name.setObjectName("fieldLabel")
-            name.setFixedWidth(88)
+            name.setFixedWidth(90)
             metric = QLabel(value)
             metric.setObjectName("statValue")
-            metric.setWordWrap(True)
+            metric.setWordWrap(False)
+            metric.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            metric.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             layout.addWidget(name)
             layout.addWidget(metric, 1)
             return card, metric
@@ -509,16 +579,16 @@ def run_app() -> None:
     class HomePage(BasePage):
         def __init__(self, app):
             super().__init__(app)
+            self.setMinimumHeight(700)
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
             layout = self.page_layout()
+            self._home_grid_spacing = 12
             # Hero
             hero = QHBoxLayout()
             copy = QVBoxLayout()
             title = QLabel("欢迎使用 YOLO 本地训练工作台")
             title.setObjectName("pageTitle")
-            subtitle = QLabel("配置项目路径、检查数据状态、查看训练结果。")
-            subtitle.setObjectName("fieldLabel")
             copy.addWidget(title)
-            copy.addWidget(subtitle)
             hero.addLayout(copy, 1)
             for text in ["pixi env: local", "Python 3.12", "CUDA 13.0"]:
                 pill = QLabel(text)
@@ -532,7 +602,7 @@ def run_app() -> None:
             grid.setColumnStretch(1, 2)
             grid.setRowStretch(0, 58)
             grid.setRowStretch(1, 42)
-            grid.setSpacing(12)
+            grid.setSpacing(self._home_grid_spacing)
             layout.addLayout(grid, 1)
 
             # --- Task 2: Project overview - title and button on same line ---
@@ -543,8 +613,9 @@ def run_app() -> None:
             header_row.addWidget(ov_title)
             header_row.addStretch(1)
             pick = QPushButton("设置项目目录")
-            pick.setObjectName("softButton")
-            pick.setFixedWidth(100)
+            pick.setObjectName("compactSoftButton")
+            pick.setFixedWidth(108)
+            pick.setFixedHeight(30)
             pick.clicked.connect(self.pick_project_root)
             header_row.addWidget(pick)
             overview.layout.addLayout(header_row)
@@ -564,17 +635,13 @@ def run_app() -> None:
 
             # --- Task 6: Distribution with train/val/test ---
             distribution = Card("各类别图片分布")
-            self.distribution_view = QLabel()
-            self.distribution_view.setObjectName("chartView")
-            self.distribution_view.setMinimumHeight(200)
+            self.distribution_view = DatasetDistributionWidget()
             distribution.layout.addWidget(self.distribution_view, 1)
             grid.addWidget(distribution, 0, 1)
 
             # --- Task 7: Training curves ---
-            curve = Card("训练曲线")
-            self.curve_view = QLabel()
-            self.curve_view.setObjectName("chartView")
-            self.curve_view.setMinimumHeight(180)
+            curve = Card()
+            self.curve_view = TrainingCurveWidget()
             curve.layout.addWidget(self.curve_view, 1)
             grid.addWidget(curve, 1, 0)
 
@@ -586,8 +653,9 @@ def run_app() -> None:
             hist_header.addWidget(hist_title)
             hist_header.addStretch(1)
             open_button = QPushButton("打开结果目录")
-            open_button.setObjectName("softButton")
+            open_button.setObjectName("compactSoftButton")
             open_button.setFixedWidth(100)
+            open_button.setFixedHeight(30)
             open_button.clicked.connect(self.open_result_dir)
             hist_header.addWidget(open_button)
             history.layout.addLayout(hist_header)
@@ -600,6 +668,32 @@ def run_app() -> None:
             self.history_table.setColumnWidth(0, 130)
             history.layout.addWidget(self.history_table, 1)
             grid.addWidget(history, 1, 1)
+            self._home_left_cards = [overview, curve]
+            self._home_right_cards = [distribution, history]
+            self._overview_raw_values = {}
+            self._apply_home_column_widths()
+
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            self._apply_home_column_widths()
+
+        def _apply_home_column_widths(self):
+            margins = self.layout().contentsMargins()
+            total_margins = margins.left() + margins.right()
+            left_width, right_width = _home_column_widths(self.width(), total_margins, self._home_grid_spacing)
+            for card in self._home_left_cards:
+                card.setFixedWidth(left_width)
+            for card in self._home_right_cards:
+                card.setFixedWidth(right_width)
+            self._refresh_overview_elides()
+
+        def _elide_overview_text(self, text: str, label: QLabel) -> str:
+            available_width = max(label.width(), 24)
+            return label.fontMetrics().elidedText(str(text), Qt.TextElideMode.ElideMiddle, available_width)
+
+        def _refresh_overview_elides(self):
+            for key, text in getattr(self, "_overview_raw_values", {}).items():
+                self.overview_stats[key].setText(self._elide_overview_text(text, self.overview_stats[key]))
 
         def on_show(self):
             paths = self.app.settings["paths"]
@@ -610,15 +704,25 @@ def run_app() -> None:
             label_count = len(list(labels.glob("*.txt"))) if labels.exists() else 0
 
             # Task 3: relative paths (except project folder)
-            self.overview_stats["project"].setText(project_root)
-            self.overview_stats["images"].setText(_relative_path(paths["images_dir"], project_root))
-            self.overview_stats["annotations"].setText(_relative_path(paths["annotations_dir"], project_root))
-            self.overview_stats["result"].setText(_relative_path(paths["result_dir"], project_root))
-            self.overview_stats["image_count"].setText(str(image_count))
-            self.overview_stats["label_count"].setText(str(label_count))
+            def set_overview_stat(key: str, text: str):
+                self._overview_raw_values[key] = text
+                self.overview_stats[key].setText(self._elide_overview_text(text, self.overview_stats[key]))
+                self.overview_stats[key].setToolTip(text)
 
-            self.draw_distribution()
-            self.draw_training_curves()
+            set_overview_stat("project", project_root)
+            set_overview_stat("images", _relative_path(paths["images_dir"], project_root))
+            set_overview_stat("annotations", _relative_path(paths["annotations_dir"], project_root))
+            set_overview_stat("result", _relative_path(paths["result_dir"], project_root))
+            set_overview_stat("image_count", str(image_count))
+            set_overview_stat("label_count", str(label_count))
+
+            dataset_dir = Path(paths["dataset_dir"])
+            split_counts = {}
+            for split in ("train", "val", "test"):
+                img_dir = dataset_dir / split / "images"
+                split_counts[split] = len([p for p in img_dir.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES]) if img_dir.exists() else 0
+            self.distribution_view.set_counts(split_counts, self.app.settings["dataset"]["class_names"])
+            self.curve_view.set_curve_data(read_results_csv_for_curves(Path(paths["result_dir"])))
             self.refresh_history()
 
         def refresh_history(self):
@@ -679,146 +783,6 @@ def run_app() -> None:
             path = Path(self.app.settings["paths"]["result_dir"])
             if path.exists():
                 os.startfile(path)
-
-        # Task 6: distribution with train/val/test bars
-        def draw_distribution(self):
-            paths = self.app.settings["paths"]
-            project_root = Path(self.app.settings["project"]["root"])
-            dataset_dir = Path(paths["dataset_dir"])
-            class_names = self.app.settings["dataset"]["class_names"]
-
-            # Count images per split
-            split_counts = {}
-            for split in ("train", "val", "test"):
-                img_dir = dataset_dir / split / "images"
-                if img_dir.exists():
-                    split_counts[split] = len([p for p in img_dir.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES])
-                else:
-                    split_counts[split] = 0
-            total = sum(split_counts.values())
-
-            pixmap = QPixmap(620, 250)
-            pixmap.fill(Qt.GlobalColor.white)
-            painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            # Title
-            painter.setPen(QPen(QColor("#14233A"), 2))
-            painter.setFont(QFont("Microsoft YaHei UI", 11, QFont.Weight.Bold))
-            title_text = f"{', '.join(class_names)} | 总计 {total} 张"
-            painter.drawText(0, 26, pixmap.width(), 24, Qt.AlignmentFlag.AlignCenter, title_text)
-
-            # Axes
-            y_bottom = 210
-            y_top = 48
-            x_left = 70
-            x_right = 580
-            painter.setPen(QPen(QColor("#14233A"), 1))
-            painter.drawLine(x_left, y_bottom, x_right, y_bottom)
-            painter.drawLine(x_left, y_bottom, x_left, y_top)
-
-            max_count = max(max(split_counts.values()), 1)
-            bar_w = 80
-            colors = {"train": QColor("#4A90D9"), "val": QColor("#22B765"), "test": QColor("#F4B42E")}
-            labels_cn = {"train": "训练", "val": "验证", "test": "测试"}
-            total_w = len(split_counts) * bar_w + (len(split_counts) - 1) * 40
-            x_start = x_left + (x_right - x_left - total_w) // 2
-
-            painter.setFont(QFont("Microsoft YaHei UI", 10))
-            for i, (split, count) in enumerate(split_counts.items()):
-                x = x_start + i * (bar_w + 40)
-                h = int((count / max_count) * (y_bottom - y_top - 20))
-                painter.fillRect(x, y_bottom - h, bar_w, h, QBrush(colors[split]))
-                # Count label above bar
-                painter.setPen(QColor("#14233A"))
-                painter.drawText(x, y_bottom - h - 18, bar_w, 16, Qt.AlignmentFlag.AlignCenter, str(count))
-                # Category label below
-                painter.drawText(x, y_bottom + 6, bar_w, 16, Qt.AlignmentFlag.AlignCenter, labels_cn[split])
-
-            painter.end()
-            self.distribution_view.setPixmap(pixmap)
-
-        # Task 7: training curves from results.csv
-        def draw_training_curves(self):
-            result_dir = Path(self.app.settings["paths"]["result_dir"])
-            data = read_results_csv_for_curves(result_dir)
-
-            w, h = 420, 210
-            pixmap = QPixmap(w, h)
-            pixmap.fill(Qt.GlobalColor.white)
-            painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            if not data:
-                painter.setPen(QColor("#94A2AD"))
-                painter.setFont(QFont("Microsoft YaHei UI", 11))
-                painter.drawText(0, 0, w, h, Qt.AlignmentFlag.AlignCenter, "暂无训练记录\n请进行模型训练")
-                painter.end()
-                self.curve_view.setPixmap(pixmap)
-                return
-
-            # Select curves to plot
-            curve_defs = [
-                ("train/box_loss", QColor("#E74C3C"), "Box Loss"),
-                ("val/box_loss", QColor("#E67E22"), "Val Box Loss"),
-            ]
-            # Try to find mAP columns
-            for col_name in data:
-                if "mAP50(" in col_name and "95" not in col_name:
-                    curve_defs.append((col_name, QColor("#3498DB"), "mAP50"))
-                    break
-            for col_name in data:
-                if "mAP50-95(" in col_name:
-                    curve_defs.append((col_name, QColor("#2ECC71"), "mAP50-95"))
-                    break
-
-            x_left, x_right = 50, w - 20
-            y_top, y_bottom = 30, h - 30
-            x_range = x_right - x_left
-            y_range = y_bottom - y_top
-
-            # Axes
-            painter.setPen(QPen(QColor("#14233A"), 1))
-            painter.drawLine(x_left, y_bottom, x_right, y_bottom)
-            painter.drawLine(x_left, y_bottom, x_left, y_top)
-
-            for col_name, color, label in curve_defs:
-                vals = data.get(col_name, [])
-                if not vals:
-                    continue
-                mn, mx = min(vals), max(vals)
-                if mx == mn:
-                    mx = mn + 1
-                painter.setPen(QPen(color, 2))
-                path = QPainterPath()
-                for j, v in enumerate(vals):
-                    x = x_left + (j / max(len(vals) - 1, 1)) * x_range
-                    y = y_bottom - ((v - mn) / (mx - mn)) * y_range
-                    if j == 0:
-                        path.moveTo(x, y)
-                    else:
-                        path.lineTo(x, y)
-                painter.drawPath(path)
-
-            # Legend at top right
-            painter.setFont(QFont("Microsoft YaHei UI", 8))
-            lx = x_right - 10
-            ly = y_top + 4
-            for col_name, color, label in reversed(curve_defs):
-                vals = data.get(col_name, [])
-                if not vals:
-                    continue
-                lw = painter.fontMetrics().horizontalAdvance(label) + 24
-                lx -= lw
-                painter.setPen(QPen(color, 3))
-                painter.drawLine(lx, ly + 6, lx + 14, ly + 6)
-                painter.setPen(QColor("#14233A"))
-                painter.drawText(lx + 18, ly, lw - 18, 14, Qt.AlignmentFlag.AlignVCenter, label)
-                ly += 16
-
-            painter.end()
-            self.curve_view.setPixmap(pixmap)
-
     # ===================================================================
     #  Data page
     # ===================================================================
@@ -1127,48 +1091,42 @@ def run_app() -> None:
             top.addWidget(left, 0, 0)
             top.addWidget(right, 0, 1)
 
-            # Task 12: Reordered layout
-            # Row 0: 基础模型 (model dropdown), 数据集YAML
-            # Row 1: 模型YAML (blank default), 项目输出
+            # Stacked layout: label on top, input + button below
             left_form = QGridLayout()
+            left_form.setContentsMargins(0, 0, 0, 0)
+            left_form.setHorizontalSpacing(12)
+            left_form.setVerticalSpacing(10)
             left.layout.addLayout(left_form)
 
-            # 基础模型 - dropdown from data/models/*.pt
+            # 基础模型 - stacked combo
             model_files = _find_pt_files_in_data_models(Path(self.app.settings["project"]["root"]))
-            base_label = QLabel("基础模型")
-            base_label.setObjectName("inlineFieldLabel")
-            self.pretrained_combo = QComboBox()
-            self.pretrained_combo.setEditable(True)
-            if model_files:
-                self.pretrained_combo.addItems(model_files)
             current_pretrained = training.get("pretrained", "")
-            # If current is just a filename, show it
             current_name = Path(current_pretrained).name if current_pretrained else ""
-            if current_name:
-                self.pretrained_combo.setCurrentText(current_name)
-            left_form.addWidget(base_label, 0, 0)
-            left_form.addWidget(self.pretrained_combo, 0, 1)
+            base_box, self.pretrained_combo = self.stacked_combo_field(
+                "基础模型", current_name, model_files,
+                browse=lambda combo: self._choose_pt_for_combo(combo))
+            left_form.addWidget(base_box, 0, 0)
 
             # 数据集YAML
             self.edits["data"], _ = None, None
-            data_box, data_edit = self.inline_field("数据集YAML", training.get("data", ""), self.choose_file)
+            data_box, data_edit = self.stacked_field("数据集YAML", training.get("data", ""), self.choose_file)
             self.edits["data"] = data_edit
-            left_form.addWidget(data_box, 0, 2, 1, 2)
+            left_form.addWidget(data_box, 0, 1)
 
             # 模型YAML (default blank)
-            model_yaml_box, model_yaml_edit = self.inline_field("模型YAML", "", self.choose_file)
+            model_yaml_box, model_yaml_edit = self.stacked_field("模型YAML", "", self.choose_file)
             self.edits["model_yaml"] = model_yaml_edit
-            left_form.addWidget(model_yaml_box, 1, 0, 1, 2)
+            left_form.addWidget(model_yaml_box, 1, 0)
 
             # 项目输出
-            project_box, project_edit = self.inline_field("项目输出", training.get("project", ""), self.choose_dir)
+            project_box, project_edit = self.stacked_field("项目输出", training.get("project", ""), self.choose_dir)
             self.edits["project"] = project_edit
-            left_form.addWidget(project_box, 1, 2, 1, 2)
+            left_form.addWidget(project_box, 1, 1)
 
             # Augmentation checkboxes
             aug = QGridLayout()
             left.layout.addLayout(aug)
-            for index, (key, label) in enumerate([("mosaic", "马赛克"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("mixup", "MixUp"), ("scale", "缩放"), ("translate", "平移"), ("degrees", "旋转"), ("hsv", "HSV")]):
+            for index, (key, label) in enumerate([("mosaic", "马赛克"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("mixup", "MixUp"), ("scale", "缩放"), ("translate", "平移"), ("degrees", "旋转"), ("hsv_h", "HSV")]):
                 check = QCheckBox(label)
                 check.setChecked(float(training.get(key, 0)) > 0)
                 self.checks[key] = check
@@ -1178,7 +1136,7 @@ def run_app() -> None:
             params = QGridLayout()
             right.layout.addLayout(params)
 
-            # Task 12: Optimizer combo
+            # Row 0: optimizer | lr
             optimizer_box = QWidget()
             optimizer_layout = QHBoxLayout(optimizer_box)
             optimizer_layout.setContentsMargins(0, 0, 0, 0)
@@ -1192,21 +1150,22 @@ def run_app() -> None:
                 self.optimizer_combo.setCurrentText(current_opt)
             optimizer_layout.addWidget(opt_label)
             optimizer_layout.addWidget(self.optimizer_combo, 1)
-            params.addWidget(optimizer_box, 0, 0, 1, 2)
+            params.addWidget(optimizer_box, 0, 0)
 
-            # Device combo
-            self.device_box, self.device_combo = self.inline_combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
-            params.addWidget(self.device_box, 1, 0, 1, 2)
+            lr_box, lr_edit = self.inline_field("学习率", training.get("lr", ""))
+            self.edits["lr"] = lr_edit
+            params.addWidget(lr_box, 0, 1)
 
-            # Other params
-            param_idx = 2
-            for key, label in [("lr", "学习率"), ("epochs", "Epochs"), ("patience", "Patience"), ("workers", "Workers"), ("batch", "Batch"), ("imgsz", "图片尺寸")]:
+            # Rows 1-3: remaining params, device last (next to 图片尺寸)
+            param_order = [("epochs", "Epochs"), ("patience", "Patience"), ("workers", "Workers"), ("batch", "Batch"), ("imgsz", "图片尺寸")]
+            for i, (key, label) in enumerate(param_order):
                 box, edit = self.inline_field(label, training.get(key, ""))
                 self.edits[key] = edit
-                params.addWidget(box, param_idx // 2, param_idx % 2)
-                param_idx += 1
+                params.addWidget(box, 1 + i // 2, i % 2)
 
-            # Task 9: Control buttons
+            # Device at row 3 col 1, next to 图片尺寸
+            self.device_box, self.device_combo = self.inline_combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
+            params.addWidget(self.device_box, 3, 1)
             actions = QHBoxLayout()
             layout.addLayout(actions)
             control = Card()
@@ -1282,13 +1241,18 @@ def run_app() -> None:
             config["task_mode"] = infer_task_mode_from_model(config.get("model_yaml") or config.get("base_model") or config.get("pretrained"))
             for key, check in self.checks.items():
                 config[key] = self.app.settings["training"].get(key, 0) if check.isChecked() else 0
-            # Resolve pretrained path - if just a name, look in data/models
+            # Resolve pretrained path - check project root then data/models
             pretrained_val = config.get("pretrained", "")
             if pretrained_val and not Path(pretrained_val).exists():
-                models_dir = Path(self.app.settings["project"]["root"]) / "data" / "models"
-                candidate = models_dir / pretrained_val
+                project_root = Path(self.app.settings["project"]["root"])
+                candidate = project_root / pretrained_val
                 if candidate.exists():
                     config["pretrained"] = str(candidate)
+                else:
+                    models_dir = project_root / "data" / "models"
+                    candidate = models_dir / pretrained_val
+                    if candidate.exists():
+                        config["pretrained"] = str(candidate)
             return config
 
         def refresh_command_preview(self):
@@ -1658,7 +1622,7 @@ def run_app() -> None:
                 inner_layout.addWidget(value)
                 self.status_cards[label] = value
                 info_grid.addWidget(inner, index // 4, index % 4)
-            info_outer_layout.addLayout(info_grid)
+            info_outer_layout.addLayout(info_grid, 0, 0)
             layout.addWidget(info_outer)
 
             self.log = QTextEdit()
@@ -1756,12 +1720,12 @@ def run_app() -> None:
     QPushButton:hover { background: #1A7ABF; }
     QPushButton#softButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; }
     QPushButton#softButton:hover { background: #E8EDF2; border-color: #B8C4D0; }
+    QPushButton#compactSoftButton { background: #F5F8FB; color: #14233A; border: 1px solid #D9E3EC; border-radius: 5px; padding: 3px 8px; font-size: 12px; }
+    QPushButton#compactSoftButton:hover { background: #E8EDF2; border-color: #B8C4D0; }
     QPushButton:disabled { background: #C0CCD8; color: #8899AA; }
     QTabWidget::pane { border: 1px solid #D9E3EC; background: white; border-radius: 6px; }
     QTabBar::tab { padding: 9px 16px; background: #F5F8FB; border: 1px solid #D9E3EC; }
     QTabBar::tab:selected { background: white; color: #208FD4; }
-    QTableWidget::item:hover { background: #EBF2F8; }
-    QHeaderView::section { background: #F5F8FB; border: 1px solid #D9E3EC; padding: 6px; font-weight: 600; }
     """
 
     app = QApplication(sys.argv)
