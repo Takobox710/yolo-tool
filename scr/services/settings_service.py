@@ -5,11 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-
-ROOT = Path(__file__).resolve().parents[3]
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_ROOT = PACKAGE_ROOT / "runtime"
-DEFAULT_SETTINGS_PATH = RUNTIME_ROOT / "settings.json"
+from scr.paths import DEFAULT_SETTINGS_PATH, ROOT, RUNTIME_ROOT
 
 
 def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:

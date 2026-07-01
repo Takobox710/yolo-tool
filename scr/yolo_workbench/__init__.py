@@ -1,2 +1,0 @@
-"""YOLO local training workbench."""
-

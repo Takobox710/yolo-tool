@@ -6,9 +6,10 @@ platforms = ["win-64", { name = "gpu-win-64", platform = "win-64", cuda = "13.0"
 version = "0.1.0"
 
 [tasks]
-test = "pytest tests -q"
-app = "python -m scr.yolo_workbench.main"
-app-qt = "python -m scr.yolo_workbench_qt.main"
+test = "pytest scr/tests -q"
+app = "python -m scr.main"
+app-qt = "python -m scr.main"
+check = "python -m compileall scr"
 
 [dependencies]
 python = "3.12.*"

@@ -12,8 +12,8 @@
 
 ## 重要约束
 
-- 所有项目代码放在 `scr/` 目录下。
-- 测试代码放在 `tests/` 目录下。
+- 所有项目代码放在 `scr/` 目录下，UI、服务、入口、资源都从 `scr/` 根组织。
+- 测试代码放在 `scr/tests/` 目录下。
 - 不要把 `.pixi/` 环境目录加入 git。
 - 如需提交 git，必须在所有任务完成后进行一次总提交，避免中途多次零散提交。
 - 如果编译或测试错误连续出现 5 次仍未解决，必须停止并向人类报告，不要陷入盲猜循环。
@@ -26,30 +26,57 @@ yolo_tool/
 ├── pixi.lock
 ├── AGENTS.md
 ├── icon.svg
-├── scr/
-│   ├── yolo_workbench/
-│   │   ├── main.py
-│   │   ├── theme.py
-│   │   ├── runtime/
-│   │   │   └── settings.json
-│   │   └── services/
-│   │       ├── settings_service.py
-│   │       ├── conversion_service.py
-│   │       ├── annotation_service.py
-│   │       ├── rename_service.py
-│   │       ├── resize_service.py
-│   │       ├── training_service.py
-│   │       ├── detection_service.py
-│   │       ├── runtime_service.py
-│   │       └── environment_service.py
-│   └── yolo_workbench_qt/
-│       ├── main.py
-│       ├── home_charts.py
-│       ├── assets/
-│       │   ├── app_icon.png
-│       │   └── app_icon.ico
-│       └── app.py
-└── tests/
+└── scr/
+    ├── __init__.py
+    ├── main.py
+    ├── app.py
+    ├── context.py
+    ├── paths.py
+    ├── theme.py
+    ├── runtime/
+    │   └── settings.json
+    ├── assets/
+    │   ├── app_icon.png
+    │   └── app_icon.ico
+    ├── services/
+    │   ├── __init__.py
+    │   ├── settings_service.py
+    │   ├── conversion_service.py
+    │   ├── annotation_service.py
+    │   ├── rename_service.py
+    │   ├── resize_service.py
+    │   ├── training_service.py
+    │   ├── detection_service.py
+    │   ├── runtime_service.py
+    │   └── environment_service.py
+    ├── ui/
+    │   ├── __init__.py
+    │   ├── app.py
+    │   ├── window.py
+    │   ├── qt.py
+    │   ├── page_base.py
+    │   ├── helpers.py
+    │   ├── workers.py
+    │   ├── dialogs.py
+    │   ├── widgets/
+    │   │   ├── __init__.py
+    │   │   ├── base.py
+    │   │   └── charts.py
+    │   └── views/
+    │       ├── __init__.py
+    │       ├── home.py
+    │       ├── data.py
+    │       ├── convert.py
+    │       ├── preview.py
+    │       ├── rename.py
+    │       ├── resize.py
+    │       ├── training.py
+    │       ├── validation.py
+    │       └── settings.py
+    └── tests/
+        ├── conftest.py
+        ├── test_core_services.py
+        └── test_direct_app_entry.py
 ```
 
 ## 启动与测试
@@ -64,13 +91,13 @@ pixi run test
 等价启动入口：
 
 ```powershell
-pixi run python -m scr.yolo_workbench.main
+pixi run python -m scr.main
 ```
 
 静态编译检查：
 
 ```powershell
-pixi run python -m compileall scr tests
+pixi run check
 ```
 
 ## Pixi 环境说明
@@ -89,11 +116,12 @@ pixi run python -m compileall scr tests
 - `torch`
 - `torchvision`
 
-PyTorch 已配置 PyPI 额外索引：
+PyTorch 相关依赖当前通过 `pixi.toml` 的 `[pypi-dependencies]` 单独指定索引：
 
 ```toml
-[pypi-options]
-extra-index-urls = ["https://download.pytorch.org/whl/cu130"]
+torch = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+torchvision = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 ```
 
 目标是 CUDA 13.0 版 torch。此前实现时，`pixi install` 同步 CUDA 版 torch 曾因下载/同步耗时超时；如果后续训练需要 GPU，请优先重新完整执行：
@@ -115,7 +143,7 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 - 模型验证
 - 系统设置
 
-当前主 GUI 为 `scr/yolo_workbench_qt/app.py` 的 PySide6 / Qt 实现，`scr/yolo_workbench/main.py` 只作为标准启动入口转发到 Qt。
+当前主 GUI 入口为 `scr/main.py`，应用装配层位于 `scr/app.py`，窗口与页面拆分到 `scr/ui/` 下；服务层保持在 `scr/services/` 下。
 
 程序启动时默认进入"主页"，不再根据上次关闭前的 `last_page` 自动恢复页面。
 
@@ -132,10 +160,10 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 - 上半区左侧为"项目概览"（标题与"设置项目目录"按钮同行），包含项目文件夹、图片路径、标注路径、结果路径、图片数量、标签数量。
 - 项目概览每行保持左侧字段名、右侧数据结构；字段名固定窄宽，右侧长路径使用中间省略显示，完整内容放入 tooltip。
 - "设置项目目录"与"打开结果目录"按钮采用紧凑按钮样式，高度约 30px，小字号，不要通过继续加宽按钮解决文字显示问题。
-- 上半区右侧为"各类别图片分布"，使用 `scr/yolo_workbench_qt/home_charts.py` 中的独立图表组件渲染柱状图。
+- 上半区右侧为"各类别图片分布"，使用 `scr/ui/widgets/charts.py` 中的独立图表组件渲染柱状图。
 - 各类别图片分布显示四根柱：总照片、训练、验证、测试；显示类别、照片总数、各柱数量与占比。柱状图坐标轴左侧留白保持紧凑，当前约定左边距为 30px。
 - 下半区左侧为训练曲线卡片，但不显示"训练曲线"标题，以节省空间。
-- 训练曲线使用 `scr/yolo_workbench_qt/home_charts.py` 中的独立图表组件，从 `results.csv` 读取数据，顶部只显示 Epoch，不显示 mAP50 或 Box Loss 的数值摘要。
+- 训练曲线使用 `scr/ui/widgets/charts.py` 中的独立图表组件，从 `results.csv` 读取数据，顶部只显示 Epoch，不显示 mAP50 或 Box Loss 的数值摘要。
 - 训练曲线绘制 mAP50 与 Box Loss 两条关键曲线并保留图例；曲线必须只画线，不得填充折线路径区域，避免出现三角形色块。
 - 训练曲线暂无训练记录时显示坐标轴和空状态文字。
 - 下半区右侧为"训练历史"（"打开结果目录"按钮与标题同行，排序三角形隐藏），自动扫描 `result/**/weights/*.pt`。
@@ -285,7 +313,7 @@ Qt 实现注意事项：
 
 ### 窗口与控件规范
 
-- 程序图标：项目根目录 `icon.svg`，同时在 `scr/yolo_workbench_qt/assets/` 中放置 `app_icon.png` 和 `app_icon.ico`。窗口标题栏和导航栏左侧均显示图标。
+- 程序图标：项目根目录 `icon.svg`，同时在 `scr/assets/` 中放置 `app_icon.png` 和 `app_icon.ico`。窗口标题栏和导航栏左侧均显示图标。
 - 程序默认启动尺寸为 `1100 x 780`，最小窗口尺寸为 `980 x 720`。关闭窗口时不要持久化用户拉大的窗口尺寸，避免下次启动又变大；应保持配置里的 `window_width=1100`、`window_height=780`。
 - 顶部导航按钮文字使用加粗大号字体，当前约定为 `Microsoft YaHei UI 15 bold`。
 - 所有应该选择固定选项的字段都应使用下拉框，不要用只读文本框伪装，例如任务类型、设备、输出方式、保存格式、检测模式、摄像头、优化器等。
@@ -321,7 +349,7 @@ Qt 实现注意事项：
 
 ## 服务层说明
 
-核心服务接口在 `scr/yolo_workbench/services/`：
+核心服务接口在 `scr/services/`：
 
 - `settings_service.py`：设置文件加载、保存、默认值合并。新增 `training.optimizer` 和 `features.custom_command_dialog` 字段。
 - `conversion_service.py`：Labelme 转 YOLO、已有 YOLO `.txt` 分组、自动识别类别、数据集划分、`data.yaml` 生成。
@@ -391,7 +419,7 @@ D:\ruanjian\User\Python\yolo-weld\data\yolov8m-obb.yaml
 ## 后续开发建议
 
 - 优先保持服务层可测试，不要把业务逻辑直接写死在 GUI 回调中。
-- Qt GUI 可以逐步拆分到 `scr/yolo_workbench_qt/views/`，避免 `app.py` 继续变大；主页图表已先拆到 `scr/yolo_workbench_qt/home_charts.py`。
+- Qt GUI 可以继续按 `scr/ui/views/`、`scr/ui/widgets/` 和 `scr/ui/dialogs.py` 这一层次拆分，避免页面文件再次膨胀；主页图表模块保持在 `scr/ui/widgets/charts.py`。
 - 训练曲线已从 `results.csv` 读取数据绘制，当前只保留关键曲线与 Epoch 摘要；后续增加指标时不要让标题区重新拥挤。
 - GPU 利用率优先通过 `nvidia-smi` 获取；如果不可用，界面显示"待检测"即可。
 - 对任何会改文件的功能，继续坚持"先预览，再执行"。

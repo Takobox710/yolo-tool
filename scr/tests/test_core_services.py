@@ -12,7 +12,7 @@ def make_image(path: Path, size=(100, 100), color="white"):
 
 
 def test_settings_service_loads_and_merges_defaults(tmp_path):
-    from scr.yolo_workbench.services.settings_service import SettingsService
+    from scr.services.settings_service import SettingsService
 
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(json.dumps({"training": {"epochs": 12}}, ensure_ascii=False), encoding="utf-8")
@@ -26,7 +26,7 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
 
 
 def test_conversion_config_rejects_invalid_ratios(tmp_path):
-    from scr.yolo_workbench.services.conversion_service import ConversionConfig
+    from scr.services.conversion_service import ConversionConfig
 
     config = ConversionConfig(
         task_mode="obb",
@@ -45,7 +45,7 @@ def test_conversion_config_rejects_invalid_ratios(tmp_path):
 
 
 def test_run_conversion_writes_obb_and_detect_formats(tmp_path):
-    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+    from scr.services.conversion_service import ConversionConfig, run_conversion
 
     images = tmp_path / "images"
     images.mkdir()
@@ -114,7 +114,7 @@ def test_run_conversion_writes_obb_and_detect_formats(tmp_path):
 
 
 def test_line_conversion_expands_to_obb(tmp_path):
-    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+    from scr.services.conversion_service import ConversionConfig, run_conversion
 
     images = tmp_path / "images"
     images.mkdir()
@@ -151,7 +151,7 @@ def test_line_conversion_expands_to_obb(tmp_path):
 
 
 def test_conversion_can_split_existing_yolo_labels_without_labelme(tmp_path):
-    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+    from scr.services.conversion_service import ConversionConfig, run_conversion
 
     images = tmp_path / "images"
     labels = tmp_path / "yolo_labels"
@@ -183,7 +183,7 @@ def test_conversion_can_split_existing_yolo_labels_without_labelme(tmp_path):
 
 
 def test_conversion_tracks_multi_class_stats_and_formats_result(tmp_path):
-    from scr.yolo_workbench.services.conversion_service import ConversionConfig, format_conversion_result, run_conversion
+    from scr.services.conversion_service import ConversionConfig, format_conversion_result, run_conversion
 
     images = tmp_path / "images"
     images.mkdir()
@@ -228,7 +228,7 @@ def test_conversion_tracks_multi_class_stats_and_formats_result(tmp_path):
 
 
 def test_conversion_auto_detects_labelme_classes(tmp_path):
-    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+    from scr.services.conversion_service import ConversionConfig, run_conversion
 
     images = tmp_path / "images"
     images.mkdir()
@@ -268,7 +268,7 @@ def test_conversion_auto_detects_labelme_classes(tmp_path):
 
 
 def test_conversion_auto_names_existing_yolo_classes(tmp_path):
-    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+    from scr.services.conversion_service import ConversionConfig, run_conversion
 
     images = tmp_path / "images"
     labels = tmp_path / "labels_in"
@@ -297,7 +297,7 @@ def test_conversion_auto_names_existing_yolo_classes(tmp_path):
 
 
 def test_annotation_preview_services(tmp_path):
-    from scr.yolo_workbench.services.annotation_service import Annotation, load_yolo_annotations, render_annotation_preview
+    from scr.services.annotation_service import Annotation, load_yolo_annotations, render_annotation_preview
 
     image_path = tmp_path / "a.jpg"
     make_image(image_path)
@@ -312,7 +312,7 @@ def test_annotation_preview_services(tmp_path):
 
 
 def test_rename_preview_execute_and_conflict(tmp_path):
-    from scr.yolo_workbench.services.rename_service import execute_rename, preview_rename
+    from scr.services.rename_service import execute_rename, preview_rename
 
     (tmp_path / "a.jpg").write_bytes(b"a")
     plan = preview_rename(tmp_path, "W", 1, 2)
@@ -326,7 +326,7 @@ def test_rename_preview_execute_and_conflict(tmp_path):
 
 
 def test_rename_preview_uses_natural_numeric_sort(tmp_path):
-    from scr.yolo_workbench.services.rename_service import preview_rename
+    from scr.services.rename_service import preview_rename
 
     for name in ["1.jpg", "10.jpg", "100.jpg", "2.jpg", "3.jpg"]:
         (tmp_path / name).write_bytes(b"image")
@@ -338,7 +338,7 @@ def test_rename_preview_uses_natural_numeric_sort(tmp_path):
 
 
 def test_resize_preview_and_run(tmp_path):
-    from scr.yolo_workbench.services.resize_service import ResizeConfig, preview_resize, run_resize
+    from scr.services.resize_service import ResizeConfig, preview_resize, run_resize
 
     source = tmp_path / "images"
     source.mkdir()
@@ -358,8 +358,8 @@ def test_resize_preview_and_run(tmp_path):
 
 
 def test_training_command_and_detection_helpers(tmp_path):
-    from scr.yolo_workbench.services.detection_service import normalize_detection_item, scan_candidate_models
-    from scr.yolo_workbench.services.training_service import build_train_command, infer_task_mode_from_model
+    from scr.services.detection_service import normalize_detection_item, scan_candidate_models
+    from scr.services.training_service import build_train_command, infer_task_mode_from_model
 
     command = build_train_command(
         {"model_yaml": "data/yolov8m-obb.yaml", "data": "data.yaml", "epochs": 800, "lr": 0.001}
@@ -387,7 +387,7 @@ def test_training_command_and_detection_helpers(tmp_path):
 
 
 def test_training_command_includes_all_hsv_params_when_configured():
-    from scr.yolo_workbench.services.training_service import build_train_command
+    from scr.services.training_service import build_train_command
 
     command = build_train_command(
         {
@@ -405,7 +405,7 @@ def test_training_command_includes_all_hsv_params_when_configured():
 
 
 def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
-    from scr.yolo_workbench.services.detection_service import collect_prediction_sources
+    from scr.services.detection_service import collect_prediction_sources
 
     folder = tmp_path / "inputs"
     folder.mkdir()
@@ -423,7 +423,7 @@ def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
 
 
 def test_detection_source_collection_uses_natural_numeric_sort(tmp_path):
-    from scr.yolo_workbench.services.detection_service import collect_prediction_sources
+    from scr.services.detection_service import collect_prediction_sources
 
     folder = tmp_path / "inputs"
     folder.mkdir()
@@ -441,7 +441,7 @@ def test_detection_source_collection_uses_natural_numeric_sort(tmp_path):
 
 def test_stream_result_rendering_uses_current_frame_as_plot_background():
     import numpy as np
-    from scr.yolo_workbench.services.detection_service import render_result_image_from_frame
+    from scr.services.detection_service import render_result_image_from_frame
 
     class FakeResult:
         def __init__(self):
@@ -462,7 +462,7 @@ def test_stream_result_rendering_uses_current_frame_as_plot_background():
 
 
 def test_cached_call_reuses_value_until_ttl_expires(monkeypatch):
-    from scr.yolo_workbench.services.environment_service import cached_call
+    from scr.services.environment_service import cached_call
 
     now = {"value": 10.0}
     calls = {"count": 0}
@@ -485,7 +485,7 @@ def test_cached_call_reuses_value_until_ttl_expires(monkeypatch):
 
 
 def test_system_status_uses_short_cache_and_nonzero_sampling(monkeypatch):
-    from scr.yolo_workbench.services import environment_service
+    from scr.services import environment_service
 
     calls = {}
 
@@ -537,7 +537,7 @@ def test_system_status_uses_short_cache_and_nonzero_sampling(monkeypatch):
 
 
 def test_rename_can_include_matching_labels_and_blocks_label_conflicts(tmp_path):
-    from scr.yolo_workbench.services.rename_service import execute_rename, preview_rename
+    from scr.services.rename_service import execute_rename, preview_rename
 
     images = tmp_path / "images"
     labels = tmp_path / "labels"
@@ -565,7 +565,7 @@ def test_rename_can_include_matching_labels_and_blocks_label_conflicts(tmp_path)
 
 
 def test_rename_can_include_labelme_and_yolo_labels_separately(tmp_path):
-    from scr.yolo_workbench.services.rename_service import execute_rename, preview_rename
+    from scr.services.rename_service import execute_rename, preview_rename
 
     images = tmp_path / "images"
     labelme = tmp_path / "labelme"
@@ -599,3 +599,4 @@ def test_rename_can_include_labelme_and_yolo_labels_separately(tmp_path):
     assert (images / "A1.jpg").exists()
     assert (labelme / "A1.json").read_text(encoding="utf-8") == "labelme"
     assert (yolo / "A1.txt").read_text(encoding="utf-8") == "yolo"
+
