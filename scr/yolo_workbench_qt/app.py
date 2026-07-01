@@ -11,13 +11,41 @@ from queue import Queue
 
 from PIL import Image
 
-from scr.yolo_workbench.services.annotation_service import load_yolo_annotations, render_annotation_preview
-from scr.yolo_workbench.services.conversion_service import ConversionConfig, preview_conversion, run_conversion
-from scr.yolo_workbench.services.detection_service import collect_prediction_sources, run_prediction, scan_candidate_models
-from scr.yolo_workbench.services.environment_service import detect_modules, pixi_available, system_status, torch_cuda_summary
-from scr.yolo_workbench.services.rename_service import execute_rename, preview_rename
-from scr.yolo_workbench.services.resize_service import ResizeConfig, preview_resize, run_resize
-from scr.yolo_workbench.services.runtime_service import spawn_logged_process, stop_process
+from scr.yolo_workbench.services.annotation_service import (
+    load_yolo_annotations,
+    render_annotation_preview,
+)
+from scr.yolo_workbench.services.conversion_service import (
+    ConversionConfig,
+    format_conversion_result,
+    preview_conversion,
+    run_conversion,
+)
+from scr.yolo_workbench.services.detection_service import (
+    collect_prediction_sources,
+    run_prediction,
+    scan_candidate_models,
+)
+from scr.yolo_workbench.services.environment_service import (
+    detect_modules,
+    pixi_available,
+    system_status,
+    torch_cuda_summary,
+)
+from scr.yolo_workbench.services.rename_service import (
+    execute_rename,
+    natural_sort_key,
+    preview_rename,
+)
+from scr.yolo_workbench.services.resize_service import (
+    ResizeConfig,
+    preview_resize,
+    run_resize,
+)
+from scr.yolo_workbench.services.runtime_service import (
+    spawn_logged_process,
+    stop_process,
+)
 from scr.yolo_workbench.services.settings_service import ROOT, SettingsService
 from scr.yolo_workbench.services.training_service import (
     build_train_command,
@@ -25,12 +53,16 @@ from scr.yolo_workbench.services.training_service import (
     read_train_metrics,
     read_results_csv_for_curves,
 )
-from scr.yolo_workbench_qt.home_charts import DatasetDistributionWidget, TrainingCurveWidget
+from scr.yolo_workbench_qt.home_charts import (
+    DatasetDistributionWidget,
+    TrainingCurveWidget,
+)
 
 # ---------------------------------------------------------------------------
 #  Helpers
 # ---------------------------------------------------------------------------
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
+
 
 # --- Task 3: path helpers ---
 def _resolve_project_path(path_str: str, project_root: str | Path = ROOT) -> str:
@@ -69,7 +101,11 @@ def _simplified_model_path(path_str: str) -> str:
     """Simplify result\\train-12\\weights\\best.pt -> train-12\\best.pt"""
     rel = _relative_path(path_str)
     parts = Path(rel).parts
-    if len(parts) >= 3 and parts[0].lower() == "result" and parts[-2].lower() == "weights":
+    if (
+        len(parts) >= 3
+        and parts[0].lower() == "result"
+        and parts[-2].lower() == "weights"
+    ):
         return str(Path(*parts[1:-2] + (parts[-1],)))
     return rel
 
@@ -105,7 +141,9 @@ def _find_pt_files_in_data_models(project_root: Path) -> list[str]:
     return names
 
 
-def _home_column_widths(total_width: int, margins: int = 32, spacing: int = 12) -> tuple[int, int]:
+def _home_column_widths(
+    total_width: int, margins: int = 32, spacing: int = 12
+) -> tuple[int, int]:
     content_width = max(int(total_width) - margins - spacing, 3)
     left = content_width * 3 // 10
     right = content_width - left
@@ -117,6 +155,40 @@ def _history_model_sort_key(train_id: str, model_name: str) -> float:
     run_number = int(match.group(1) or 1) if match else 0
     model_priority = 1 if str(model_name).lower() == "best.pt" else 0
     return float(-(run_number * 10 + model_priority))
+
+
+def _parse_padding_text(text: str) -> int:
+    value = str(text or "").strip()
+    return int(value) if value else 0
+
+
+def _is_live_source_mode(source_mode: str) -> bool:
+    return str(source_mode).strip() == "摄像头"
+
+
+def _should_store_detection_history(source_mode: str) -> bool:
+    return not _is_live_source_mode(source_mode)
+
+
+def _detection_counter_text(
+    source_mode: str, detect_index: int, result_count: int
+) -> str:
+    if _is_live_source_mode(source_mode):
+        return "实时预览"
+    if result_count <= 0 or detect_index < 0:
+        return "0/0"
+    return f"{detect_index + 1}/{result_count}"
+
+
+def _build_detection_log_message(payload: dict) -> str:
+    elapsed = float(payload.get("elapsed") or 0.0)
+    fps = payload.get("fps")
+    if fps is None:
+        fps = (1 / elapsed) if elapsed else 0.0
+    fps_text = (
+        f"实时帧率 FPS: {fps:.1f}" if payload.get("stream_mode") else f"FPS: {fps:.1f}"
+    )
+    return f"{payload.get('status')} | 单张耗时: {elapsed * 1000:.1f}ms | {fps_text} | 结果: {len(payload.get('items') or [])} 个"
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +210,7 @@ def run_app() -> None:
             QLabel,
             QLineEdit,
             QListWidget,
+            QListWidgetItem,
             QMainWindow,
             QMessageBox,
             QPushButton,
@@ -153,14 +226,18 @@ def run_app() -> None:
             QWidget,
         )
     except ModuleNotFoundError as exc:
-        raise SystemExit(f"缺少 Qt 依赖：{exc.name}。请先执行 pixi install 后运行 pixi run app。") from exc
+        raise SystemExit(
+            f"缺少 Qt 依赖：{exc.name}。请先执行 pixi install 后运行 pixi run app。"
+        ) from exc
 
     IMAGE_SUFFIXES = _IMAGE_SUFFIXES
 
     def pil_to_pixmap(image: Image.Image) -> QPixmap:
         rgba = image.convert("RGBA")
         data = rgba.tobytes("raw", "RGBA")
-        qimage = QImage(data, rgba.width, rgba.height, rgba.width * 4, QImage.Format.Format_RGBA8888)
+        qimage = QImage(
+            data, rgba.width, rgba.height, rgba.width * 4, QImage.Format.Format_RGBA8888
+        )
         return QPixmap.fromImage(qimage.copy())
 
     # --- Task 1: helper to load nav icon ---
@@ -169,7 +246,12 @@ def run_app() -> None:
         if icon_path.exists():
             pix = QPixmap(str(icon_path))
             if not pix.isNull():
-                return pix.scaled(28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                return pix.scaled(
+                    28,
+                    28,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
         return None
 
     class Worker(QThread):
@@ -200,6 +282,7 @@ def run_app() -> None:
 
         def run(self):
             try:
+
                 def forward(payload):
                     self.results.append(payload)
                     self.result_payload.emit(payload)
@@ -223,6 +306,7 @@ def run_app() -> None:
 
     class CardNoPad(QFrame):
         """Card with minimal padding for compact grid items."""
+
         def __init__(self):
             super().__init__()
             self.setObjectName("card")
@@ -236,7 +320,9 @@ def run_app() -> None:
             self.setObjectName("imageView")
             self.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.setMinimumHeight(260)
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            self.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
             self._pixmap: QPixmap | None = None
 
         def set_pil_image(self, image: Image.Image):
@@ -250,7 +336,11 @@ def run_app() -> None:
         def _rescale(self):
             if self._pixmap is None or self.width() <= 0 or self.height() <= 0:
                 return
-            scaled = self._pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            scaled = self._pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
             self.setPixmap(scaled)
 
     class _SortItem(QTableWidgetItem):
@@ -304,7 +394,10 @@ def run_app() -> None:
             self.command_edit.setPlainText(" ".join(command))
             self.command_edit.setFont(QFont("Consolas", 11))
             layout.addWidget(self.command_edit, 1)
-            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel
+            )
             buttons.accepted.connect(self.accept)
             buttons.rejected.connect(self.reject)
             layout.addWidget(buttons)
@@ -318,7 +411,9 @@ def run_app() -> None:
             self.settings_service = SettingsService()
             self.settings = self.settings_service.load()
             # Ensure new fields exist
-            self.settings.setdefault("features", {}).setdefault("custom_command_dialog", True)
+            self.settings.setdefault("features", {}).setdefault(
+                "custom_command_dialog", True
+            )
             self.settings.setdefault("training", {}).setdefault("optimizer", "auto")
             self.workers: list[Worker] = []
             self.pages: dict[str, QWidget] = {}
@@ -368,7 +463,9 @@ def run_app() -> None:
                 button = QPushButton(self.page_titles[key])
                 button.setObjectName("navButton")
                 button.setCheckable(True)
-                button.clicked.connect(lambda _checked=False, page=key: self.show_page(page))
+                button.clicked.connect(
+                    lambda _checked=False, page=key: self.show_page(page)
+                )
                 nav_layout.addWidget(button)
                 self.nav_buttons[key] = button
             root_layout.addWidget(nav)
@@ -382,7 +479,6 @@ def run_app() -> None:
             self.status.setContentsMargins(14, 5, 14, 5)
             root_layout.addWidget(self.status)
             self.setCentralWidget(root)
-            self.setStyleSheet(STYLE)
             self.show_page("home")
 
         def show_page(self, key: str):
@@ -417,7 +513,9 @@ def run_app() -> None:
             worker = Worker(kind, fn)
             self.workers.append(worker)
             worker.finished_with_payload.connect(self.handle_background)
-            worker.finished.connect(lambda w=worker: self.workers.remove(w) if w in self.workers else None)
+            worker.finished.connect(
+                lambda w=worker: self.workers.remove(w) if w in self.workers else None
+            )
             worker.start()
 
         def handle_background(self, kind: str, payload):
@@ -462,7 +560,9 @@ def run_app() -> None:
             layout.setSpacing(14)
             return layout
 
-        def field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+        def field(
+            self, label: str, value: str = "", browse=None, placeholder: str = ""
+        ):
             box = QWidget()
             layout = QVBoxLayout(box)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -483,7 +583,9 @@ def run_app() -> None:
             layout.addLayout(row)
             return box, edit
 
-        def path_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+        def path_field(
+            self, label: str, value: str = "", browse=None, placeholder: str = ""
+        ):
             return self.field(label, self.display_path(value), browse, placeholder)
 
         def combo_field(self, label: str, value: str, values: list[str]):
@@ -500,7 +602,9 @@ def run_app() -> None:
             layout.addWidget(combo)
             return box, combo
 
-        def inline_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+        def inline_field(
+            self, label: str, value: str = "", browse=None, placeholder: str = ""
+        ):
             box = QWidget()
             layout = QHBoxLayout(box)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -534,8 +638,9 @@ def run_app() -> None:
             layout.addWidget(combo, 1)
             return box, combo
 
-
-        def stacked_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+        def stacked_field(
+            self, label: str, value: str = "", browse=None, placeholder: str = ""
+        ):
             """Label on top, input + optional browse button below."""
             box = QWidget()
             outer = QVBoxLayout(box)
@@ -558,10 +663,21 @@ def run_app() -> None:
             outer.addLayout(row)
             return box, edit
 
-        def stacked_path_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
-            return self.stacked_field(label, self.display_path(value), browse, placeholder)
+        def stacked_path_field(
+            self, label: str, value: str = "", browse=None, placeholder: str = ""
+        ):
+            return self.stacked_field(
+                label, self.display_path(value), browse, placeholder
+            )
 
-        def stacked_combo_field(self, label: str, value: str, values: list[str], browse=None, placeholder: str = ""):
+        def stacked_combo_field(
+            self,
+            label: str,
+            value: str,
+            values: list[str],
+            browse=None,
+            placeholder: str = "",
+        ):
             """Label on top, combo + optional browse button below."""
             box = QWidget()
             outer = QVBoxLayout(box)
@@ -589,22 +705,33 @@ def run_app() -> None:
             return box, combo
 
         def choose_dir(self, edit: QLineEdit):
-            current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
+            current = (
+                self.resolve_path_text(edit)
+                if edit.text()
+                else str(self.project_root())
+            )
             path = QFileDialog.getExistingDirectory(self, "选择文件夹", current)
             if path:
                 edit.setText(self.display_path(path))
 
         def choose_file(self, edit: QLineEdit, caption: str = "选择文件"):
-            current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
-            path, _ = QFileDialog.getOpenFileName(self, caption, current, "All Files (*)")
+            current = (
+                self.resolve_path_text(edit)
+                if edit.text()
+                else str(self.project_root())
+            )
+            path, _ = QFileDialog.getOpenFileName(
+                self, caption, current, "All Files (*)"
+            )
             if path:
                 edit.setText(self.display_path(path))
 
         def _choose_pt_for_combo(self, combo: QComboBox):
-            path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", str(ROOT), "PyTorch 模型 (*.pt);;所有文件 (*)")
+            path, _ = QFileDialog.getOpenFileName(
+                self, "选择模型文件", str(ROOT), "PyTorch 模型 (*.pt);;所有文件 (*)"
+            )
             if path:
                 combo.setCurrentText(self.display_path(path))
-
 
         def stat_card(self, label: str, value: str = "-"):
             card = QFrame()
@@ -639,7 +766,12 @@ def run_app() -> None:
             return card, metric
 
         def short_gpu_name(self, name: str):
-            cleaned = str(name or "").replace("NVIDIA GeForce ", "").replace("NVIDIA ", "").replace(" Laptop GPU", "")
+            cleaned = (
+                str(name or "")
+                .replace("NVIDIA GeForce ", "")
+                .replace("NVIDIA ", "")
+                .replace(" Laptop GPU", "")
+            )
             cleaned = cleaned.replace("RTX", "RTX ").replace("  ", " ").strip()
             return cleaned or "待检测"
 
@@ -750,12 +882,18 @@ def run_app() -> None:
             history.layout.addLayout(hist_header)
             history.layout.addSpacing(3)
             self.history_table = QTableWidget(0, 7)
-            self.history_table.setHorizontalHeaderLabels(["模型ID", "Epochs", "Time", "mAP50", "mAP50-95", "Box Loss", "Recall"])
+            self.history_table.setHorizontalHeaderLabels(
+                ["模型ID", "Epochs", "Time", "mAP50", "mAP50-95", "Box Loss", "Recall"]
+            )
             self.history_table.setAlternatingRowColors(True)
-            self.history_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.history_table.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
             self.history_table.setSortingEnabled(True)
             self.history_table.horizontalHeader().setSortIndicatorShown(False)
-            self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+            self.history_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Fixed
+            )
             history.layout.addWidget(self.history_table, 1)
             grid.addWidget(history, 1, 1)
             self._home_left_cards = [overview, curve]
@@ -785,44 +923,66 @@ def run_app() -> None:
         def _apply_home_column_widths(self):
             margins = self.layout().contentsMargins()
             total_margins = margins.left() + margins.right()
-            left_width, right_width = _home_column_widths(self.width(), total_margins, self._home_grid_spacing)
+            left_width, right_width = _home_column_widths(
+                self.width(), total_margins, self._home_grid_spacing
+            )
             for card in self._home_left_cards:
                 card.setMinimumWidth(0)
                 card.setMaximumWidth(left_width)
-                card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                card.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+                )
             for card in self._home_right_cards:
                 card.setMinimumWidth(0)
                 card.setMaximumWidth(right_width)
-                card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                card.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+                )
             self._refresh_overview_elides()
             self._apply_history_column_widths()
 
         def _elide_overview_text(self, text: str, label: QLabel) -> str:
             available_width = max(label.width(), 24)
-            return label.fontMetrics().elidedText(str(text), Qt.TextElideMode.ElideMiddle, available_width)
+            return label.fontMetrics().elidedText(
+                str(text), Qt.TextElideMode.ElideMiddle, available_width
+            )
 
         def _refresh_overview_elides(self):
             for key, text in getattr(self, "_overview_raw_values", {}).items():
-                self.overview_stats[key].setText(self._elide_overview_text(text, self.overview_stats[key]))
+                self.overview_stats[key].setText(
+                    self._elide_overview_text(text, self.overview_stats[key])
+                )
 
         def on_show(self):
             paths = self.app.settings["paths"]
             project_root = self.app.settings["project"]["root"]
             images = Path(paths["images_dir"])
             labels = Path(paths["labels_dir"])
-            image_count = len([p for p in images.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES]) if images.exists() else 0
+            image_count = (
+                len([p for p in images.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES])
+                if images.exists()
+                else 0
+            )
             label_count = len(list(labels.glob("*.txt"))) if labels.exists() else 0
 
             # Task 3: relative paths (except project folder)
             def set_overview_stat(key: str, text: str):
                 self._overview_raw_values[key] = text
-                self.overview_stats[key].setText(self._elide_overview_text(text, self.overview_stats[key]))
+                self.overview_stats[key].setText(
+                    self._elide_overview_text(text, self.overview_stats[key])
+                )
                 self.overview_stats[key].setToolTip(text)
 
             set_overview_stat("project", project_root)
-            set_overview_stat("images", _relative_path(paths["images_dir"], project_root))
-            set_overview_stat("annotations", _relative_path(paths["annotations_dir"], project_root))
-            set_overview_stat("result", _relative_path(paths["result_dir"], project_root))
+            set_overview_stat(
+                "images", _relative_path(paths["images_dir"], project_root)
+            )
+            set_overview_stat(
+                "annotations", _relative_path(paths["annotations_dir"], project_root)
+            )
+            set_overview_stat(
+                "result", _relative_path(paths["result_dir"], project_root)
+            )
             set_overview_stat("image_count", str(image_count))
             set_overview_stat("label_count", str(label_count))
 
@@ -830,9 +990,23 @@ def run_app() -> None:
             split_counts = {}
             for split in ("train", "val", "test"):
                 img_dir = dataset_dir / split / "images"
-                split_counts[split] = len([p for p in img_dir.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES]) if img_dir.exists() else 0
-            self.distribution_view.set_counts(split_counts, self.app.settings["dataset"]["class_names"])
-            self.curve_view.set_curve_data(read_results_csv_for_curves(Path(paths["result_dir"])))
+                split_counts[split] = (
+                    len(
+                        [
+                            p
+                            for p in img_dir.glob("*")
+                            if p.suffix.lower() in IMAGE_SUFFIXES
+                        ]
+                    )
+                    if img_dir.exists()
+                    else 0
+                )
+            self.distribution_view.set_counts(
+                split_counts, self.app.settings["dataset"]["class_names"]
+            )
+            self.curve_view.set_curve_data(
+                read_results_csv_for_curves(Path(paths["result_dir"]))
+            )
             self.refresh_history()
 
         def refresh_history(self):
@@ -877,7 +1051,9 @@ def run_app() -> None:
             QTimer.singleShot(50, self._apply_history_column_widths)
 
         def pick_project_root(self):
-            path = QFileDialog.getExistingDirectory(self, "设置项目目录", self.app.settings["project"]["root"])
+            path = QFileDialog.getExistingDirectory(
+                self, "设置项目目录", self.app.settings["project"]["root"]
+            )
             if path:
                 self.app.settings["project"]["root"] = path
                 self.app.settings_service.save(self.app.settings)
@@ -887,6 +1063,7 @@ def run_app() -> None:
             path = Path(self.app.settings["paths"]["result_dir"])
             if path.exists():
                 os.startfile(path)
+
     # ===================================================================
     #  Data page
     # ===================================================================
@@ -912,11 +1089,18 @@ def run_app() -> None:
                 "resize": ResizeTab(app),
             }
             self.tool_buttons = {}
-            for key, label in [("convert", "标注转换"), ("preview", "标注预览"), ("rename", "批量重命名"), ("resize", "图片压缩")]:
+            for key, label in [
+                ("convert", "标注转换"),
+                ("preview", "标注预览"),
+                ("rename", "批量重命名"),
+                ("resize", "图片压缩"),
+            ]:
                 button = QPushButton(label)
                 button.setObjectName("dataNavButton")
                 button.setCheckable(True)
-                button.clicked.connect(lambda _checked=False, name=key: self.show_tool(name))
+                button.clicked.connect(
+                    lambda _checked=False, name=key: self.show_tool(name)
+                )
                 side_layout.addWidget(button)
                 self.tool_buttons[key] = button
                 self.tool_stack.addWidget(self.tools[key])
@@ -935,21 +1119,102 @@ def run_app() -> None:
             super().__init__(app)
             layout = QVBoxLayout(self)
             layout.setContentsMargins(12, 12, 12, 12)
+            layout.setSpacing(12)
             paths = app.settings["paths"]
             dataset = app.settings["dataset"]
-            grid = QGridLayout()
-            self.images_box, self.images_edit = self.path_field("图片目录", paths["images_dir"], self.choose_dir)
-            self.annotations_box, self.annotations_edit = self.path_field("Labelme目录", paths["annotations_dir"], self.choose_dir)
-            self.output_box, self.output_edit = self.path_field("输出目录", paths["dataset_dir"], self.choose_dir)
-            self.classes_box, self.classes_edit = self.field("类别名称", ",".join(dataset["class_names"]))
-            self.task_box, self.task_combo = self.combo_field("任务类型", app.settings["task"]["mode"], ["obb", "detect"])
+
+            top_row = QHBoxLayout()
+            top_row.setContentsMargins(0, 0, 0, 0)
+            top_row.setSpacing(16)
+
+            left_card = Card("数据集与转换配置")
+            left_grid = QGridLayout()
+            left_grid.setHorizontalSpacing(12)
+            left_grid.setVerticalSpacing(10)
+            self.images_box, self.images_edit = self.path_field(
+                "图片目录", paths["images_dir"], self.choose_dir
+            )
+            self.annotations_box, self.annotations_edit = self.path_field(
+                "Labelme 标注目录", paths["annotations_dir"], self.choose_dir
+            )
+            self.yolo_labels_box, self.yolo_labels_edit = self.path_field(
+                "YOLO 标注目录", paths["labels_dir"], self.choose_dir
+            )
+            self.output_box, self.output_edit = self.path_field(
+                "输出目录", paths["dataset_dir"], self.choose_dir
+            )
+            left_grid.addWidget(self.images_box, 0, 0)
+            left_grid.addWidget(self.annotations_box, 0, 1)
+            left_grid.addWidget(self.yolo_labels_box, 1, 0)
+            left_grid.addWidget(self.output_box, 1, 1)
+            left_card.layout.addLayout(left_grid)
+            self.labelme_check = QCheckBox("Labelme 转 YOLO (?)")
+            self.labelme_check.setToolTip(
+                "开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。"
+            )
+            self.labelme_check.setChecked(True)
+            self.labelme_check.stateChanged.connect(self.refresh_mode_state)
+            left_card.layout.addWidget(self.labelme_check)
+
+            right_card = Card("转换参数")
+            param_grid = QGridLayout()
+            param_grid.setHorizontalSpacing(12)
+            param_grid.setVerticalSpacing(10)
+            self.task_box, self.task_combo = self.hint_combo_field(
+                "任务类型",
+                app.settings["task"]["mode"],
+                ["obb", "detect"],
+                "OBB 输出旋转框标签；detect 输出普通矩形框标签。",
+            )
             ratios = dataset["split_ratios"]
-            self.ratio_box, self.ratio_edit = self.field("划分比例", f"{ratios['train']},{ratios['val']},{ratios['test']}")
-            self.seed_box, self.seed_edit = self.field("随机种子", str(dataset["random_seed"]))
-            self.line_box, self.line_edit = self.field("线宽半径", str(dataset["line_to_obb"]["half_width"]))
-            for index, widget in enumerate([self.images_box, self.annotations_box, self.output_box, self.classes_box, self.task_box, self.ratio_box, self.seed_box, self.line_box]):
-                grid.addWidget(widget, index // 2, index % 2)
-            layout.addLayout(grid)
+            self.train_ratio_box, self.train_ratio_edit = self.hint_field(
+                "训练",
+                str(ratios["train"]),
+                "训练集比例，三项合计必须为 1.0。",
+                placeholder="0.0 - 1.0",
+            )
+            self.val_ratio_box, self.val_ratio_edit = self.hint_field(
+                "验证",
+                str(ratios["val"]),
+                "验证集比例，用于训练中评估模型。",
+                placeholder="0.0 - 1.0",
+            )
+            self.test_ratio_box, self.test_ratio_edit = self.hint_field(
+                "测试",
+                str(ratios["test"]),
+                "测试集比例，用于最终检测泛化效果。",
+                placeholder="0.0 - 1.0",
+            )
+            self.seed_box, self.seed_edit = self.hint_field(
+                "随机种子",
+                str(dataset["random_seed"]),
+                "控制随机划分的可复现性；同一数据和种子会得到相同划分。",
+            )
+            line_box = QWidget()
+            line_layout = QVBoxLayout(line_box)
+            line_layout.setContentsMargins(0, 0, 0, 0)
+            line_layout.setSpacing(4)
+            self.line_label = self.hint_label(
+                "直线拓展宽度",
+                "仅在 OBB + Labelme line 标注时生效，按该半宽把直线扩展成旋转矩形。",
+            )
+            self.line_label.setObjectName("fieldLabel")
+            self.line_edit = QLineEdit(str(dataset["line_to_obb"]["half_width"]))
+            self.line_edit.setPlaceholderText("仅 OBB + Labelme line")
+            line_layout.addWidget(self.line_label)
+            line_layout.addWidget(self.line_edit)
+            param_grid.addWidget(self.task_box, 0, 0)
+            param_grid.addWidget(self.train_ratio_box, 0, 1)
+            param_grid.addWidget(self.val_ratio_box, 1, 0)
+            param_grid.addWidget(self.test_ratio_box, 1, 1)
+            param_grid.addWidget(self.seed_box, 2, 0)
+            param_grid.addWidget(line_box, 2, 1)
+            right_card.layout.addLayout(param_grid)
+
+            top_row.addWidget(left_card, 3)
+            top_row.addWidget(right_card, 2)
+            layout.addLayout(top_row)
+
             actions = QHBoxLayout()
             preview_button = QPushButton("预览转换")
             preview_button.clicked.connect(self.preview)
@@ -961,37 +1226,126 @@ def run_app() -> None:
             layout.addLayout(actions)
             self.log = QTextEdit()
             self.log.setReadOnly(True)
+            self.log.setPlaceholderText(
+                "预览或执行后将在这里显示数据集划分、类别统计、跳过标签与输出路径。"
+            )
             layout.addWidget(self.log, 1)
+            self.task_combo.currentTextChanged.connect(self.refresh_mode_state)
+            self.refresh_mode_state()
+
+        def _section_card(self, title: str, content_layout):
+            card = Card(title)
+            card.layout.addLayout(content_layout)
+            return card
+
+        def hint_label(self, text: str, tooltip: str):
+            label = QLabel(f"{text} (?)")
+            label.setToolTip(tooltip)
+            return label
+
+        def hint_field(
+            self, label: str, value: str, tooltip: str, placeholder: str = ""
+        ):
+            box = QWidget()
+            field_layout = QVBoxLayout(box)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(4)
+            caption = self.hint_label(label, tooltip)
+            caption.setObjectName("fieldLabel")
+            edit = QLineEdit(str(value))
+            if placeholder:
+                edit.setPlaceholderText(placeholder)
+            field_layout.addWidget(caption)
+            field_layout.addWidget(edit)
+            return box, edit
+
+        def hint_combo_field(
+            self, label: str, value: str, values: list[str], tooltip: str
+        ):
+            box = QWidget()
+            field_layout = QVBoxLayout(box)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(4)
+            caption = self.hint_label(label, tooltip)
+            caption.setObjectName("fieldLabel")
+            combo = QComboBox()
+            combo.addItems(values)
+            if value in values:
+                combo.setCurrentText(value)
+            field_layout.addWidget(caption)
+            field_layout.addWidget(combo)
+            return box, combo
+
+        def refresh_mode_state(self):
+            labelme_enabled = self.labelme_check.isChecked()
+            self.annotations_box.setEnabled(labelme_enabled)
+            self.yolo_labels_box.setEnabled(not labelme_enabled)
+            enabled = labelme_enabled and self.task_combo.currentText() == "obb"
+            for widget in (self.line_label, self.line_edit):
+                widget.setEnabled(enabled)
+
+        def ratios(self) -> tuple[float, float, float]:
+            return (
+                float(self.train_ratio_edit.text().strip()),
+                float(self.val_ratio_edit.text().strip()),
+                float(self.test_ratio_edit.text().strip()),
+            )
 
         def config(self):
-            train, val, test = [float(item.strip()) for item in self.ratio_edit.text().split(",")]
+            train, val, test = self.ratios()
             return ConversionConfig(
                 task_mode=self.task_combo.currentText(),
                 images_dir=self.path_from_edit(self.images_edit),
-                annotations_dir=self.path_from_edit(self.annotations_edit),
+                annotations_dir=self.path_from_edit(
+                    self.annotations_edit
+                    if self.labelme_check.isChecked()
+                    else self.yolo_labels_edit
+                ),
                 output_dir=self.path_from_edit(self.output_edit),
                 labels_dir=Path(self.app.settings["paths"]["labels_dir"]),
-                class_names=[item.strip() for item in self.classes_edit.text().split(",") if item.strip()],
+                class_names=[],
+                source_format="labelme" if self.labelme_check.isChecked() else "yolo",
                 train_ratio=train,
                 val_ratio=val,
                 test_ratio=test,
-                line_to_obb=True,
+                line_to_obb=self.labelme_check.isChecked()
+                and self.task_combo.currentText() == "obb",
                 line_half_width=float(self.line_edit.text()),
             )
 
         def preview(self):
             try:
-                result = preview_conversion(self.config())
-                self.log.setPlainText(f"有标注图片: {result.labeled_count}\n无标注图片: {result.unlabeled_count}\n计划划分: {result.planned_splits}\n未执行任何写入。")
+                config = self.config()
+                result = preview_conversion(config)
+                preview_result = type(
+                    "PreviewReport",
+                    (),
+                    {
+                        "labeled_train_count": result.planned_splits.get("train", 0),
+                        "labeled_val_count": result.planned_splits.get("val", 0),
+                        "labeled_test_count": result.planned_splits.get("test", 0),
+                        "total_boxes": 0,
+                        "unlabeled_count": result.unlabeled_count,
+                        "yaml_path": result.output_dir / "data.yaml",
+                        "labels_dir": result.labels_dir,
+                        "missing_labels": {},
+                        "stats": {"train": {}, "val": {}, "test": {}},
+                        "class_names": [],
+                    },
+                )()
+                self.log.setPlainText(
+                    format_conversion_result(preview_result, config, preview=True)
+                )
             except Exception as exc:
                 self.log.setPlainText(str(exc))
 
         def run(self):
             try:
-                result = run_conversion(self.config())
-                self.log.append(f"转换完成: train={result.labeled_train_count}, val={result.labeled_val_count}, test={result.labeled_test_count}, boxes={result.total_boxes}")
+                config = self.config()
+                result = run_conversion(config)
+                self.log.setPlainText(format_conversion_result(result, config))
             except Exception:
-                self.log.append(traceback.format_exc())
+                self.log.setPlainText(traceback.format_exc())
 
     class PreviewTab(BasePage):
         def __init__(self, app):
@@ -1001,13 +1355,22 @@ def run_app() -> None:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(12, 12, 12, 12)
             grid = QGridLayout()
-            self.image_box, self.image_edit = self.path_field("图片文件夹", app.settings["paths"]["images_dir"], self.choose_dir)
-            self.label_box, self.label_edit = self.path_field("标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir)
+            self.image_box, self.image_edit = self.path_field(
+                "图片文件夹", app.settings["paths"]["images_dir"], self.choose_dir
+            )
+            self.label_box, self.label_edit = self.path_field(
+                "标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir
+            )
             grid.addWidget(self.image_box, 0, 0)
             grid.addWidget(self.label_box, 0, 1)
             layout.addLayout(grid)
             actions = QHBoxLayout()
-            for text, slot in [("扫描", self.load_preview_items), ("上一张", self.prev_image), ("下一张", self.next_image)]:
+            for text, slot in [
+                ("扫描", self.load_preview_items),
+                ("上一张", self.prev_image),
+                ("下一张", self.next_image),
+                ("列表", self.show_preview_list),
+            ]:
                 button = QPushButton(text)
                 button.clicked.connect(slot)
                 actions.addWidget(button)
@@ -1023,7 +1386,18 @@ def run_app() -> None:
 
         def load_preview_items(self):
             image_dir = self.path_from_edit(self.image_edit)
-            self.preview_items = sorted(path for path in image_dir.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES) if image_dir.exists() else []
+            self.preview_items = (
+                sorted(
+                    (
+                        path
+                        for path in image_dir.iterdir()
+                        if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+                    ),
+                    key=natural_sort_key,
+                )
+                if image_dir.exists()
+                else []
+            )
             self.preview_index = 0
             self.render_current()
 
@@ -1041,15 +1415,92 @@ def run_app() -> None:
             self.preview_index = (self.preview_index + 1) % len(self.preview_items)
             self.render_current()
 
+        def show_preview_index(self, index: int):
+            if not self.preview_items:
+                self.load_preview_items()
+                return
+            self.preview_index = index % len(self.preview_items)
+            self.render_current()
+
+        def show_preview_list(self):
+            if not self.preview_items:
+                self.load_preview_items()
+            if not self.preview_items:
+                QMessageBox.information(
+                    self, "图片列表", "当前图片文件夹没有可预览的图片。"
+                )
+                return
+            dialog = QDialog(self)
+            dialog.setWindowTitle("图片列表")
+            dialog.resize(320, 520)
+            dialog.setMinimumSize(200, 200)
+            layout = QVBoxLayout(dialog)
+            listing = QListWidget()
+            layout.addWidget(listing, 1)
+            search = QLineEdit()
+            search.setPlaceholderText("搜索文件名")
+            layout.addWidget(search)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel
+            )
+            layout.addWidget(buttons)
+            visible_paths: list[Path] = []
+
+            def filter_items(text: str = ""):
+                nonlocal visible_paths
+                needle = text.strip().lower()
+                visible_paths = [
+                    path
+                    for path in self.preview_items
+                    if not needle or needle in path.name.lower()
+                ]
+                listing.clear()
+                for path in visible_paths:
+                    listing.addItem(path.name)
+                if visible_paths:
+                    current_path = (
+                        self.preview_items[self.preview_index]
+                        if 0 <= self.preview_index < len(self.preview_items)
+                        else visible_paths[0]
+                    )
+                    current_row = (
+                        visible_paths.index(current_path)
+                        if current_path in visible_paths
+                        else 0
+                    )
+                    listing.setCurrentRow(current_row)
+
+            def jump_to_current():
+                row = listing.currentRow()
+                if 0 <= row < len(visible_paths):
+                    self.preview_index = self.preview_items.index(visible_paths[row])
+                    self.render_current()
+                    dialog.accept()
+
+            filter_items()
+            search.textChanged.connect(filter_items)
+            listing.itemDoubleClicked.connect(lambda _item: jump_to_current())
+            buttons.accepted.connect(jump_to_current)
+            buttons.rejected.connect(dialog.reject)
+            dialog.exec()
+
         def render_current(self):
             if not self.preview_items:
                 self.current_label.setText("未找到图片")
                 return
             image_path = self.preview_items[self.preview_index]
             label_path = self.path_from_edit(self.label_edit) / f"{image_path.stem}.txt"
-            self.current_label.setText(f"{self.preview_index + 1}/{len(self.preview_items)}  {image_path.name}")
+            self.current_label.setText(
+                f"{self.preview_index + 1}/{len(self.preview_items)}  {image_path.name}"
+            )
             image = Image.open(image_path).convert("RGB")
-            annotations = load_yolo_annotations(image.size, label_path, self.app.settings["task"]["mode"], self.app.settings["dataset"]["class_names"])
+            annotations = load_yolo_annotations(
+                image.size,
+                label_path,
+                self.app.settings["task"]["mode"],
+                self.app.settings["dataset"]["class_names"],
+            )
             preview = render_annotation_preview(image_path, annotations)
             self.source_view.set_pil_image(image)
             self.result_view.set_pil_image(preview)
@@ -1061,35 +1512,85 @@ def run_app() -> None:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(12, 12, 12, 12)
             grid = QGridLayout()
-            self.folder_box, self.folder_edit = self.path_field("文件夹", app.settings["paths"]["images_dir"], self.choose_dir)
-            self.label_box, self.label_edit = self.path_field("标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir)
+            grid.setHorizontalSpacing(12)
+            grid.setVerticalSpacing(10)
+            self.folder_box, self.folder_edit = self.path_field(
+                "图片文件夹", app.settings["paths"]["images_dir"], self.choose_dir
+            )
+            self.labelme_box, self.labelme_edit = self.path_field(
+                "Labelme 标注文件夹",
+                app.settings["paths"]["annotations_dir"],
+                self.choose_dir,
+            )
+            self.yolo_box, self.yolo_edit = self.path_field(
+                "YOLO 标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir
+            )
             self.prefix_box, self.prefix_edit = self.field("命名前缀", "A")
             self.start_box, self.start_edit = self.field("起始编号", "1")
-            self.padding_box, self.padding_edit = self.field("编号位数", "3")
-            for index, widget in enumerate([self.folder_box, self.label_box, self.prefix_box, self.start_box, self.padding_box]):
-                grid.addWidget(widget, index // 2, index % 2)
-            self.include_labels = QCheckBox("标注文件一并更改")
-            self.include_labels.setChecked(True)
-            grid.addWidget(self.include_labels, 2, 1)
+            self.padding_box, self.padding_combo = self.combo_field(
+                "编号位数", "1", ["1", "2", "3", "4"]
+            )
+            for index, widget in enumerate(
+                [
+                    self.folder_box,
+                    self.labelme_box,
+                    self.yolo_box,
+                    self.prefix_box,
+                    self.start_box,
+                    self.padding_box,
+                ]
+            ):
+                grid.addWidget(widget, index // 3, index % 3)
+            self.include_labelme = QCheckBox("Labelme 标注文件一并更改")
+            self.include_labelme.setChecked(False)
+            self.include_yolo = QCheckBox("YOLO 标注文件一并更改")
+            self.include_yolo.setChecked(False)
+            grid.addWidget(self.include_labelme, 2, 0)
+            grid.addWidget(self.include_yolo, 2, 1)
             layout.addLayout(grid)
             actions = QHBoxLayout()
-            preview_button = QPushButton("预览")
-            preview_button.clicked.connect(self.preview)
             run_button = QPushButton("执行重命名")
             run_button.clicked.connect(self.run)
-            actions.addWidget(preview_button)
             actions.addWidget(run_button)
             actions.addStretch(1)
             layout.addLayout(actions)
-            self.table = QTableWidget(0, 5)
-            self.table.setHorizontalHeaderLabels(["序号", "原文件名", "新文件名", "图片冲突", "标注状态"])
-            self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            self.table = QTableWidget(0, 3)
+            self.table.setHorizontalHeaderLabels(
+                ["图片文件状态", "Labelme 标注状态", "YOLO 标注状态"]
+            )
+            self.table.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self.table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Stretch
+            )
             layout.addWidget(self.table, 1)
-            for edit in [self.folder_edit, self.label_edit, self.prefix_edit, self.start_edit, self.padding_edit]:
+            for edit in [
+                self.folder_edit,
+                self.labelme_edit,
+                self.yolo_edit,
+                self.prefix_edit,
+                self.start_edit,
+            ]:
                 edit.textChanged.connect(lambda _text: self.preview())
-            self.include_labels.stateChanged.connect(lambda _state: self.preview())
+            self.padding_combo.currentTextChanged.connect(lambda _text: self.preview())
+            self.include_labelme.stateChanged.connect(lambda _state: self.preview())
+            self.include_yolo.stateChanged.connect(lambda _state: self.preview())
             QTimer.singleShot(100, self.preview)
+
+        def label_status(
+            self, source: Path | None, target: Path | None, note: str
+        ) -> str:
+            if note:
+                return note
+            if source and target:
+                return f"{source.name} -> {target.name}"
+            return "不处理"
+
+        def image_status(self, item) -> str:
+            if item.conflict:
+                return f"目标已存在: {item.new_name}"
+            return f"{item.old_name} -> {item.new_name}"
 
         def preview(self):
             try:
@@ -1097,25 +1598,41 @@ def run_app() -> None:
                     self.path_from_edit(self.folder_edit),
                     self.prefix_edit.text(),
                     int(self.start_edit.text()),
-                    int(self.padding_edit.text()),
-                    labels_dir=self.path_from_edit(self.label_edit),
-                    include_labels=self.include_labels.isChecked(),
+                    _parse_padding_text(self.padding_combo.currentText()),
+                    labelme_dir=self.path_from_edit(self.labelme_edit),
+                    include_labelme=self.include_labelme.isChecked(),
+                    labels_dir=self.path_from_edit(self.yolo_edit),
+                    include_labels=self.include_yolo.isChecked(),
                 )
             except Exception:
                 return
             self.table.setRowCount(len(self.plan))
             for row, item in enumerate(self.plan):
-                label_status = item.note or (f"{item.label_source.name} -> {item.label_target.name}" if item.label_source and item.label_target else "不处理")
-                values = [item.index, item.old_name, item.new_name, "是" if item.conflict else "无", label_status]
+                image_status = self.image_status(item)
+                labelme_status = self.label_status(
+                    item.labelme_source, item.labelme_target, item.labelme_note
+                )
+                yolo_status = self.label_status(
+                    item.label_source, item.label_target, item.note
+                )
+                values = [image_status, labelme_status, yolo_status]
                 for column, value in enumerate(values):
-                    self.table.setItem(row, column, QTableWidgetItem(str(value)))
+                    table_item = QTableWidgetItem(str(value))
+                    table_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setItem(row, column, table_item)
 
         def run(self):
             result = execute_rename(self.plan)
             if result.renamed_count == 0 and result.skipped_count:
-                QMessageBox.warning(self, "发现冲突", "检测到标注文件目标名称冲突，已取消本次重命名。")
+                QMessageBox.warning(
+                    self, "发现冲突", "检测到标注文件目标名称冲突，已取消本次重命名。"
+                )
             else:
-                QMessageBox.information(self, "重命名完成", f"已重命名图片 {result.renamed_count} 个，标注 {result.label_renamed_count} 个。")
+                QMessageBox.information(
+                    self,
+                    "重命名完成",
+                    f"已重命名图片 {result.renamed_count} 个，Labelme 标注 {result.labelme_renamed_count} 个，YOLO 标注 {result.label_renamed_count} 个。",
+                )
             self.preview()
 
     class ResizeTab(BasePage):
@@ -1125,15 +1642,42 @@ def run_app() -> None:
             layout.setContentsMargins(12, 12, 12, 12)
             resize = app.settings["image_resize"]
             grid = QGridLayout()
-            self.source_box, self.source_edit = self.path_field("图片目录", app.settings["paths"]["images_dir"], self.choose_dir)
-            self.backup_box, self.backup_edit = self.path_field("备份目录", resize["backup_dir"], self.choose_dir)
-            self.output_box, self.output_edit = self.path_field("输出目录", resize["output_dir"], self.choose_dir)
-            self.long_box, self.long_edit = self.field("长边缩放", str(resize["long_edge"]))
-            self.canvas_box, self.canvas_edit = self.field("画布尺寸", str(resize["canvas_size"]))
-            self.bg_box, self.bg_combo = self.combo_field("背景颜色", resize["background"], ["white", "black"])
-            self.output_mode_box, self.output_mode_combo = self.combo_field("输出方式", "输出到新文件夹", ["输出到新文件夹", "覆盖原文件"])
-            self.save_format_box, self.save_format_combo = self.combo_field("保存格式", "保持原格式", ["保持原格式", "jpg", "png"])
-            for index, widget in enumerate([self.source_box, self.backup_box, self.output_box, self.output_mode_box, self.long_box, self.canvas_box, self.bg_box, self.save_format_box]):
+            self.source_box, self.source_edit = self.path_field(
+                "图片目录", app.settings["paths"]["images_dir"], self.choose_dir
+            )
+            self.backup_box, self.backup_edit = self.path_field(
+                "备份目录", resize["backup_dir"], self.choose_dir
+            )
+            self.output_box, self.output_edit = self.path_field(
+                "输出目录", resize["output_dir"], self.choose_dir
+            )
+            self.long_box, self.long_edit = self.field(
+                "长边缩放", str(resize["long_edge"])
+            )
+            self.canvas_box, self.canvas_edit = self.field(
+                "画布尺寸", str(resize["canvas_size"])
+            )
+            self.bg_box, self.bg_combo = self.combo_field(
+                "背景颜色", resize["background"], ["white", "black"]
+            )
+            self.output_mode_box, self.output_mode_combo = self.combo_field(
+                "输出方式", "输出到新文件夹", ["输出到新文件夹", "覆盖原文件"]
+            )
+            self.save_format_box, self.save_format_combo = self.combo_field(
+                "保存格式", "保持原格式", ["保持原格式", "jpg", "png"]
+            )
+            for index, widget in enumerate(
+                [
+                    self.source_box,
+                    self.backup_box,
+                    self.output_box,
+                    self.output_mode_box,
+                    self.long_box,
+                    self.canvas_box,
+                    self.bg_box,
+                    self.save_format_box,
+                ]
+            ):
                 grid.addWidget(widget, index // 2, index % 2)
             layout.addLayout(grid)
             actions = QHBoxLayout()
@@ -1161,13 +1705,19 @@ def run_app() -> None:
 
         def preview(self):
             result = preview_resize(self.config())
-            self.log.setPlainText(f"计划处理 {len(result.items)} 张图片\n输出方式: {self.output_mode_combo.currentText()}\n保存格式: {self.save_format_combo.currentText()}\n")
+            self.log.setPlainText(
+                f"计划处理 {len(result.items)} 张图片\n输出方式: {self.output_mode_combo.currentText()}\n保存格式: {self.save_format_combo.currentText()}\n"
+            )
             for item in result.items[:80]:
-                self.log.append(f"{item.source.name}: {item.original_size} -> {item.resized_size}, scale={item.scale:.3f}")
+                self.log.append(
+                    f"{item.source.name}: {item.original_size} -> {item.resized_size}, scale={item.scale:.3f}"
+                )
 
         def run(self):
             result = run_resize(self.config())
-            self.log.append(f"\n压缩完成: {result.processed_count} 张，输出目录: {result.output_dir}")
+            self.log.append(
+                f"\n压缩完成: {result.processed_count} 张，输出目录: {result.output_dir}"
+            )
 
     # ===================================================================
     #  Task 12: Train page - reordered fields, optimizer, no log title/progress
@@ -1207,35 +1757,63 @@ def run_app() -> None:
             left.layout.addLayout(left_form)
 
             # 基础模型 - stacked combo
-            model_files = _find_pt_files_in_data_models(Path(self.app.settings["project"]["root"]))
+            model_files = _find_pt_files_in_data_models(
+                Path(self.app.settings["project"]["root"])
+            )
             current_pretrained = training.get("pretrained", "")
             current_name = Path(current_pretrained).name if current_pretrained else ""
             base_box, self.pretrained_combo = self.stacked_combo_field(
-                "基础模型", current_name, model_files,
+                "基础模型",
+                current_name,
+                model_files,
                 browse=lambda combo: self._choose_pt_for_combo(combo),
-                placeholder="选择或输入 .pt 模型")
+                placeholder="选择或输入 .pt 模型",
+            )
             left_form.addWidget(base_box, 0, 0)
 
             # 数据集YAML
             self.edits["data"], _ = None, None
-            data_box, data_edit = self.stacked_path_field("数据集YAML", training.get("data", ""), self.choose_file, "选择 data.yaml")
+            data_box, data_edit = self.stacked_path_field(
+                "数据集YAML",
+                training.get("data", ""),
+                self.choose_file,
+                "选择 data.yaml",
+            )
             self.edits["data"] = data_edit
             left_form.addWidget(data_box, 0, 1)
 
             # 模型YAML (default blank)
-            model_yaml_box, model_yaml_edit = self.stacked_path_field("模型YAML", "", self.choose_file, "可选，留空使用基础模型")
+            model_yaml_box, model_yaml_edit = self.stacked_path_field(
+                "模型YAML", "", self.choose_file, "可选，留空使用基础模型"
+            )
             self.edits["model_yaml"] = model_yaml_edit
             left_form.addWidget(model_yaml_box, 1, 0)
 
             # 项目输出
-            project_box, project_edit = self.stacked_path_field("项目输出", training.get("project", ""), self.choose_dir, "选择训练结果输出目录")
+            project_box, project_edit = self.stacked_path_field(
+                "项目输出",
+                training.get("project", ""),
+                self.choose_dir,
+                "选择训练结果输出目录",
+            )
             self.edits["project"] = project_edit
             left_form.addWidget(project_box, 1, 1)
 
             # Augmentation checkboxes
             aug = QGridLayout()
             left.layout.addLayout(aug)
-            for index, (key, label) in enumerate([("mosaic", "马赛克"), ("scale", "缩放"), ("translate", "平移"), ("hsv_h", "HSV"), ("fliplr", "左右翻转"), ("flipud", "上下翻转"), ("degrees", "旋转"), ("mixup", "MixUp")]):
+            for index, (key, label) in enumerate(
+                [
+                    ("mosaic", "马赛克"),
+                    ("scale", "缩放"),
+                    ("translate", "平移"),
+                    ("hsv_h", "HSV"),
+                    ("fliplr", "左右翻转"),
+                    ("flipud", "上下翻转"),
+                    ("degrees", "旋转"),
+                    ("mixup", "MixUp"),
+                ]
+            ):
                 check = QCheckBox(label)
                 check.setChecked(float(training.get(key, 0)) > 0)
                 self.checks[key] = check
@@ -1266,14 +1844,22 @@ def run_app() -> None:
             params.addWidget(lr_box, 0, 1)
 
             # Rows 1-3: remaining params, device last (next to 图片尺寸)
-            param_order = [("epochs", "Epochs"), ("patience", "Patience"), ("workers", "Workers"), ("batch", "Batch"), ("imgsz", "图片尺寸")]
+            param_order = [
+                ("epochs", "Epochs"),
+                ("patience", "Patience"),
+                ("workers", "Workers"),
+                ("batch", "Batch"),
+                ("imgsz", "图片尺寸"),
+            ]
             for i, (key, label) in enumerate(param_order):
                 box, edit = self.inline_field(label, training.get(key, ""))
                 self.edits[key] = edit
                 params.addWidget(box, 1 + i // 2, i % 2)
 
             # Device at row 3 col 1, next to 图片尺寸
-            self.device_box, self.device_combo = self.inline_combo_field("设备", str(training.get("device", "0")), ["0", "cpu", "0,1"])
+            self.device_box, self.device_combo = self.inline_combo_field(
+                "设备", str(training.get("device", "0")), ["0", "cpu", "0,1"]
+            )
             params.addWidget(self.device_box, 3, 1)
             actions = QHBoxLayout()
             layout.addLayout(actions)
@@ -1296,7 +1882,14 @@ def run_app() -> None:
             status = Card()
             status_body = QGridLayout()
             status.layout.addLayout(status_body)
-            for index, (key, label) in enumerate([("gpu", "GPU"), ("vram", "显存占用"), ("cpu", "CPU占用"), ("memory", "内存占用")]):
+            for index, (key, label) in enumerate(
+                [
+                    ("gpu", "GPU"),
+                    ("vram", "显存占用"),
+                    ("cpu", "CPU占用"),
+                    ("memory", "内存占用"),
+                ]
+            ):
                 card, metric = self.metric_card(label)
                 status_body.addWidget(card, 0, index)
                 self.metric_labels[key] = metric
@@ -1316,27 +1909,52 @@ def run_app() -> None:
             self.refresh_train_status()
 
         def refresh_train_status(self):
-            self.app.run_background("train_status", lambda: {"status": system_status(), "cuda": torch_cuda_summary()})
+            self.app.run_background(
+                "train_status",
+                lambda: {"status": system_status(), "cuda": torch_cuda_summary()},
+            )
 
         def apply_train_status(self, payload):
             status = payload["status"]
             cuda = payload["cuda"]
-            self.metric_labels["gpu"].setText(f"{self.short_gpu_name(status.get('gpu') or cuda.get('gpu', '待检测'))} · {status.get('gpu_usage', '待检测')}")
+            self.metric_labels["gpu"].setText(
+                f"{self.short_gpu_name(status.get('gpu') or cuda.get('gpu', '待检测'))} · {status.get('gpu_usage', '待检测')}"
+            )
             self.metric_labels["vram"].setText(status.get("vram", "待检测"))
             self.metric_labels["cpu"].setText(status.get("cpu", "待检测"))
             self.metric_labels["memory"].setText(status.get("memory", "待检测"))
 
         def collect_config(self):
             config = {}
-            config["data"] = self.resolve_path_text(self.edits["data"]) if self.edits["data"] else ""
-            config["model_yaml"] = self.resolve_path_text(self.edits["model_yaml"]) if self.edits["model_yaml"] else ""
-            config["project"] = self.resolve_path_text(self.edits["project"]) if self.edits["project"] else ""
+            config["data"] = (
+                self.resolve_path_text(self.edits["data"]) if self.edits["data"] else ""
+            )
+            config["model_yaml"] = (
+                self.resolve_path_text(self.edits["model_yaml"])
+                if self.edits["model_yaml"]
+                else ""
+            )
+            config["project"] = (
+                self.resolve_path_text(self.edits["project"])
+                if self.edits["project"]
+                else ""
+            )
             config["lr"] = self.edits["lr"].text() if self.edits.get("lr") else "0.001"
-            config["epochs"] = self.edits["epochs"].text() if self.edits.get("epochs") else "800"
-            config["patience"] = self.edits["patience"].text() if self.edits.get("patience") else "150"
-            config["workers"] = self.edits["workers"].text() if self.edits.get("workers") else "2"
-            config["batch"] = self.edits["batch"].text() if self.edits.get("batch") else "16"
-            config["imgsz"] = self.edits["imgsz"].text() if self.edits.get("imgsz") else "640"
+            config["epochs"] = (
+                self.edits["epochs"].text() if self.edits.get("epochs") else "800"
+            )
+            config["patience"] = (
+                self.edits["patience"].text() if self.edits.get("patience") else "150"
+            )
+            config["workers"] = (
+                self.edits["workers"].text() if self.edits.get("workers") else "2"
+            )
+            config["batch"] = (
+                self.edits["batch"].text() if self.edits.get("batch") else "16"
+            )
+            config["imgsz"] = (
+                self.edits["imgsz"].text() if self.edits.get("imgsz") else "640"
+            )
             config["device"] = self.device_combo.currentText()
             config["base_model"] = self.pretrained_combo.currentText()
             config["pretrained"] = self.pretrained_combo.currentText()
@@ -1350,15 +1968,29 @@ def run_app() -> None:
                 config["lr"] = float(config["lr"])
             except (ValueError, TypeError):
                 config["lr"] = float(self.app.settings["training"].get("lr", 0.001))
-            config["task_mode"] = infer_task_mode_from_model(config.get("model_yaml") or config.get("base_model") or config.get("pretrained"))
+            config["task_mode"] = infer_task_mode_from_model(
+                config.get("model_yaml")
+                or config.get("base_model")
+                or config.get("pretrained")
+            )
             for key, check in self.checks.items():
                 if key == "hsv_h":
                     continue
-                config[key] = self.app.settings["training"].get(key, 0) if check.isChecked() else 0
+                config[key] = (
+                    self.app.settings["training"].get(key, 0)
+                    if check.isChecked()
+                    else 0
+                )
             hsv_enabled = self.checks["hsv_h"].isChecked()
-            config["hsv_h"] = self.app.settings["training"].get("hsv_h", 0) if hsv_enabled else 0
-            config["hsv_s"] = self.app.settings["training"].get("hsv_s", 0) if hsv_enabled else 0
-            config["hsv_v"] = self.app.settings["training"].get("hsv_v", 0) if hsv_enabled else 0
+            config["hsv_h"] = (
+                self.app.settings["training"].get("hsv_h", 0) if hsv_enabled else 0
+            )
+            config["hsv_s"] = (
+                self.app.settings["training"].get("hsv_s", 0) if hsv_enabled else 0
+            )
+            config["hsv_v"] = (
+                self.app.settings["training"].get("hsv_v", 0) if hsv_enabled else 0
+            )
             # Resolve pretrained path - check project root then data/models
             pretrained_val = config.get("pretrained", "")
             if pretrained_val and not Path(pretrained_val).exists():
@@ -1374,7 +2006,10 @@ def run_app() -> None:
             return config
 
         def refresh_command_preview(self):
-            self.log.setPlainText(" ".join(build_train_command(self.collect_config())) + "\n等待开始训练...")
+            self.log.setPlainText(
+                " ".join(build_train_command(self.collect_config()))
+                + "\n等待开始训练..."
+            )
 
         # Task 9: Only allow one training at a time
         # Task 10: Custom command dialog
@@ -1396,7 +2031,9 @@ def run_app() -> None:
             self.log.clear()
             self.log.append(" ".join(command))
             self.log_queue = Queue()
-            self.app.training_handle = spawn_logged_process(command, str(ROOT), self.log_queue)
+            self.app.training_handle = spawn_logged_process(
+                command, str(ROOT), self.log_queue
+            )
             self.poll_timer.start(150)
             self.app.status.setText("训练中")
 
@@ -1419,7 +2056,11 @@ def run_app() -> None:
             self.log.append("已请求停止训练。")
 
         def open_result(self):
-            path = Path(self.resolve_path_text(self.edits["project"]) if self.edits.get("project") else self.app.settings["paths"]["result_dir"])
+            path = Path(
+                self.resolve_path_text(self.edits["project"])
+                if self.edits.get("project")
+                else self.app.settings["paths"]["result_dir"]
+            )
             if path.exists():
                 os.startfile(path)
 
@@ -1442,6 +2083,7 @@ def run_app() -> None:
             self.source_index = -1
             self.result_by_source: dict[str, dict] = {}
             self.user_selected_result = False
+            self.result_nav_buttons: list[QPushButton] = []
             layout = self.page_layout()
             split = QHBoxLayout()
             layout.addLayout(split, 1)
@@ -1456,25 +2098,38 @@ def run_app() -> None:
             model_title.setObjectName("sectionTitle")
             left_column.addWidget(model_title)
             model_box, self.model_combo = self.stacked_combo_field(
-                "选择模型", "", [],
+                "选择模型",
+                "",
+                [],
                 browse=lambda combo: self._choose_pt_for_combo(combo),
-                placeholder="选择或输入模型路径")
+                placeholder="选择或输入模型路径",
+            )
             self.model_combo.setMinimumWidth(140)
             left_column.addWidget(model_box)
 
             conf_row = QHBoxLayout()
-            self.conf_box, self.conf_edit = self.field("置信度", str(validation["confidence"]))
+            self.conf_box, self.conf_edit = self.field(
+                "置信度", str(validation["confidence"])
+            )
             self.iou_box, self.iou_edit = self.field("IoU", str(validation["iou"]))
             conf_row.addWidget(self.conf_box)
             conf_row.addWidget(self.iou_box)
             left_column.addLayout(conf_row)
 
             # Source config
-            self.mode_box, self.mode_combo = self.combo_field("检测模式", "图片/视频文件夹", ["图片/视频文件夹", "图片/视频", "摄像头"])
+            self.mode_box, self.mode_combo = self.combo_field(
+                "检测模式",
+                "图片/视频文件夹",
+                ["图片/视频文件夹", "图片/视频", "摄像头"],
+            )
             left_column.addWidget(self.mode_box)
-            self.source_box, self.source_edit = self.path_field("输入源", validation["source_path"], self.choose_detection_source)
+            self.source_box, self.source_edit = self.path_field(
+                "输入源", validation["source_path"], self.choose_detection_source
+            )
             left_column.addWidget(self.source_box)
-            self.camera_box, self.camera_combo = self.combo_field("摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"])
+            self.camera_box, self.camera_combo = self.combo_field(
+                "摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"]
+            )
             left_column.addWidget(self.camera_box)
 
             # Control
@@ -1506,11 +2161,20 @@ def run_app() -> None:
             right = QVBoxLayout()
             toolbar = QHBoxLayout()
             toolbar.addWidget(QLabel("批量检测结果"))
-            for text, slot in [("上一张", self.prev_result), ("下一张", self.next_result), ("第一张", self.first_result), ("最后一张", self.last_result), ("列表", self.show_result_list), ("打开保存文件夹", self.open_detection_save_dir)]:
+            for text, slot in [
+                ("上一张", self.prev_result),
+                ("下一张", self.next_result),
+                ("第一张", self.first_result),
+                ("最后一张", self.last_result),
+                ("列表", self.show_result_list),
+                ("打开保存文件夹", self.open_detection_save_dir),
+            ]:
                 button = QPushButton(text)
                 button.setObjectName("softButton")
                 button.clicked.connect(slot)
                 toolbar.addWidget(button)
+                if text != "打开保存文件夹":
+                    self.result_nav_buttons.append(button)
             self.counter = QLabel("0/0")
             toolbar.addWidget(self.counter)
             toolbar.addStretch(1)
@@ -1527,9 +2191,15 @@ def run_app() -> None:
             right.addLayout(views, 2)
             table_panel = Card("检测结果详情表")
             self.table = QTableWidget(0, 5)
-            self.table.setHorizontalHeaderLabels(["类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"])
-            self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            self.table.setHorizontalHeaderLabels(
+                ["类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"]
+            )
+            self.table.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self.table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Stretch
+            )
             table_panel.layout.addWidget(self.table)
             right.addWidget(table_panel, 1)
             right_widget = QWidget()
@@ -1546,14 +2216,31 @@ def run_app() -> None:
             camera = value == "摄像头"
             self.source_box.setVisible(not camera)
             self.camera_box.setVisible(camera)
+            self.set_result_navigation_enabled(not camera)
+            if camera:
+                self.counter.setText("实时预览")
+            elif not self.detect_results:
+                self.counter.setText("0/0")
             self.update_detection_button_text()
             self.refresh_source_items()
 
+        def set_result_navigation_enabled(self, enabled: bool):
+            for button in self.result_nav_buttons:
+                button.setEnabled(enabled)
+
         def update_detection_button_text(self):
-            self.start_det_btn.setText("开始检测" if self.mode_combo.currentText() == "图片/视频" else "批量检测")
+            self.start_det_btn.setText(
+                "开始检测"
+                if self.mode_combo.currentText() == "图片/视频"
+                else "批量检测"
+            )
 
         def choose_detection_source(self, edit: QLineEdit):
-            current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
+            current = (
+                self.resolve_path_text(edit)
+                if edit.text()
+                else str(self.project_root())
+            )
             if self.mode_combo.currentText() == "图片/视频":
                 path, _ = QFileDialog.getOpenFileName(
                     self,
@@ -1573,7 +2260,9 @@ def run_app() -> None:
                 self.source_items = []
                 self.source_index = -1
                 return
-            self.source_items = collect_prediction_sources(self.mode_combo.currentText(), self.resolve_path_text(self.source_edit))
+            self.source_items = collect_prediction_sources(
+                self.mode_combo.currentText(), self.resolve_path_text(self.source_edit)
+            )
             if not self.source_items:
                 self.source_index = -1
                 return
@@ -1584,7 +2273,9 @@ def run_app() -> None:
             # Scan models and populate dropdown
             result_dir = Path(self.app.settings["paths"]["result_dir"])
             self._all_model_paths = _find_models_full_paths(result_dir)
-            display_names = [_simplified_model_path(str(m)) for m in self._all_model_paths]
+            display_names = [
+                _simplified_model_path(str(m)) for m in self._all_model_paths
+            ]
             self.model_combo.clear()
             self.model_combo.addItems(display_names)
             # Set current from settings
@@ -1602,7 +2293,11 @@ def run_app() -> None:
             text = self.model_combo.currentText()
             # Try to find it in our known paths
             for p in self._all_model_paths:
-                if _simplified_model_path(str(p)) == text or self.display_path(p) == text or str(p) == text:
+                if (
+                    _simplified_model_path(str(p)) == text
+                    or self.display_path(p) == text
+                    or str(p) == text
+                ):
                     return str(p)
             # Maybe it's already a full path
             if Path(text).exists():
@@ -1637,9 +2332,13 @@ def run_app() -> None:
             self.refresh_source_items()
             if self.mode_combo.currentText() == "图片/视频":
                 if not self.source_items:
-                    QMessageBox.information(self, "输入源为空", "请选择一张图片或一段视频。")
+                    QMessageBox.information(
+                        self, "输入源为空", "请选择一张图片或一段视频。"
+                    )
                     return
-                self.source_index = max(0, min(self.source_index, len(self.source_items) - 1))
+                self.source_index = max(
+                    0, min(self.source_index, len(self.source_items) - 1)
+                )
                 self.start_current_source_detection()
                 return
             self.is_detecting = True
@@ -1649,9 +2348,15 @@ def run_app() -> None:
             self.detect_results.clear()
             self.result_by_source.clear()
             self.user_selected_result = False
-            self.is_batch_detection = True
+            self.is_batch_detection = not _is_live_source_mode(
+                self.mode_combo.currentText()
+            )
             self.detect_index = -1
-            self.counter.setText("0/0")
+            self.counter.setText(
+                "实时预览"
+                if _is_live_source_mode(self.mode_combo.currentText())
+                else "0/0"
+            )
             self.table.setRowCount(0)
             self.app.status.setText("检测中")
             self.detect_worker = DetectionWorker(self.config(), self.detect_stop)
@@ -1663,7 +2368,9 @@ def run_app() -> None:
         def start_current_source_detection(self):
             if not self.source_items:
                 return
-            self.source_index = max(0, min(self.source_index, len(self.source_items) - 1))
+            self.source_index = max(
+                0, min(self.source_index, len(self.source_items) - 1)
+            )
             self.start_single_detection(self.source_items[self.source_index])
 
         def start_single_detection(self, path: Path):
@@ -1673,7 +2380,11 @@ def run_app() -> None:
             source_key = str(Path(path).resolve())
             cached = self.result_by_source.get(source_key)
             if cached:
-                self.detect_index = self.detect_results.index(cached) if cached in self.detect_results else self.detect_index
+                self.detect_index = (
+                    self.detect_results.index(cached)
+                    if cached in self.detect_results
+                    else self.detect_index
+                )
                 self.show_detection_payload(cached)
                 return
             self.is_detecting = True
@@ -1681,7 +2392,9 @@ def run_app() -> None:
             self.start_det_btn.setEnabled(False)
             self.detect_stop.clear()
             self.app.status.setText("检测中")
-            self.detect_worker = DetectionWorker(self.single_file_config(path), self.detect_stop)
+            self.detect_worker = DetectionWorker(
+                self.single_file_config(path), self.detect_stop
+            )
             self.detect_worker.result_payload.connect(self.handle_result)
             self.detect_worker.finished_with_results.connect(self.apply_detect_done)
             self.detect_worker.failed.connect(self.apply_detect_error)
@@ -1706,31 +2419,56 @@ def run_app() -> None:
             self.detect_log.append("已请求停止检测。")
 
         def handle_result(self, payload):
+            if _is_live_source_mode(self.mode_combo.currentText()):
+                self.detect_index = 0
+                self.show_detection_payload(payload)
+                return
+            if not _should_store_detection_history(self.mode_combo.currentText()):
+                self.show_detection_payload(payload)
+                return
             self.detect_results.append(payload)
             source_path = payload.get("source_path")
             if source_path:
                 self.result_by_source[str(Path(source_path).resolve())] = payload
             # Task 14: For batch, always show the first image
-            if len(self.detect_results) == 1 or (not self.is_batch_detection and not self.user_selected_result):
+            if len(self.detect_results) == 1 or (
+                not self.is_batch_detection and not self.user_selected_result
+            ):
                 self.detect_index = len(self.detect_results) - 1
                 self.show_detection_payload(payload)
             else:
                 # Just update counter and log, don't switch view
-                self.counter.setText(f"{self.detect_index + 1}/{len(self.detect_results)}")
-                self.detect_log.append(f"{payload.get('status')} | 结果: {len(payload['items'])} 个")
+                self.counter.setText(
+                    _detection_counter_text(
+                        self.mode_combo.currentText(),
+                        self.detect_index,
+                        len(self.detect_results),
+                    )
+                )
+                self.detect_log.append(_build_detection_log_message(payload))
 
         def show_detection_payload(self, payload):
             self.source_view.set_pil_image(payload["source_image"])
             self.result_view.set_pil_image(payload["result_image"])
             self.table.setRowCount(len(payload["items"]))
             for row, item in enumerate(payload["items"]):
-                values = [item.label, f"{item.confidence:.3f}", f"({item.center_x:.1f}, {item.center_y:.1f})", f"{item.width:.1f}×{item.height:.1f}", f"{item.angle:.1f}"]
+                values = [
+                    item.label,
+                    f"{item.confidence:.3f}",
+                    f"({item.center_x:.1f}, {item.center_y:.1f})",
+                    f"{item.width:.1f}×{item.height:.1f}",
+                    f"{item.angle:.1f}",
+                ]
                 for column, value in enumerate(values):
                     self.table.setItem(row, column, QTableWidgetItem(str(value)))
-            self.counter.setText(f"{self.detect_index + 1}/{len(self.detect_results)}")
-            elapsed = payload.get("elapsed", 0.0)
-            fps = (1 / elapsed) if elapsed else 0
-            self.detect_log.append(f"{payload.get('status')} | 单张耗时: {elapsed * 1000:.1f}ms | FPS: {fps:.1f} | 结果: {len(payload['items'])} 个")
+            self.counter.setText(
+                _detection_counter_text(
+                    self.mode_combo.currentText(),
+                    self.detect_index,
+                    len(self.detect_results),
+                )
+            )
+            self.detect_log.append(_build_detection_log_message(payload))
 
         def first_result(self):
             if not self.detect_results:
@@ -1778,7 +2516,9 @@ def run_app() -> None:
         def show_result_list(self):
             self.refresh_source_items()
             if not self.source_items:
-                QMessageBox.information(self, "输入源列表", "当前输入源没有可选择的图片或视频。")
+                QMessageBox.information(
+                    self, "输入源列表", "当前输入源没有可选择的图片或视频。"
+                )
                 return
             dialog = QDialog(self)
             dialog.setWindowTitle("输入源列表")
@@ -1790,20 +2530,35 @@ def run_app() -> None:
             search = QLineEdit()
             search.setPlaceholderText("搜索文件名")
             layout.addWidget(search)
-            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel
+            )
             layout.addWidget(buttons)
             visible_paths: list[Path] = []
 
             def filter_items(text: str = ""):
                 nonlocal visible_paths
                 needle = text.strip().lower()
-                visible_paths = [path for path in self.source_items if not needle or needle in path.name.lower()]
+                visible_paths = [
+                    path
+                    for path in self.source_items
+                    if not needle or needle in path.name.lower()
+                ]
                 listing.clear()
                 for path in visible_paths:
                     listing.addItem(path.name)
                 if visible_paths:
-                    current_path = self.source_items[self.source_index] if 0 <= self.source_index < len(self.source_items) else visible_paths[0]
-                    current_row = visible_paths.index(current_path) if current_path in visible_paths else 0
+                    current_path = (
+                        self.source_items[self.source_index]
+                        if 0 <= self.source_index < len(self.source_items)
+                        else visible_paths[0]
+                    )
+                    current_row = (
+                        visible_paths.index(current_path)
+                        if current_path in visible_paths
+                        else 0
+                    )
                     listing.setCurrentRow(current_row)
 
             def jump_to_current():
@@ -1844,7 +2599,9 @@ def run_app() -> None:
             feat_label = QLabel("训练前显示自定义命令框")
             feat_label.setObjectName("inlineFieldLabel")
             self.cmd_dialog_check = QCheckBox()
-            self.cmd_dialog_check.setChecked(self.app.settings.get("features", {}).get("custom_command_dialog", True))
+            self.cmd_dialog_check.setChecked(
+                self.app.settings.get("features", {}).get("custom_command_dialog", True)
+            )
             self.cmd_dialog_check.stateChanged.connect(self._toggle_custom_cmd)
             feat_row.addWidget(feat_label)
             feat_row.addWidget(self.cmd_dialog_check)
@@ -1861,7 +2618,9 @@ def run_app() -> None:
             info_grid.setContentsMargins(12, 12, 12, 12)
             info_grid.setSpacing(8)
             self.status_cards = {}
-            for index, label in enumerate(["Pixi", "Torch/CUDA", "GPU", "显存", "CPU", "内存", "磁盘", "模块"]):
+            for index, label in enumerate(
+                ["Pixi", "Torch/CUDA", "GPU", "显存", "CPU", "内存", "磁盘", "模块"]
+            ):
                 inner = QFrame()
                 inner.setObjectName("systemInfoInner")
                 inner_layout = QVBoxLayout(inner)
@@ -1888,18 +2647,23 @@ def run_app() -> None:
             self._auto_refresh_timer.start(500)
 
         def _toggle_custom_cmd(self, state):
-            self.app.settings.setdefault("features", {})["custom_command_dialog"] = state == Qt.CheckState.Checked.value
+            self.app.settings.setdefault("features", {})["custom_command_dialog"] = (
+                state == Qt.CheckState.Checked.value
+            )
             self.app.settings_service.save(self.app.settings)
 
         def _auto_refresh(self):
             self._refresh_count += 1
-            self.app.run_background("env_auto", lambda: {
-                "pixi": pixi_available(),
-                "modules": detect_modules(),
-                "cuda": torch_cuda_summary(),
-                "status": system_status(),
-                "settings": self.app.settings,
-            })
+            self.app.run_background(
+                "env_auto",
+                lambda: {
+                    "pixi": pixi_available(),
+                    "modules": detect_modules(),
+                    "cuda": torch_cuda_summary(),
+                    "status": system_status(),
+                    "settings": self.app.settings,
+                },
+            )
 
         def on_show(self):
             for label in self.status_cards:
@@ -1921,7 +2685,10 @@ def run_app() -> None:
 
         def apply_env(self, payload):
             self._apply_env_data(payload)
-            self.log.setPlainText("当前设置:\n" + json.dumps(payload["settings"], ensure_ascii=False, indent=2))
+            self.log.setPlainText(
+                "当前设置:\n"
+                + json.dumps(payload["settings"], ensure_ascii=False, indent=2)
+            )
 
         def apply_env_auto(self, payload):
             self._apply_env_data(payload)
@@ -1930,10 +2697,18 @@ def run_app() -> None:
             cuda = payload["cuda"]
             status = payload["status"]
             modules = payload["modules"]
-            module_summary = " / ".join(f"{name}:{'ok' if ok else '缺失'}" for name, ok in modules.items())
+            module_summary = " / ".join(
+                f"{name}:{'ok' if ok else '缺失'}" for name, ok in modules.items()
+            )
             self.set_status_card("Pixi", "可用" if payload["pixi"] else "不可用")
-            self.set_status_card("Torch/CUDA", f"{cuda.get('torch', '未知')} / CUDA {cuda.get('cuda', '未知')}")
-            self.set_status_card("GPU", self.short_gpu_name(status.get("gpu") or cuda.get("gpu", "待检测")))
+            self.set_status_card(
+                "Torch/CUDA",
+                f"{cuda.get('torch', '未知')} / CUDA {cuda.get('cuda', '未知')}",
+            )
+            self.set_status_card(
+                "GPU",
+                self.short_gpu_name(status.get("gpu") or cuda.get("gpu", "待检测")),
+            )
             self.set_status_card("显存", status.get("vram", "待检测"))
             self.set_status_card("CPU", status.get("cpu", "待检测"))
             self.set_status_card("内存", status.get("memory", "待检测"))
@@ -1961,6 +2736,7 @@ def run_app() -> None:
     #metricValue { color: #0D2B49; font-size: 16px; font-weight: 700; }
     #statValue { color: #0D2B49; font-size: 14px; font-weight: 700; }
     #fieldLabel { color: #627286; font-size: 12px; }
+    #helpText { color: #627286; font-size: 12px; line-height: 18px; }
     #inlineFieldLabel { color: #14233A; font-size: 14px; font-weight: 600; }
     #imageView { background: #F8FBFD; border: 1px solid #D9E3EC; border-radius: 6px; color: #627286; }
     #statCard { background: #F5F8FB; border: 1px solid #E8EDF2; border-radius: 6px; }
@@ -1985,10 +2761,13 @@ def run_app() -> None:
     QTabWidget::pane { border: 1px solid #D9E3EC; background: white; border-radius: 6px; }
     QTabBar::tab { padding: 9px 16px; background: #F5F8FB; border: 1px solid #D9E3EC; }
     QTabBar::tab:selected { background: white; color: #208FD4; }
+    QToolTip { background: #14233A; color: white; border: 0; border-radius: 4px; padding: 6px 8px; }
     """
 
     app = QApplication(sys.argv)
     app.setFont(QFont("Microsoft YaHei UI", 10))
+    app.setEffectEnabled(Qt.UIEffect.UI_AnimateTooltip, False)
+    app.setStyleSheet(STYLE)
     window = WorkbenchWindow()
     window.show()
     raise SystemExit(app.exec())

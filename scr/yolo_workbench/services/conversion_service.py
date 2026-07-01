@@ -20,7 +20,8 @@ class ConversionConfig:
     annotations_dir: Path
     output_dir: Path
     labels_dir: Path
-    class_names: list[str]
+    class_names: list[str] | None = None
+    source_format: str = "labelme"
     train_ratio: float = 0.7
     val_ratio: float = 0.2
     test_ratio: float = 0.1
@@ -32,11 +33,11 @@ class ConversionConfig:
     def validate(self) -> "ConversionConfig":
         if self.task_mode not in {"obb", "detect"}:
             raise ValueError("task_mode 必须是 obb 或 detect")
+        if self.source_format not in {"labelme", "yolo"}:
+            raise ValueError("source_format 必须是 labelme 或 yolo")
         ratio_sum = self.train_ratio + self.val_ratio + self.test_ratio
         if round(ratio_sum, 6) != 1.0:
             raise ValueError(f"数据集划分比例之和必须为 1.0，当前为 {ratio_sum:.6f}")
-        if not self.class_names:
-            raise ValueError("类别列表不能为空")
         if self.line_half_width <= 0:
             raise ValueError("线宽半径必须大于 0")
         return self
@@ -62,6 +63,7 @@ class ConversionResult:
     labels_dir: Path
     missing_labels: dict[str, list[str]]
     stats: dict[str, dict[str, int]]
+    class_names: list[str]
 
 
 def image_files(folder: Path) -> list[Path]:
@@ -73,21 +75,23 @@ def image_files(folder: Path) -> list[Path]:
 def collect_inputs(config: ConversionConfig) -> tuple[list[tuple[Path, Path]], list[Path]]:
     labeled: list[tuple[Path, Path]] = []
     unlabeled: list[Path] = []
-    json_map = {path.stem: path for path in Path(config.annotations_dir).glob("*.json")}
+    suffix = ".json" if config.source_format == "labelme" else ".txt"
+    label_map = {path.stem: path for path in Path(config.annotations_dir).glob(f"*{suffix}")}
     for image_path in image_files(config.images_dir):
-        json_path = json_map.get(image_path.stem)
-        if not json_path:
+        label_path = label_map.get(image_path.stem)
+        if not label_path:
             unlabeled.append(image_path)
             continue
-        try:
-            payload = json.loads(json_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            unlabeled.append(image_path)
-            continue
-        if payload.get("shapes"):
-            labeled.append((image_path, json_path))
-        else:
-            unlabeled.append(image_path)
+        if config.source_format == "labelme":
+            try:
+                payload = json.loads(label_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                unlabeled.append(image_path)
+                continue
+            if not payload.get("shapes"):
+                unlabeled.append(image_path)
+                continue
+        labeled.append((image_path, label_path))
     return labeled, unlabeled
 
 
@@ -128,6 +132,8 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
     labeled, unlabeled = collect_inputs(active)
     if not labeled:
         raise ValueError("没有找到可转换的已标注图片")
+    class_names = detect_class_names(active, labeled)
+    active.class_names = class_names
 
     split_map = split_labeled(labeled, active)
     _prepare_output_dirs(active)
@@ -141,12 +147,18 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
     total_boxes = 0
     for split, pairs in split_map.items():
         split_dir = active.output_dir / split
-        for image_path, json_path in pairs:
+        for image_path, label_source_path in pairs:
             shutil.copy2(image_path, split_dir / "images" / image_path.name)
-            lines = convert_label_file(json_path, active, missing_labels)
-            (split_dir / "labels" / f"{image_path.stem}.txt").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
-            shutil.copy2(split_dir / "labels" / f"{image_path.stem}.txt", active.labels_dir / f"{image_path.stem}.txt")
-            stats[split][active.class_names[0]] += len(lines)
+            if active.source_format == "labelme":
+                lines = convert_label_file(label_source_path, active, missing_labels)
+                label_text = "\n".join(lines) + ("\n" if lines else "")
+            else:
+                label_text = label_source_path.read_text(encoding="utf-8")
+                lines = [line.strip() for line in label_text.splitlines() if line.strip()]
+            target_label_path = split_dir / "labels" / f"{image_path.stem}.txt"
+            target_label_path.write_text(label_text, encoding="utf-8")
+            shutil.copy2(target_label_path, active.labels_dir / target_label_path.name)
+            _add_label_stats(stats[split], lines, active.class_names, missing_labels, label_source_path.name)
             total_boxes += len(lines)
 
     yaml_path = write_data_yaml(active)
@@ -160,7 +172,65 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
         labels_dir=active.labels_dir,
         missing_labels={key: value[:] for key, value in missing_labels.items()},
         stats={key: dict(value) for key, value in stats.items()},
+        class_names=class_names,
     )
+
+
+def detect_class_names(config: ConversionConfig, labeled: list[tuple[Path, Path]] | None = None) -> list[str]:
+    existing = [str(name).strip() for name in (config.class_names or []) if str(name).strip()]
+    if existing:
+        return existing
+    pairs = labeled if labeled is not None else collect_inputs(config)[0]
+    if config.source_format == "labelme":
+        names: list[str] = []
+        seen: set[str] = set()
+        for _image_path, label_path in pairs:
+            try:
+                payload = json.loads(label_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            for shape in payload.get("shapes", []):
+                label = str(shape.get("label") or "").strip()
+                if label and label not in seen:
+                    seen.add(label)
+                    names.append(label)
+        if names:
+            return names
+    max_class_id = -1
+    for _image_path, label_path in pairs:
+        for line in label_path.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            try:
+                max_class_id = max(max_class_id, int(float(parts[0])))
+            except ValueError:
+                continue
+    if max_class_id >= 0:
+        return [f"class_{index}" for index in range(max_class_id + 1)]
+    raise ValueError("未能自动识别类别，请检查标注文件是否包含有效类别")
+
+
+def _add_label_stats(
+    split_stats: defaultdict[str, int],
+    lines: list[str],
+    class_names: list[str],
+    missing_labels: dict[str, list[str]],
+    source_name: str,
+) -> None:
+    for line in lines:
+        parts = line.split()
+        if not parts:
+            continue
+        try:
+            class_id = int(float(parts[0]))
+        except ValueError:
+            missing_labels["invalid-class-id"].append(source_name)
+            continue
+        if 0 <= class_id < len(class_names):
+            split_stats[class_names[class_id]] += 1
+        else:
+            missing_labels[f"class-id:{class_id}"].append(source_name)
 
 
 def _prepare_output_dirs(config: ConversionConfig) -> None:
@@ -275,3 +345,57 @@ def write_data_yaml(config: ConversionConfig) -> Path:
         encoding="utf-8",
     )
     return yaml_path
+
+
+def format_conversion_result(result: ConversionResult, config: ConversionConfig, preview: bool = False) -> str:
+    total_images = result.labeled_train_count + result.labeled_val_count + result.labeled_test_count
+    title = "转换预览" if preview else "转换完成"
+    operation = "Labelme 转 YOLO 并分组" if config.source_format == "labelme" else "YOLO 标注分组"
+    lines = [
+        f"{title}！",
+        "",
+        f"模式: {operation}",
+        f"任务类型: {config.task_mode}",
+        "",
+        "数据集划分:",
+        _format_split_line("训练集", "train", result.labeled_train_count, result.stats),
+        _format_split_line("验证集", "val", result.labeled_val_count, result.stats),
+        _format_split_line("测试集", "test", result.labeled_test_count, result.stats),
+        "",
+        "总体统计:",
+        f"  - 有标注图片: {total_images} 张",
+        f"  - 无标注图片: {result.unlabeled_count} 张",
+        f"  - 标注总数: {result.total_boxes}",
+        "",
+        "类别统计:",
+    ]
+    class_names = getattr(result, "class_names", None) or config.class_names or []
+    for class_name in class_names:
+        train = result.stats.get("train", {}).get(class_name, 0)
+        val = result.stats.get("val", {}).get(class_name, 0)
+        test = result.stats.get("test", {}).get(class_name, 0)
+        lines.append(f"  - {class_name}: train={train}, val={val}, test={test}, total={train + val + test}")
+    if result.missing_labels:
+        lines.extend(["", "跳过或未知标签:"])
+        for label, names in sorted(result.missing_labels.items()):
+            sample = ", ".join(names[:5])
+            more = f" 等 {len(names)} 项" if len(names) > 5 else ""
+            lines.append(f"  - 标签 '{label}': {sample}{more}")
+    lines.extend(
+        [
+            "",
+            "输出路径:",
+            f"  - 数据集目录: {result.yaml_path.parent}",
+            f"  - YAML 配置: {result.yaml_path}",
+            f"  - 汇总标签: {result.labels_dir}",
+        ]
+    )
+    if preview:
+        lines.append("")
+        lines.append("预览模式未执行任何写入。")
+    return "\n".join(lines)
+
+
+def _format_split_line(label: str, split: str, image_count: int, stats: dict[str, dict[str, int]]) -> str:
+    box_count = sum(stats.get(split, {}).values())
+    return f"  - {label}（{split}）: {image_count} 张图片, {box_count} 个标注"

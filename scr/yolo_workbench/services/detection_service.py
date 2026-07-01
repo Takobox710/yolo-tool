@@ -88,6 +88,14 @@ def build_save_dir(base_dir: Path) -> Path:
     return target
 
 
+def render_result_image_from_frame(result: Any, frame) -> Any:
+    from PIL import Image
+    import cv2
+
+    plotted = result.plot(img=frame.copy())
+    return Image.fromarray(cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB))
+
+
 def collect_prediction_sources(source_mode: str, source_path: str | Path) -> list[Path]:
     source = Path(source_path)
     if source_mode in {"图片文件夹", "图片/视频文件夹"}:
@@ -133,6 +141,7 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
     def predict_video(video_source: int | str, source_name: str) -> None:
         cap = cv2.VideoCapture(video_source)
         frame_index = 0
+        stream_mode = isinstance(video_source, int)
         try:
             while cap.isOpened() and not stop_event.is_set():
                 ok, frame = cap.read()
@@ -142,17 +151,18 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
                 start = time.perf_counter()
                 result = model.predict(source=frame, conf=config.get("confidence", 0.25), iou=config.get("iou", 0.45), verbose=False)[0]
                 elapsed = time.perf_counter() - start
-                plotted = result.plot()
-                display_name = f"{source_name} #{frame_index}" if source_name else f"frame {frame_index}"
+                display_name = f"{source_name} #{frame_index}" if source_name else (f"摄像头 #{frame_index}" if stream_mode else f"frame {frame_index}")
                 callback(
                     {
                         "source_image": Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)),
-                        "result_image": Image.fromarray(cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)),
+                        "result_image": render_result_image_from_frame(result, frame),
                         "items": extract_detection_items(result),
                         "status": display_name,
                         "source_name": display_name,
                         "source_path": str(video_source),
                         "elapsed": elapsed,
+                        "fps": (1 / elapsed) if elapsed else 0.0,
+                        "stream_mode": stream_mode,
                     }
                 )
         finally:

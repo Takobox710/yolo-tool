@@ -150,6 +150,152 @@ def test_line_conversion_expands_to_obb(tmp_path):
     )
 
 
+def test_conversion_can_split_existing_yolo_labels_without_labelme(tmp_path):
+    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+
+    images = tmp_path / "images"
+    labels = tmp_path / "yolo_labels"
+    images.mkdir()
+    labels.mkdir()
+    for name in ("1", "2", "3"):
+        make_image(images / f"{name}.jpg")
+        (labels / f"{name}.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+
+    result = run_conversion(
+        ConversionConfig(
+            task_mode="detect",
+            source_format="yolo",
+            images_dir=images,
+            annotations_dir=labels,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels",
+            class_names=["weld"],
+            train_ratio=1.0,
+            val_ratio=0.0,
+            test_ratio=0.0,
+        )
+    )
+
+    assert result.labeled_train_count == 3
+    assert result.total_boxes == 3
+    assert (tmp_path / "data" / "train" / "labels" / "1.txt").read_text(encoding="utf-8") == "0 0.5 0.5 0.2 0.2\n"
+    assert (tmp_path / "labels" / "2.txt").exists()
+
+
+def test_conversion_tracks_multi_class_stats_and_formats_result(tmp_path):
+    from scr.yolo_workbench.services.conversion_service import ConversionConfig, format_conversion_result, run_conversion
+
+    images = tmp_path / "images"
+    images.mkdir()
+    make_image(images / "multi.jpg")
+    (images / "multi.json").write_text(
+        json.dumps(
+            {
+                "imageWidth": 100,
+                "imageHeight": 100,
+                "shapes": [
+                    {"label": "weld", "shape_type": "rectangle", "points": [[10, 10], [30, 30]]},
+                    {"label": "scratch", "shape_type": "rectangle", "points": [[40, 40], [50, 60]]},
+                    {"label": "unknown", "shape_type": "rectangle", "points": [[70, 70], [80, 90]]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = ConversionConfig(
+        task_mode="detect",
+        source_format="labelme",
+        images_dir=images,
+        annotations_dir=images,
+        output_dir=tmp_path / "data",
+        labels_dir=tmp_path / "labels",
+        class_names=["weld", "scratch"],
+        train_ratio=1.0,
+        val_ratio=0.0,
+        test_ratio=0.0,
+    )
+
+    result = run_conversion(config)
+    report = format_conversion_result(result, config)
+
+    assert result.stats["train"] == {"weld": 1, "scratch": 1}
+    assert "转换完成" in report
+    assert "训练集（train）: 1 张图片, 2 个标注" in report
+    assert "weld: train=1, val=0, test=0, total=1" in report
+    assert "scratch: train=1, val=0, test=0, total=1" in report
+    assert "标签 'unknown'" in report
+    assert str(result.yaml_path) in report
+
+
+def test_conversion_auto_detects_labelme_classes(tmp_path):
+    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+
+    images = tmp_path / "images"
+    images.mkdir()
+    make_image(images / "multi.jpg")
+    (images / "multi.json").write_text(
+        json.dumps(
+            {
+                "imageWidth": 100,
+                "imageHeight": 100,
+                "shapes": [
+                    {"label": "scratch", "shape_type": "rectangle", "points": [[40, 40], [50, 60]]},
+                    {"label": "weld", "shape_type": "rectangle", "points": [[10, 10], [30, 30]]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_conversion(
+        ConversionConfig(
+            task_mode="detect",
+            source_format="labelme",
+            images_dir=images,
+            annotations_dir=images,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels",
+            class_names=[],
+            train_ratio=1.0,
+            val_ratio=0.0,
+            test_ratio=0.0,
+        )
+    )
+
+    assert result.class_names == ["scratch", "weld"]
+    assert result.stats["train"] == {"scratch": 1, "weld": 1}
+    assert "names: ['scratch', 'weld']" in (tmp_path / "data" / "data.yaml").read_text(encoding="utf-8")
+
+
+def test_conversion_auto_names_existing_yolo_classes(tmp_path):
+    from scr.yolo_workbench.services.conversion_service import ConversionConfig, run_conversion
+
+    images = tmp_path / "images"
+    labels = tmp_path / "labels_in"
+    images.mkdir()
+    labels.mkdir()
+    make_image(images / "one.jpg")
+    (labels / "one.txt").write_text("2 0.5 0.5 0.2 0.2\n0 0.4 0.4 0.1 0.1\n", encoding="utf-8")
+
+    result = run_conversion(
+        ConversionConfig(
+            task_mode="detect",
+            source_format="yolo",
+            images_dir=images,
+            annotations_dir=labels,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels_out",
+            class_names=[],
+            train_ratio=1.0,
+            val_ratio=0.0,
+            test_ratio=0.0,
+        )
+    )
+
+    assert result.class_names == ["class_0", "class_1", "class_2"]
+    assert result.stats["train"] == {"class_2": 1, "class_0": 1}
+
+
 def test_annotation_preview_services(tmp_path):
     from scr.yolo_workbench.services.annotation_service import Annotation, load_yolo_annotations, render_annotation_preview
 
@@ -177,6 +323,18 @@ def test_rename_preview_execute_and_conflict(tmp_path):
     (tmp_path / "b.jpg").write_bytes(b"b")
     conflict_plan = preview_rename(tmp_path, "W", 1, 2)
     assert conflict_plan[0].conflict is True
+
+
+def test_rename_preview_uses_natural_numeric_sort(tmp_path):
+    from scr.yolo_workbench.services.rename_service import preview_rename
+
+    for name in ["1.jpg", "10.jpg", "100.jpg", "2.jpg", "3.jpg"]:
+        (tmp_path / name).write_bytes(b"image")
+
+    plan = preview_rename(tmp_path, "", 1, 1)
+
+    assert [item.old_name for item in plan] == ["1.jpg", "2.jpg", "3.jpg", "10.jpg", "100.jpg"]
+    assert [item.new_name for item in plan] == ["1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg"]
 
 
 def test_resize_preview_and_run(tmp_path):
@@ -281,6 +439,28 @@ def test_detection_source_collection_uses_natural_numeric_sort(tmp_path):
     ]
 
 
+def test_stream_result_rendering_uses_current_frame_as_plot_background():
+    import numpy as np
+    from scr.yolo_workbench.services.detection_service import render_result_image_from_frame
+
+    class FakeResult:
+        def __init__(self):
+            self.received = None
+
+        def plot(self, img=None):
+            self.received = img.copy() if img is not None else None
+            return img
+
+    frame = np.full((4, 5, 3), 127, dtype=np.uint8)
+    result = FakeResult()
+
+    rendered = render_result_image_from_frame(result, frame)
+
+    assert result.received is not None
+    assert np.array_equal(result.received, frame)
+    assert rendered.size == (5, 4)
+
+
 def test_cached_call_reuses_value_until_ttl_expires(monkeypatch):
     from scr.yolo_workbench.services.environment_service import cached_call
 
@@ -382,3 +562,40 @@ def test_rename_can_include_matching_labels_and_blocks_label_conflicts(tmp_path)
     assert result.label_renamed_count == 1
     assert (images / "A1.jpg").exists()
     assert (labels / "A1.txt").read_text(encoding="utf-8") == "match"
+
+
+def test_rename_can_include_labelme_and_yolo_labels_separately(tmp_path):
+    from scr.yolo_workbench.services.rename_service import execute_rename, preview_rename
+
+    images = tmp_path / "images"
+    labelme = tmp_path / "labelme"
+    yolo = tmp_path / "yolo"
+    images.mkdir()
+    labelme.mkdir()
+    yolo.mkdir()
+    (images / "2.jpg").write_bytes(b"image")
+    (labelme / "2.json").write_text("labelme", encoding="utf-8")
+    (yolo / "2.txt").write_text("yolo", encoding="utf-8")
+
+    plan = preview_rename(
+        images,
+        "A",
+        1,
+        1,
+        labelme_dir=labelme,
+        include_labelme=True,
+        labels_dir=yolo,
+        include_labels=True,
+    )
+
+    assert plan[0].labelme_source == labelme / "2.json"
+    assert plan[0].labelme_target == labelme / "A1.json"
+    assert plan[0].label_source == yolo / "2.txt"
+    assert plan[0].label_target == yolo / "A1.txt"
+    result = execute_rename(plan)
+    assert result.renamed_count == 1
+    assert result.labelme_renamed_count == 1
+    assert result.label_renamed_count == 1
+    assert (images / "A1.jpg").exists()
+    assert (labelme / "A1.json").read_text(encoding="utf-8") == "labelme"
+    assert (yolo / "A1.txt").read_text(encoding="utf-8") == "yolo"
