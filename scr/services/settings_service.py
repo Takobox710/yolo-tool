@@ -5,11 +5,41 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from scr.paths import ROOT
+from scr.paths import ROOT, RUNTIME_ROOT
+
+
+APP_STATE_PATH = RUNTIME_ROOT / "app_state.json"
 
 
 def project_settings_path(project_root: Path = ROOT) -> Path:
     return Path(project_root) / "data" / "runtime" / "settings.json"
+
+
+def load_last_project_root(app_state_path: Path = APP_STATE_PATH, fallback: Path = ROOT) -> Path:
+    fallback = Path(fallback)
+    app_state_path = Path(app_state_path)
+    try:
+        payload = json.loads(app_state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return fallback
+    raw_path = payload.get("last_project_root")
+    if not raw_path:
+        return fallback
+    candidate = Path(raw_path).expanduser()
+    if not candidate.exists():
+        return fallback
+    return candidate.resolve()
+
+
+def save_last_project_root(
+    project_root: Path, app_state_path: Path = APP_STATE_PATH
+) -> None:
+    app_state_path = Path(app_state_path)
+    app_state_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"last_project_root": str(Path(project_root).resolve())}
+    app_state_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
@@ -104,8 +134,11 @@ def deep_merge(defaults: dict[str, Any], incoming: dict[str, Any]) -> dict[str, 
 
 
 class SettingsService:
-    def __init__(self, settings_path: Path | None = None, project_root: Path = ROOT):
-        self.project_root = Path(project_root)
+    def __init__(self, settings_path: Path | None = None, project_root: Path | None = None):
+        resolved_root = (
+            load_last_project_root() if project_root is None else Path(project_root)
+        )
+        self.project_root = resolved_root
         self.settings_path = Path(settings_path) if settings_path is not None else project_settings_path(self.project_root)
 
     def load(self) -> dict[str, Any]:
@@ -125,3 +158,4 @@ class SettingsService:
     def save(self, data: dict[str, Any]) -> None:
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.settings_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        save_last_project_root(self.project_root)

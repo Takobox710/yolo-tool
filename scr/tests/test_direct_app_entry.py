@@ -286,6 +286,37 @@ def test_workbench_window_switches_to_project_local_settings(tmp_path):
     assert list(window.pages.keys()) == window.page_order
 
 
+def test_workbench_window_restores_last_selected_project_root_on_restart(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
+
+    from scr.services import settings_service
+    from scr.ui.qt import QApplication
+    from scr.ui.window import WorkbenchWindow
+
+    project_root = tmp_path / "project-c"
+    settings_path = project_root / "data" / "runtime" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps({"training": {"epochs": 66}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    app_state_path = tmp_path / "app_state.json"
+    monkeypatch.setattr(settings_service, "APP_STATE_PATH", app_state_path)
+
+    qt_app = QApplication.instance() or QApplication([])
+    first_window = WorkbenchWindow()
+    first_window.switch_project_root(project_root)
+
+    second_window = WorkbenchWindow()
+
+    assert second_window.settings_service.settings_path == settings_path
+    assert second_window.settings["project"]["root"] == str(project_root)
+    assert second_window.settings["training"]["epochs"] == 66
+
+
 def test_scheme_b_uses_label_tooltips_instead_of_help_icon():
     src = PAGE_BASE.read_text(encoding="utf-8")
     assert "class HelpIcon" not in src
