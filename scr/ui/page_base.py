@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from scr.paths import ROOT
 from scr.ui.helpers import _display_project_path, _history_number_sort_key, _history_time_sort_key, _resolve_project_path
 from scr.ui.widgets.base import Card, ImageView
-from scr.ui.qt import QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QTableWidgetItem, Qt, QVBoxLayout, QWidget
+from scr.ui.qt import QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QTableWidgetItem, Qt, QTextEdit, QVBoxLayout, QWidget
 
 
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
@@ -36,6 +37,18 @@ class BasePage(QWidget):
     def project_root(self) -> Path:
         return Path(self.app.settings["project"]["root"])
 
+    def save_settings(self):
+        self.app.settings_service.save(self.app.settings)
+
+    def update_setting(self, *keys: str, value: Any):
+        if not keys:
+            return
+        target = self.app.settings
+        for key in keys[:-1]:
+            target = target.setdefault(key, {})
+        target[keys[-1]] = value
+        self.save_settings()
+
     def display_path(self, path: str | Path) -> str:
         return _display_project_path(str(path), self.project_root())
 
@@ -51,12 +64,91 @@ class BasePage(QWidget):
         layout.setSpacing(14)
         return layout
 
-    def field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+    def prepare_readonly_text(self, edit: QTextEdit):
+        edit.setReadOnly(True)
+        edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        edit.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        edit.setCursorWidth(0)
+        return edit
+
+    def help_icons_enabled(self) -> bool:
+        return bool(
+            self.app.settings.get("features", {}).get("show_help_icons", True)
+        )
+
+    def refresh_help_icon_visibility(self):
+        for label in self.findChildren(QLabel):
+            self._refresh_help_target(label)
+        for check in self.findChildren(QCheckBox):
+            self._refresh_help_target(check)
+
+    def dismiss_help_bubbles(self):
+        return None
+
+    def _set_help_target(self, widget, base_text: str, help_text: str):
+        widget.setProperty("helpBaseText", base_text)
+        widget.setProperty("helpText", help_text)
+        self._refresh_help_target(widget)
+
+    def _refresh_help_target(self, widget):
+        base_text = widget.property("helpBaseText")
+        help_text = widget.property("helpText")
+        if base_text is None:
+            return
+        base_text = str(base_text)
+        help_text = str(help_text or "")
+        show_symbol = self.help_icons_enabled() and bool(help_text)
+        widget.setText(f"{base_text} ⓘ" if show_symbol else base_text)
+        widget.setToolTip(help_text)
+
+    def _caption_widget(
+        self,
+        label: str,
+        help_text: str = "",
+        object_name: str = "fieldLabel",
+        fixed_width: int | None = None,
+    ):
+        box = QWidget()
+        layout = QHBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        caption = QLabel(label)
+        caption.setObjectName(object_name)
+        self._set_help_target(caption, label, help_text)
+        layout.addWidget(caption)
+        layout.addStretch(1)
+        if fixed_width is not None:
+            box.setFixedWidth(fixed_width)
+        return box, caption, None
+
+    def checkbox_with_help(
+        self, text: str, checked: bool = False, help_text: str = ""
+    ):
+        box = QWidget()
+        layout = QHBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        check = QCheckBox(text)
+        check.setChecked(checked)
+        self._set_help_target(check, text, help_text)
+        layout.addWidget(check)
+        layout.addStretch(1)
+        return box, check
+
+    def field(
+        self,
+        label: str,
+        value: str = "",
+        browse=None,
+        placeholder: str = "",
+        help_text: str = "",
+    ):
         box = QWidget()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        caption = QLabel(label)
-        caption.setObjectName("fieldLabel")
+        caption_box, _caption, _icon = self._caption_widget(
+            label, help_text=help_text, object_name="fieldLabel"
+        )
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         edit = QLineEdit(str(value))
@@ -68,38 +160,62 @@ class BasePage(QWidget):
             button.setObjectName("softButton")
             button.clicked.connect(lambda: browse(edit))
             row.addWidget(button)
-        layout.addWidget(caption)
+        layout.addWidget(caption_box)
         layout.addLayout(row)
         return box, edit
 
-    def path_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
-        return self.field(label, self.display_path(value), browse, placeholder)
+    def path_field(
+        self,
+        label: str,
+        value: str = "",
+        browse=None,
+        placeholder: str = "",
+        help_text: str = "",
+    ):
+        return self.field(
+            label,
+            self.display_path(value),
+            browse,
+            placeholder,
+            help_text=help_text,
+        )
 
-    def combo_field(self, label: str, value: str, values: list[str]):
+    def combo_field(self, label: str, value: str, values: list[str], help_text: str = ""):
         box = QWidget()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        caption = QLabel(label)
-        caption.setObjectName("fieldLabel")
+        caption_box, _caption, _icon = self._caption_widget(
+            label, help_text=help_text, object_name="fieldLabel"
+        )
         combo = QComboBox()
         combo.addItems(values)
         if value in values:
             combo.setCurrentText(value)
-        layout.addWidget(caption)
+        layout.addWidget(caption_box)
         layout.addWidget(combo)
         return box, combo
 
-    def inline_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+    def inline_field(
+        self,
+        label: str,
+        value: str = "",
+        browse=None,
+        placeholder: str = "",
+        help_text: str = "",
+    ):
         box = QWidget()
         layout = QHBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        caption = QLabel(label)
-        caption.setObjectName("inlineFieldLabel")
-        caption.setFixedWidth(88)
+        caption_box, _caption, _icon = self._caption_widget(
+            label,
+            help_text=help_text,
+            object_name="inlineFieldLabel",
+            fixed_width=88,
+        )
         edit = QLineEdit(str(value))
         if placeholder:
             edit.setPlaceholderText(placeholder)
-        layout.addWidget(caption)
+        layout.addWidget(caption_box)
         layout.addWidget(edit, 1)
         if browse:
             button = QPushButton("选择")
@@ -108,29 +224,42 @@ class BasePage(QWidget):
             layout.addWidget(button)
         return box, edit
 
-    def inline_combo_field(self, label: str, value: str, values: list[str]):
+    def inline_combo_field(
+        self, label: str, value: str, values: list[str], help_text: str = ""
+    ):
         box = QWidget()
         layout = QHBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        caption = QLabel(label)
-        caption.setObjectName("inlineFieldLabel")
-        caption.setFixedWidth(88)
+        caption_box, _caption, _icon = self._caption_widget(
+            label,
+            help_text=help_text,
+            object_name="inlineFieldLabel",
+            fixed_width=88,
+        )
         combo = QComboBox()
         combo.addItems(values)
         if value in values:
             combo.setCurrentText(value)
-        layout.addWidget(caption)
+        layout.addWidget(caption_box)
         layout.addWidget(combo, 1)
         return box, combo
 
-    def stacked_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
+    def stacked_field(
+        self,
+        label: str,
+        value: str = "",
+        browse=None,
+        placeholder: str = "",
+        help_text: str = "",
+    ):
         box = QWidget()
         outer = QVBoxLayout(box)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(4)
-        lbl = QLabel(label)
-        lbl.setObjectName("fieldLabel")
-        outer.addWidget(lbl)
+        caption_box, _caption, _icon = self._caption_widget(
+            label, help_text=help_text, object_name="fieldLabel"
+        )
+        outer.addWidget(caption_box)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         edit = QLineEdit(str(value))
@@ -145,17 +274,39 @@ class BasePage(QWidget):
         outer.addLayout(row)
         return box, edit
 
-    def stacked_path_field(self, label: str, value: str = "", browse=None, placeholder: str = ""):
-        return self.stacked_field(label, self.display_path(value), browse, placeholder)
+    def stacked_path_field(
+        self,
+        label: str,
+        value: str = "",
+        browse=None,
+        placeholder: str = "",
+        help_text: str = "",
+    ):
+        return self.stacked_field(
+            label,
+            self.display_path(value),
+            browse,
+            placeholder,
+            help_text=help_text,
+        )
 
-    def stacked_combo_field(self, label: str, value: str, values: list[str], browse=None, placeholder: str = ""):
+    def stacked_combo_field(
+        self,
+        label: str,
+        value: str,
+        values: list[str],
+        browse=None,
+        placeholder: str = "",
+        help_text: str = "",
+    ):
         box = QWidget()
         outer = QVBoxLayout(box)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(4)
-        lbl = QLabel(label)
-        lbl.setObjectName("fieldLabel")
-        outer.addWidget(lbl)
+        caption_box, _caption, _icon = self._caption_widget(
+            label, help_text=help_text, object_name="fieldLabel"
+        )
+        outer.addWidget(caption_box)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         combo = QComboBox()
@@ -187,7 +338,14 @@ class BasePage(QWidget):
             edit.setText(self.display_path(path))
 
     def _choose_pt_for_combo(self, combo: QComboBox):
-        path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", str(ROOT), "PyTorch 模型 (*.pt);;所有文件 (*)")
+        models_dir = self.project_root() / "data" / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择模型文件",
+            str(models_dir),
+            "PyTorch 模型 (*.pt);;所有文件 (*)",
+        )
         if path:
             combo.setCurrentText(self.display_path(path))
 

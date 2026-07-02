@@ -4,7 +4,7 @@ import json
 
 from scr.services.environment_service import detect_modules, pixi_available, system_status, torch_cuda_summary
 from scr.ui.page_base import BasePage
-from scr.ui.qt import Qt, QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QTextEdit, QTimer, QVBoxLayout
+from scr.ui.qt import Qt, QFrame, QGridLayout, QLabel, QTextEdit, QTimer, QVBoxLayout
 
 class SettingsPage(BasePage):
     def __init__(self, app):
@@ -15,19 +15,25 @@ class SettingsPage(BasePage):
         title.setObjectName("pageTitle")
         layout.addWidget(title)
 
-        # Task 10: Custom command dialog toggle
-        feat_row = QHBoxLayout()
-        feat_label = QLabel("训练前显示自定义命令框")
-        feat_label.setObjectName("inlineFieldLabel")
-        self.cmd_dialog_check = QCheckBox()
+        cmd_box, self.cmd_dialog_check = self.checkbox_with_help(
+            "训练前显示自定义命令框",
+            self.app.settings.get("features", {}).get("custom_command_dialog", True),
+        )
         self.cmd_dialog_check.setChecked(
             self.app.settings.get("features", {}).get("custom_command_dialog", True)
         )
         self.cmd_dialog_check.stateChanged.connect(self._toggle_custom_cmd)
-        feat_row.addWidget(feat_label)
-        feat_row.addWidget(self.cmd_dialog_check)
-        feat_row.addStretch(1)
-        layout.addLayout(feat_row)
+        layout.addWidget(cmd_box)
+
+        help_box, self.help_icon_check = self.checkbox_with_help(
+            "显示配置解释符号",
+            self.app.settings.get("features", {}).get("show_help_icons", True),
+        )
+        self.help_icon_check.setChecked(
+            self.app.settings.get("features", {}).get("show_help_icons", True)
+        )
+        self.help_icon_check.stateChanged.connect(self._toggle_help_icons)
+        layout.addWidget(help_box)
 
         # Task 13: System info - white outer card, gray inner cards
         info_outer = QFrame()
@@ -59,7 +65,7 @@ class SettingsPage(BasePage):
         layout.addWidget(info_outer)
 
         self.log = QTextEdit()
-        self.log.setReadOnly(True)
+        self.prepare_readonly_text(self.log)
         layout.addWidget(self.log, 1)
 
         # Task 13: Auto-refresh timer every 0.5s
@@ -72,6 +78,17 @@ class SettingsPage(BasePage):
             state == Qt.CheckState.Checked.value
         )
         self.app.settings_service.save(self.app.settings)
+
+    def _toggle_help_icons(self, state):
+        self.app.settings.setdefault("features", {})["show_help_icons"] = (
+            state == Qt.CheckState.Checked.value
+        )
+        self.app.settings_service.save(self.app.settings)
+        refresh = getattr(self.app, "refresh_help_icon_visibility", None)
+        if refresh:
+            refresh()
+        else:
+            self.refresh_help_icon_visibility()
 
     def _auto_refresh(self):
         self._refresh_count += 1

@@ -23,6 +23,7 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["training"]["epochs"] == 12
     assert settings["training"]["batch"] == 16
     assert settings["image_resize"]["canvas_size"] == 960
+    assert settings["features"]["show_help_icons"] is True
 
 
 def test_conversion_config_rejects_invalid_ratios(tmp_path):

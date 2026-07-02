@@ -50,9 +50,15 @@ class ValidatePage(BasePage):
 
         conf_row = QHBoxLayout()
         self.conf_box, self.conf_edit = self.field(
-            "置信度", str(validation["confidence"])
+            "置信度",
+            str(validation["confidence"]),
+            placeholder="例如 0.25",
         )
-        self.iou_box, self.iou_edit = self.field("IoU", str(validation["iou"]))
+        self.iou_box, self.iou_edit = self.field(
+            "IoU",
+            str(validation["iou"]),
+            placeholder="例如 0.45",
+        )
         conf_row.addWidget(self.conf_box)
         conf_row.addWidget(self.iou_box)
         left_column.addLayout(conf_row)
@@ -65,11 +71,16 @@ class ValidatePage(BasePage):
         )
         left_column.addWidget(self.mode_box)
         self.source_box, self.source_edit = self.path_field(
-            "输入源", validation["source_path"], self.choose_detection_source
+            "输入源",
+            validation["source_path"],
+            self.choose_detection_source,
+            "选择图片、视频或文件夹",
         )
         left_column.addWidget(self.source_box)
         self.camera_box, self.camera_combo = self.combo_field(
-            "摄像头", str(validation["camera_index"]), ["0", "1", "2", "3"]
+            "摄像头",
+            str(validation["camera_index"]),
+            ["0", "1", "2", "3"],
         )
         left_column.addWidget(self.camera_box)
 
@@ -94,7 +105,7 @@ class ValidatePage(BasePage):
         log_title.setObjectName("sectionTitle")
         left_column.addWidget(log_title)
         self.detect_log = QTextEdit()
-        self.detect_log.setReadOnly(True)
+        self.prepare_readonly_text(self.detect_log)
         left_column.addWidget(self.detect_log, 1)
         split.addWidget(left_shell)
 
@@ -211,23 +222,81 @@ class ValidatePage(BasePage):
             self.source_index = 0
 
     def on_show(self):
-        # Scan models and populate dropdown
+        models_dir = Path(self.app.settings["paths"]["models_dir"])
         result_dir = Path(self.app.settings["paths"]["result_dir"])
-        self._all_model_paths = _find_models_full_paths(result_dir)
+        self._all_model_paths = []
+        seen: set[str] = set()
+        for path in sorted(models_dir.glob("*.pt")) if models_dir.exists() else []:
+            resolved = str(path.resolve())
+            if resolved not in seen:
+                self._all_model_paths.append(path.resolve())
+                seen.add(resolved)
+        for path in _find_models_full_paths(result_dir):
+            resolved = str(path.resolve())
+            if resolved not in seen:
+                self._all_model_paths.append(path.resolve())
+                seen.add(resolved)
         display_names = [
-            _simplified_model_path(str(m)) for m in self._all_model_paths
+            self.display_path(m) if Path(m).is_relative_to(models_dir) else _simplified_model_path(str(m))
+            for m in self._all_model_paths
         ]
         self.model_combo.clear()
         self.model_combo.addItems(display_names)
         # Set current from settings
         current = self.app.settings["validation"].get("model_path", "")
         if current:
-            display = _simplified_model_path(current)
+            current_path = Path(current)
+            display = (
+                self.display_path(current_path)
+                if current_path.exists() and current_path.is_relative_to(models_dir)
+                else _simplified_model_path(current)
+            )
             idx = self.model_combo.findText(display)
             if idx >= 0:
                 self.model_combo.setCurrentIndex(idx)
             else:
                 self.model_combo.setEditText(current)
+        self._connect_validation_persistence()
+
+    def _connect_validation_persistence(self):
+        if getattr(self, "_persistence_connected", False):
+            return
+        self._persistence_connected = True
+        self.model_combo.currentTextChanged.connect(self._persist_validation_model)
+        self.mode_combo.currentTextChanged.connect(
+            lambda value: self._persist_validation_value("source_mode", value)
+        )
+        self.source_edit.textChanged.connect(
+            lambda _text: self._persist_validation_value(
+                "source_path", self.resolve_path_text(self.source_edit)
+            )
+        )
+        self.camera_combo.currentTextChanged.connect(
+            lambda value: self._persist_validation_value("camera_index", int(value))
+        )
+        self.conf_edit.textChanged.connect(
+            lambda text: self._persist_validation_numeric("confidence", text)
+        )
+        self.iou_edit.textChanged.connect(
+            lambda text: self._persist_validation_numeric("iou", text)
+        )
+
+    def _persist_validation_model(self, _text: str):
+        self.app.settings.setdefault("validation", {})["model_path"] = (
+            self._get_model_path()
+        )
+        self.save_settings()
+
+    def _persist_validation_value(self, key: str, value):
+        self.app.settings.setdefault("validation", {})[key] = value
+        self.save_settings()
+
+    def _persist_validation_numeric(self, key: str, text: str):
+        try:
+            value = float(text)
+        except ValueError:
+            value = text
+        self._persist_validation_value(key, value)
 
     def _get_model_path(self) -> str:
         """Resolve the selected model combo to an absolute path."""

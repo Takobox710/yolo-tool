@@ -12,28 +12,51 @@ class ResizeTab(BasePage):
         resize = app.settings["image_resize"]
         grid = QGridLayout()
         self.source_box, self.source_edit = self.path_field(
-            "图片目录", app.settings["paths"]["images_dir"], self.choose_dir
+            "图片目录",
+            app.settings["paths"]["images_dir"],
+            self.choose_dir,
+            "选择待压缩的图片目录",
         )
         self.backup_box, self.backup_edit = self.path_field(
-            "备份目录", resize["backup_dir"], self.choose_dir
+            "备份目录",
+            resize["backup_dir"],
+            self.choose_dir,
+            "选择原图备份目录",
         )
         self.output_box, self.output_edit = self.path_field(
-            "输出目录", resize["output_dir"], self.choose_dir
+            "输出目录",
+            resize["output_dir"],
+            self.choose_dir,
+            "选择压缩结果输出目录",
         )
         self.long_box, self.long_edit = self.field(
-            "长边缩放", str(resize["long_edge"])
+            "长边缩放",
+            str(resize["long_edge"]),
+            placeholder="例如 960",
         )
         self.canvas_box, self.canvas_edit = self.field(
-            "画布尺寸", str(resize["canvas_size"])
+            "画布尺寸",
+            str(resize["canvas_size"]),
+            placeholder="例如 960",
         )
         self.bg_box, self.bg_combo = self.combo_field(
-            "背景颜色", resize["background"], ["white", "black"]
+            "背景颜色",
+            resize["background"],
+            ["white", "black"],
         )
         self.output_mode_box, self.output_mode_combo = self.combo_field(
-            "输出方式", "输出到新文件夹", ["输出到新文件夹", "覆盖原文件"]
+            "输出方式",
+            app.settings.get("features", {}).get(
+                "resize_output_mode", "输出到新文件夹"
+            ),
+            ["输出到新文件夹", "覆盖原文件"],
         )
         self.save_format_box, self.save_format_combo = self.combo_field(
-            "保存格式", "保持原格式", ["保持原格式", "jpg", "png"]
+            "保存格式",
+            app.settings.get("features", {}).get(
+                "resize_save_format", "保持原格式"
+            ),
+            ["保持原格式", "jpg", "png"],
         )
         for index, widget in enumerate(
             [
@@ -59,8 +82,9 @@ class ResizeTab(BasePage):
         actions.addStretch(1)
         layout.addLayout(actions)
         self.log = QTextEdit()
-        self.log.setReadOnly(True)
+        self.prepare_readonly_text(self.log)
         layout.addWidget(self.log, 1)
+        self._connect_persistence()
 
     def config(self):
         return ResizeConfig(
@@ -87,3 +111,53 @@ class ResizeTab(BasePage):
         self.log.append(
             f"\n压缩完成: {result.processed_count} 张，输出目录: {result.output_dir}"
         )
+
+    def _connect_persistence(self):
+        self.source_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths", "images_dir", value=self.resolve_path_text(self.source_edit)
+            )
+        )
+        self.backup_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "image_resize",
+                "backup_dir",
+                value=self.resolve_path_text(self.backup_edit),
+            )
+        )
+        self.output_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "image_resize",
+                "output_dir",
+                value=self.resolve_path_text(self.output_edit),
+            )
+        )
+        self.long_edit.textChanged.connect(self._persist_long_edge)
+        self.canvas_edit.textChanged.connect(self._persist_canvas_size)
+        self.bg_combo.currentTextChanged.connect(
+            lambda value: self.update_setting("image_resize", "background", value=value)
+        )
+        self.output_mode_combo.currentTextChanged.connect(
+            lambda value: self.update_setting(
+                "features", "resize_output_mode", value=value
+            )
+        )
+        self.save_format_combo.currentTextChanged.connect(
+            lambda value: self.update_setting(
+                "features", "resize_save_format", value=value
+            )
+        )
+
+    def _persist_long_edge(self, text: str):
+        try:
+            value = int(text)
+        except ValueError:
+            return
+        self.update_setting("image_resize", "long_edge", value=value)
+
+    def _persist_canvas_size(self, text: str):
+        try:
+            value = int(text)
+        except ValueError:
+            return
+        self.update_setting("image_resize", "canvas_size", value=value)

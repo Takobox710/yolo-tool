@@ -21,6 +21,7 @@ class WorkbenchWindow(QMainWindow):
         self.settings_service = SettingsService()
         self.settings = self.settings_service.load()
         self.settings.setdefault("features", {}).setdefault("custom_command_dialog", True)
+        self.settings.setdefault("features", {}).setdefault("show_help_icons", True)
         self.settings.setdefault("training", {}).setdefault("optimizer", "auto")
         self.workers: list[Worker] = []
         self.pages: dict[str, QWidget] = {}
@@ -39,8 +40,8 @@ class WorkbenchWindow(QMainWindow):
             app_icon = QIcon(str(icon_path))
             self.setWindowIcon(app_icon)
         self.setWindowTitle("YOLO 本地训练工作台")
-        self.resize(1100, 780)
-        self.setMinimumSize(980, 720)
+        self.resize(1100, 770)
+        self.setMinimumSize(800, 600)
         self._build()
 
     def _build(self):
@@ -82,15 +83,21 @@ class WorkbenchWindow(QMainWindow):
         self.status.setContentsMargins(14, 5, 14, 5)
         root_layout.addWidget(self.status)
         self.setCentralWidget(root)
+        self._preload_pages()
         self.show_page("home")
+
+    def _preload_pages(self):
+        for key in self.page_order:
+            if key in self.pages:
+                continue
+            page = self.create_page(key)
+            self.pages[key] = page
+            self.stack.addWidget(page)
 
     def show_page(self, key: str):
         if key not in self.page_titles:
             key = "home"
-        if key not in self.pages:
-            page = self.create_page(key)
-            self.pages[key] = page
-            self.stack.addWidget(page)
+        self.dismiss_help_bubbles()
         self.stack.setCurrentWidget(self.pages[key])
         for name, button in self.nav_buttons.items():
             button.setChecked(name == key)
@@ -130,9 +137,23 @@ class WorkbenchWindow(QMainWindow):
         if handler:
             handler(payload)
 
+    def refresh_help_icon_visibility(self):
+        for page in self.pages.values():
+            target = getattr(page, "inner_page", page)
+            hook = getattr(target, "refresh_help_icon_visibility", None)
+            if hook:
+                hook()
+
+    def dismiss_help_bubbles(self):
+        for page in self.pages.values():
+            target = getattr(page, "inner_page", page)
+            hook = getattr(target, "dismiss_help_bubbles", None)
+            if hook:
+                hook()
+
     def closeEvent(self, event):
         self.settings["ui"]["window_width"] = 1100
-        self.settings["ui"]["window_height"] = 780
+        self.settings["ui"]["window_height"] = 770
         self.settings_service.save(self.settings)
         stop_process(self.training_handle)
         stop_process(self.export_handle)

@@ -13,9 +13,10 @@ from scr.ui.widgets.charts import DatasetDistributionWidget, TrainingCurveWidget
 class HomePage(BasePage):
     def __init__(self, app):
         super().__init__(app)
-        self.setMinimumHeight(700)
+        self.setMinimumHeight(650)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = self.page_layout()
+        layout.setContentsMargins(16, 16, 16, 4)
         self._home_grid_spacing = 12
         # Hero
         hero = QHBoxLayout()
@@ -88,7 +89,7 @@ class HomePage(BasePage):
         hist_header.addStretch(1)
         open_button = QPushButton("打开结果目录")
         open_button.setObjectName("compactSoftButton")
-        open_button.setFixedWidth(100)
+        open_button.setFixedWidth(110)
         open_button.setFixedHeight(30)
         open_button.clicked.connect(self.open_result_dir)
         hist_header.addWidget(open_button)

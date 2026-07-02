@@ -5,7 +5,7 @@ from pathlib import Path
 
 from scr.services.conversion_service import ConversionConfig, format_conversion_result, preview_conversion, run_conversion
 from scr.ui.page_base import BasePage, Card
-from scr.ui.qt import QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from scr.ui.qt import QGridLayout, QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 class ConvertTab(BasePage):
     def __init__(self, app):
@@ -25,29 +25,41 @@ class ConvertTab(BasePage):
         left_grid.setHorizontalSpacing(12)
         left_grid.setVerticalSpacing(10)
         self.images_box, self.images_edit = self.path_field(
-            "图片目录", paths["images_dir"], self.choose_dir
+            "图片目录",
+            paths["images_dir"],
+            self.choose_dir,
+            "选择待转换的图片目录",
         )
         self.annotations_box, self.annotations_edit = self.path_field(
-            "Labelme 标注目录", paths["annotations_dir"], self.choose_dir
+            "Labelme 标注目录",
+            paths["annotations_dir"],
+            self.choose_dir,
+            "选择 Labelme 标注目录",
         )
         self.yolo_labels_box, self.yolo_labels_edit = self.path_field(
-            "YOLO 标注目录", paths["labels_dir"], self.choose_dir
+            "YOLO 标注目录",
+            paths["labels_dir"],
+            self.choose_dir,
+            "选择已有 YOLO 标注目录",
         )
         self.output_box, self.output_edit = self.path_field(
-            "输出目录", paths["dataset_dir"], self.choose_dir
+            "输出目录",
+            paths["dataset_dir"],
+            self.choose_dir,
+            "选择数据集输出目录",
         )
         left_grid.addWidget(self.images_box, 0, 0)
         left_grid.addWidget(self.annotations_box, 0, 1)
         left_grid.addWidget(self.yolo_labels_box, 1, 0)
         left_grid.addWidget(self.output_box, 1, 1)
         left_card.layout.addLayout(left_grid)
-        self.labelme_check = QCheckBox("Labelme 转 YOLO (?)")
-        self.labelme_check.setToolTip(
-            "开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。"
+        labelme_box, self.labelme_check = self.checkbox_with_help(
+            "Labelme 转 YOLO",
+            app.settings.get("conversion", {}).get("use_labelme", True),
+            help_text="开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。",
         )
-        self.labelme_check.setChecked(True)
         self.labelme_check.stateChanged.connect(self.refresh_mode_state)
-        left_card.layout.addWidget(self.labelme_check)
+        left_card.layout.addWidget(labelme_box)
 
         right_card = Card("转换参数")
         param_grid = QGridLayout()
@@ -82,19 +94,20 @@ class ConvertTab(BasePage):
             "随机种子",
             str(dataset["random_seed"]),
             "控制随机划分的可复现性；同一数据和种子会得到相同划分。",
+            placeholder="例如 42",
         )
         line_box = QWidget()
         line_layout = QVBoxLayout(line_box)
         line_layout.setContentsMargins(0, 0, 0, 0)
         line_layout.setSpacing(4)
-        self.line_label = self.hint_label(
+        self.line_caption, self.line_label, _line_icon = self._caption_widget(
             "直线拓展宽度",
-            "仅在 OBB + Labelme line 标注时生效，按该半宽把直线扩展成旋转矩形。",
+            help_text="仅在 OBB + Labelme line 标注时生效，按该半宽把直线扩展成旋转矩形。",
+            object_name="fieldLabel",
         )
-        self.line_label.setObjectName("fieldLabel")
         self.line_edit = QLineEdit(str(dataset["line_to_obb"]["half_width"]))
         self.line_edit.setPlaceholderText("仅 OBB + Labelme line")
-        line_layout.addWidget(self.line_label)
+        line_layout.addWidget(self.line_caption)
         line_layout.addWidget(self.line_edit)
         param_grid.addWidget(self.task_box, 0, 0)
         param_grid.addWidget(self.train_ratio_box, 0, 1)
@@ -118,11 +131,12 @@ class ConvertTab(BasePage):
         actions.addStretch(1)
         layout.addLayout(actions)
         self.log = QTextEdit()
-        self.log.setReadOnly(True)
+        self.prepare_readonly_text(self.log)
         self.log.setPlaceholderText(
             "预览或执行后将在这里显示数据集划分、类别统计、跳过标签与输出路径。"
         )
         layout.addWidget(self.log, 1)
+        self._connect_persistence()
         self.task_combo.currentTextChanged.connect(self.refresh_mode_state)
         self.refresh_mode_state()
 
@@ -131,51 +145,96 @@ class ConvertTab(BasePage):
         card.layout.addLayout(content_layout)
         return card
 
-    def hint_label(self, text: str, tooltip: str):
-        label = QLabel(f"{text} (?)")
-        label.setToolTip(tooltip)
-        return label
-
     def hint_field(
         self, label: str, value: str, tooltip: str, placeholder: str = ""
     ):
-        box = QWidget()
-        field_layout = QVBoxLayout(box)
-        field_layout.setContentsMargins(0, 0, 0, 0)
-        field_layout.setSpacing(4)
-        caption = self.hint_label(label, tooltip)
-        caption.setObjectName("fieldLabel")
-        edit = QLineEdit(str(value))
-        if placeholder:
-            edit.setPlaceholderText(placeholder)
-        field_layout.addWidget(caption)
-        field_layout.addWidget(edit)
-        return box, edit
+        return self.field(
+            label, value, placeholder=placeholder, help_text=tooltip
+        )
 
     def hint_combo_field(
         self, label: str, value: str, values: list[str], tooltip: str
     ):
-        box = QWidget()
-        field_layout = QVBoxLayout(box)
-        field_layout.setContentsMargins(0, 0, 0, 0)
-        field_layout.setSpacing(4)
-        caption = self.hint_label(label, tooltip)
-        caption.setObjectName("fieldLabel")
-        combo = QComboBox()
-        combo.addItems(values)
-        if value in values:
-            combo.setCurrentText(value)
-        field_layout.addWidget(caption)
-        field_layout.addWidget(combo)
-        return box, combo
+        return self.combo_field(label, value, values, help_text=tooltip)
 
     def refresh_mode_state(self):
         labelme_enabled = self.labelme_check.isChecked()
-        self.annotations_box.setEnabled(labelme_enabled)
-        self.yolo_labels_box.setEnabled(not labelme_enabled)
         enabled = labelme_enabled and self.task_combo.currentText() == "obb"
-        for widget in (self.line_label, self.line_edit):
+        for widget in (self.line_caption, self.line_edit):
             widget.setEnabled(enabled)
+
+    def _connect_persistence(self):
+        self.images_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths", "images_dir", value=self.resolve_path_text(self.images_edit)
+            )
+        )
+        self.annotations_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths",
+                "annotations_dir",
+                value=self.resolve_path_text(self.annotations_edit),
+            )
+        )
+        self.yolo_labels_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths",
+                "labels_dir",
+                value=self.resolve_path_text(self.yolo_labels_edit),
+            )
+        )
+        self.output_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths", "dataset_dir", value=self.resolve_path_text(self.output_edit)
+            )
+        )
+        self.labelme_check.toggled.connect(
+            lambda checked: self.update_setting(
+                "conversion", "use_labelme", value=bool(checked)
+            )
+        )
+        self.task_combo.currentTextChanged.connect(
+            lambda value: self.update_setting("task", "mode", value=value)
+        )
+        self.train_ratio_edit.textChanged.connect(
+            lambda text: self._persist_ratio("train", text)
+        )
+        self.val_ratio_edit.textChanged.connect(
+            lambda text: self._persist_ratio("val", text)
+        )
+        self.test_ratio_edit.textChanged.connect(
+            lambda text: self._persist_ratio("test", text)
+        )
+        self.seed_edit.textChanged.connect(self._persist_seed)
+        self.line_edit.textChanged.connect(self._persist_line_width)
+
+    def _persist_ratio(self, key: str, text: str):
+        try:
+            value = float(text)
+        except ValueError:
+            return
+        self.app.settings.setdefault("dataset", {}).setdefault("split_ratios", {})[
+            key
+        ] = value
+        self.save_settings()
+
+    def _persist_seed(self, text: str):
+        try:
+            value = int(text)
+        except ValueError:
+            return
+        self.app.settings.setdefault("dataset", {})["random_seed"] = value
+        self.save_settings()
+
+    def _persist_line_width(self, text: str):
+        try:
+            value = float(text)
+        except ValueError:
+            return
+        self.app.settings.setdefault("dataset", {}).setdefault("line_to_obb", {})[
+            "half_width"
+        ] = value
+        self.save_settings()
 
     def ratios(self) -> tuple[float, float, float]:
         return (

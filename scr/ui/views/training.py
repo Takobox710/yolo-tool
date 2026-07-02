@@ -7,11 +7,12 @@ from queue import Queue
 from scr.paths import ROOT
 from scr.services.environment_service import system_status, torch_cuda_summary
 from scr.services.runtime_service import spawn_logged_process, stop_process
+from scr.services.settings_service import build_default_settings
 from scr.services.training_service import build_train_command, infer_task_mode_from_model
 from scr.ui.dialogs import CommandDialog
 from scr.ui.helpers import _find_pt_files_in_data_models
 from scr.ui.page_base import BasePage, Card
-from scr.ui.qt import QCheckBox, QComboBox, QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QTimer, QTextEdit, QVBoxLayout, QWidget
+from scr.ui.qt import QDialog, QGridLayout, QHBoxLayout, QPushButton, QTimer, QTextEdit, QVBoxLayout, QWidget
 
 class TrainPage(BasePage):
     def __init__(self, app):
@@ -58,6 +59,8 @@ class TrainPage(BasePage):
             browse=lambda combo: self._choose_pt_for_combo(combo),
             placeholder="选择或输入 .pt 模型",
         )
+        if current_name:
+            self.pretrained_combo.setCurrentText(current_name)
         left_form.addWidget(base_box, 0, 0)
 
         # 数据集YAML
@@ -66,14 +69,17 @@ class TrainPage(BasePage):
             "数据集YAML",
             training.get("data", ""),
             self.choose_file,
-            "选择 data.yaml",
+            "选择训练数据集 data.yaml",
         )
         self.edits["data"] = data_edit
         left_form.addWidget(data_box, 0, 1)
 
         # 模型YAML (default blank)
         model_yaml_box, model_yaml_edit = self.stacked_path_field(
-            "模型YAML", "", self.choose_file, "可选，留空使用基础模型"
+            "模型YAML",
+            training.get("model_yaml", ""),
+            self.choose_file,
+            "可选，留空使用基础模型",
         )
         self.edits["model_yaml"] = model_yaml_edit
         left_form.addWidget(model_yaml_box, 1, 0)
@@ -103,32 +109,44 @@ class TrainPage(BasePage):
                 ("mixup", "MixUp"),
             ]
         ):
-            check = QCheckBox(label)
-            check.setChecked(float(training.get(key, 0)) > 0)
+            help_text = {
+                "mosaic": "随机拼图增强（mosaic）；将多张图随机拼接成一张，增强小目标和复杂场景鲁棒性。",
+                "scale": "随机缩放增强（scale）；随机缩放目标与画面，提升对尺寸变化的适应能力。",
+                "translate": "随机平移增强（translate）；随机平移图像内容，提升对目标位置变化的适应能力。",
+                "hsv_h": "颜色增强（hsv_h / hsv_s / hsv_v）；同时控制三个 HSV 颜色增强参数。",
+                "fliplr": "左右翻转增强（fliplr）；适合左右方向都合理的场景。",
+                "flipud": "上下翻转增强（flipud）；只建议在上下方向同样合理时开启。",
+                "degrees": "旋转增强（degrees）；帮助模型适应目标角度变化。",
+                "mixup": "混合增强（mixup）；将两张图按比例混合，可增强泛化但可能拉长收敛时间。",
+            }[key]
+            box, check = self.checkbox_with_help(
+                label, float(training.get(key, 0)) > 0, help_text=help_text
+            )
             self.checks[key] = check
-            aug.addWidget(check, index // 4, index % 4)
+            aug.addWidget(box, index // 4, index % 4)
 
         # Right side: training params
         params = QGridLayout()
         right.layout.addLayout(params)
 
         # Row 0: optimizer | lr
-        optimizer_box = QWidget()
-        optimizer_layout = QHBoxLayout(optimizer_box)
-        optimizer_layout.setContentsMargins(0, 0, 0, 0)
-        opt_label = QLabel("优化器")
-        opt_label.setObjectName("inlineFieldLabel")
-        opt_label.setFixedWidth(88)
-        self.optimizer_combo = QComboBox()
-        self.optimizer_combo.addItems(["auto", "SGD", "Adam", "AdamW", "RMSProp"])
+        optimizer_box, self.optimizer_combo = self.inline_combo_field(
+            "优化器",
+            training.get("optimizer", "auto"),
+            ["auto", "SGD", "Adam", "AdamW", "RMSProp"],
+            help_text="选择优化器；auto 会交给 Ultralytics 自动决定。",
+        )
         current_opt = training.get("optimizer", "auto")
         if current_opt in ["auto", "SGD", "Adam", "AdamW", "RMSProp"]:
             self.optimizer_combo.setCurrentText(current_opt)
-        optimizer_layout.addWidget(opt_label)
-        optimizer_layout.addWidget(self.optimizer_combo, 1)
         params.addWidget(optimizer_box, 0, 0)
 
-        lr_box, lr_edit = self.inline_field("学习率", training.get("lr", ""))
+        lr_box, lr_edit = self.inline_field(
+            "学习率",
+            training.get("lr", ""),
+            placeholder="例如 0.001",
+            help_text="优化器步长（lr0）；过大可能震荡，过小会收敛变慢。",
+        )
         self.edits["lr"] = lr_edit
         params.addWidget(lr_box, 0, 1)
 
@@ -141,13 +159,35 @@ class TrainPage(BasePage):
             ("imgsz", "图片尺寸"),
         ]
         for i, (key, label) in enumerate(param_order):
-            box, edit = self.inline_field(label, training.get(key, ""))
+            placeholder = {
+                "epochs": "例如 300",
+                "patience": "例如 100",
+                "workers": "例如 4",
+                "batch": "例如 16",
+                "imgsz": "例如 640",
+            }[key]
+            help_text = {
+                "epochs": "控制训练轮数（epochs）；更大通常效果更好，但训练耗时更长。",
+                "patience": "早停等待轮数（patience）；长期无提升时自动结束训练。",
+                "workers": "数据加载线程数（workers）；提高后通常更快，但会占用更多 CPU 和系统内存。",
+                "batch": "每次迭代送入显存的图片数量（batch）；受显存容量限制。",
+                "imgsz": "训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。",
+            }[key]
+            box, edit = self.inline_field(
+                label,
+                training.get(key, ""),
+                placeholder=placeholder,
+                help_text=help_text,
+            )
             self.edits[key] = edit
             params.addWidget(box, 1 + i // 2, i % 2)
 
         # Device at row 3 col 1, next to 图片尺寸
         self.device_box, self.device_combo = self.inline_combo_field(
-            "设备", str(training.get("device", "0")), ["0", "cpu", "0,1"]
+            "设备",
+            str(training.get("device", "0")),
+            ["0", "cpu", "0,1"],
+            help_text="选择训练设备；0 表示首张 GPU，cpu 表示使用处理器。",
         )
         params.addWidget(self.device_box, 3, 1)
         actions = QHBoxLayout()
@@ -187,9 +227,10 @@ class TrainPage(BasePage):
         # Task 11: No title, no progress bar - just the log text panel
         log_panel = Card()
         self.log = QTextEdit()
-        self.log.setReadOnly(True)
+        self.prepare_readonly_text(self.log)
         log_panel.layout.addWidget(self.log, 1)
         layout.addWidget(log_panel, 1)
+        self._connect_training_persistence()
         self.refresh_command_preview()
 
     def on_show(self):
@@ -269,21 +310,150 @@ class TrainPage(BasePage):
             if key == "hsv_h":
                 continue
             config[key] = (
-                self.app.settings["training"].get(key, 0)
+                self.app.settings["training"].get(
+                    key, self._default_training_value(key)
+                )
                 if check.isChecked()
                 else 0
             )
         hsv_enabled = self.checks["hsv_h"].isChecked()
         config["hsv_h"] = (
-            self.app.settings["training"].get("hsv_h", 0) if hsv_enabled else 0
+            self.app.settings["training"].get(
+                "hsv_h", self._default_training_value("hsv_h")
+            )
+            if hsv_enabled
+            else 0
         )
         config["hsv_s"] = (
-            self.app.settings["training"].get("hsv_s", 0) if hsv_enabled else 0
+            self.app.settings["training"].get(
+                "hsv_s", self._default_training_value("hsv_s")
+            )
+            if hsv_enabled
+            else 0
         )
         config["hsv_v"] = (
-            self.app.settings["training"].get("hsv_v", 0) if hsv_enabled else 0
+            self.app.settings["training"].get(
+                "hsv_v", self._default_training_value("hsv_v")
+            )
+            if hsv_enabled
+            else 0
         )
         return config
+
+    def _models_dir(self) -> Path:
+        return Path(self.app.settings["paths"]["models_dir"])
+
+    def _default_training_value(self, key: str):
+        return build_default_settings(self.project_root())["training"].get(key, 0)
+
+    def _save_training_settings(self, config: dict):
+        training = self.app.settings.setdefault("training", {})
+        for key in (
+            "data",
+            "model_yaml",
+            "project",
+            "lr",
+            "epochs",
+            "patience",
+            "workers",
+            "batch",
+            "imgsz",
+            "device",
+            "base_model",
+            "pretrained",
+            "optimizer",
+            "mosaic",
+            "fliplr",
+            "flipud",
+            "mixup",
+            "scale",
+            "translate",
+            "degrees",
+            "hsv_h",
+            "hsv_s",
+            "hsv_v",
+        ):
+            if key in config:
+                training[key] = config[key]
+        self.save_settings()
+
+    def _connect_training_persistence(self):
+        watched_edits = (
+            ("data", self.edits["data"]),
+            ("model_yaml", self.edits["model_yaml"]),
+            ("project", self.edits["project"]),
+            ("lr", self.edits["lr"]),
+            ("epochs", self.edits["epochs"]),
+            ("patience", self.edits["patience"]),
+            ("workers", self.edits["workers"]),
+            ("batch", self.edits["batch"]),
+            ("imgsz", self.edits["imgsz"]),
+        )
+        for key, edit in watched_edits:
+            edit.textChanged.connect(
+                lambda _text, setting_key=key: self._persist_training_text(setting_key)
+            )
+        self.pretrained_combo.currentTextChanged.connect(self._persist_model_selection)
+        self.optimizer_combo.currentTextChanged.connect(
+            lambda value: self._persist_training_value("optimizer", value)
+        )
+        self.device_combo.currentTextChanged.connect(
+            lambda value: self._persist_training_value("device", value)
+        )
+        for key, check in self.checks.items():
+            check.toggled.connect(
+                lambda _checked, setting_key=key: self._persist_augmentation(setting_key)
+            )
+
+    def _persist_training_text(self, key: str):
+        edit = self.edits.get(key)
+        if edit is None:
+            return
+        value = self.resolve_path_text(edit) if key in {"data", "model_yaml", "project"} else edit.text()
+        self.app.settings.setdefault("training", {})[key] = value
+        self.save_settings()
+        self.refresh_command_preview()
+
+    def _persist_training_value(self, key: str, value):
+        self.app.settings.setdefault("training", {})[key] = value
+        self.save_settings()
+        self.refresh_command_preview()
+
+    def _persist_model_selection(self, _value: str):
+        selected_model = self._resolve_model_reference(self.pretrained_combo.currentText())
+        training = self.app.settings.setdefault("training", {})
+        training["base_model"] = selected_model
+        training["pretrained"] = selected_model
+        self.save_settings()
+        self.refresh_command_preview()
+
+    def _persist_augmentation(self, key: str):
+        training = self.app.settings.setdefault("training", {})
+        if key == "hsv_h":
+            enabled = self.checks[key].isChecked()
+            training["hsv_h"] = (
+                training.get("hsv_h", self._default_training_value("hsv_h"))
+                if enabled
+                else 0
+            )
+            training["hsv_s"] = (
+                training.get("hsv_s", self._default_training_value("hsv_s"))
+                if enabled
+                else 0
+            )
+            training["hsv_v"] = (
+                training.get("hsv_v", self._default_training_value("hsv_v"))
+                if enabled
+                else 0
+            )
+        else:
+            training[key] = (
+                training.get(key, self._default_training_value(key))
+                if self.checks[key].isChecked()
+                else 0
+            )
+        self.save_settings()
+        self.refresh_command_preview()
 
     def _resolve_model_reference(self, model_text: str) -> str:
         model_text = str(model_text or "").strip()
@@ -293,12 +463,15 @@ class TrainPage(BasePage):
         if model_path.is_absolute() and model_path.exists():
             return str(model_path.resolve())
         project_root = Path(self.app.settings["project"]["root"])
+        models_dir = self._models_dir()
         for candidate in (
+            models_dir / model_text,
             project_root / model_text,
-            project_root / "data" / "models" / model_text,
         ):
             if candidate.exists():
                 return str(candidate.resolve())
+        if model_path.suffix.lower() == ".pt" and len(model_path.parts) == 1:
+            return str((models_dir / model_text).resolve())
         return model_text
 
     def refresh_command_preview(self):
@@ -307,20 +480,42 @@ class TrainPage(BasePage):
             + "\n等待开始训练..."
         )
 
+    def _normalize_command_model_targets(self, command: list[str]) -> list[str]:
+        models_dir = self._models_dir()
+        models_dir.mkdir(parents=True, exist_ok=True)
+        normalized: list[str] = []
+        for part in command:
+            if not part.startswith(("model=", "pretrained=")):
+                normalized.append(part)
+                continue
+            key, value = part.split("=", 1)
+            if not value:
+                normalized.append(part)
+                continue
+            path = Path(value)
+            if path.suffix.lower() == ".pt" and not path.is_absolute():
+                value = str((models_dir / path.name).resolve())
+            normalized.append(f"{key}={value}")
+        return normalized
+
     # Task 9: Only allow one training at a time
     # Task 10: Custom command dialog
     def start(self):
         if self.is_training:
             return
         config = self.collect_config()
+        self._save_training_settings(config)
         command = build_train_command(config)
+        command = self._normalize_command_model_targets(command)
 
         # Task 10: Custom command dialog if enabled
         if self.app.settings.get("features", {}).get("custom_command_dialog", True):
             dialog = CommandDialog(command, self)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
-            command = dialog.get_command()
+            command = self._normalize_command_model_targets(dialog.get_command())
+        else:
+            command = self._normalize_command_model_targets(command)
 
         self.is_training = True
         self.start_btn.setEnabled(False)

@@ -11,6 +11,7 @@ from scr.paths import DEFAULT_SETTINGS_PATH, ROOT, RUNTIME_ROOT
 def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
     project_root = Path(project_root)
     data_root = project_root / "data"
+    models_root = data_root / "models"
     return {
         "project": {"root": str(project_root)},
         "paths": {
@@ -18,6 +19,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "annotations_dir": str(project_root / "images"),
             "labels_dir": str(project_root / "labels"),
             "dataset_dir": str(data_root),
+            "models_dir": str(models_root),
             "result_dir": str(project_root / "result"),
         },
         "task": {"mode": "obb"},
@@ -37,7 +39,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
         "training": {
             "model_yaml": str(data_root / "yolov8m-obb.yaml"),
             "base_model": "yolo11n-obb",
-            "pretrained": "yolov8m-obb.pt",
+            "pretrained": str(models_root / "yolov8m-obb.pt"),
             "data": str(data_root / "data.yaml"),
             "project": str(project_root / "result"),
             "export_format": "onnx",
@@ -69,8 +71,21 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "iou": 0.45,
             "save_dir": str(project_root / "result" / "gui_predict"),
         },
-        "ui": {"last_page": "home", "window_width": 1100, "window_height": 780},
-        "features": {"custom_command_dialog": True},
+        "conversion": {"use_labelme": True},
+        "rename": {
+            "prefix": "A",
+            "start_index": 1,
+            "padding": 1,
+            "include_labelme": False,
+            "include_yolo": False,
+        },
+        "ui": {"last_page": "home", "window_width": 1100, "window_height": 770},
+        "features": {
+            "custom_command_dialog": True,
+            "show_help_icons": True,
+            "resize_output_mode": "输出到新文件夹",
+            "resize_save_format": "保持原格式",
+        },
     }
 
 

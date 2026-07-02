@@ -5,7 +5,7 @@ from pathlib import Path
 from scr.services.rename_service import execute_rename, preview_rename
 from scr.ui.helpers import _parse_padding_text
 from scr.ui.page_base import BasePage
-from scr.ui.qt import Qt, QCheckBox, QGridLayout, QHBoxLayout, QHeaderView, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTimer, QVBoxLayout
+from scr.ui.qt import Qt, QGridLayout, QHBoxLayout, QHeaderView, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTimer, QVBoxLayout
 
 class RenameTab(BasePage):
     def __init__(self, app):
@@ -17,20 +17,37 @@ class RenameTab(BasePage):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(10)
         self.folder_box, self.folder_edit = self.path_field(
-            "图片文件夹", app.settings["paths"]["images_dir"], self.choose_dir
+            "图片文件夹",
+            app.settings["paths"]["images_dir"],
+            self.choose_dir,
+            "选择待重命名的图片目录",
         )
         self.labelme_box, self.labelme_edit = self.path_field(
             "Labelme 标注文件夹",
             app.settings["paths"]["annotations_dir"],
             self.choose_dir,
+            "选择可选的 Labelme 标注目录",
         )
         self.yolo_box, self.yolo_edit = self.path_field(
-            "YOLO 标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir
+            "YOLO 标注文件夹",
+            app.settings["paths"]["labels_dir"],
+            self.choose_dir,
+            "选择可选的 YOLO 标注目录",
         )
-        self.prefix_box, self.prefix_edit = self.field("命名前缀", "A")
-        self.start_box, self.start_edit = self.field("起始编号", "1")
+        self.prefix_box, self.prefix_edit = self.field(
+            "命名前缀",
+            str(app.settings.get("rename", {}).get("prefix", "A")),
+            placeholder="例如 weld",
+        )
+        self.start_box, self.start_edit = self.field(
+            "起始编号",
+            str(app.settings.get("rename", {}).get("start_index", 1)),
+            placeholder="例如 1",
+        )
         self.padding_box, self.padding_combo = self.combo_field(
-            "编号位数", "1", ["1", "2", "3", "4"]
+            "编号位数",
+            str(app.settings.get("rename", {}).get("padding", 1)),
+            ["1", "2", "3", "4"],
         )
         for index, widget in enumerate(
             [
@@ -43,12 +60,16 @@ class RenameTab(BasePage):
             ]
         ):
             grid.addWidget(widget, index // 3, index % 3)
-        self.include_labelme = QCheckBox("Labelme 标注文件一并更改")
-        self.include_labelme.setChecked(False)
-        self.include_yolo = QCheckBox("YOLO 标注文件一并更改")
-        self.include_yolo.setChecked(False)
-        grid.addWidget(self.include_labelme, 2, 0)
-        grid.addWidget(self.include_yolo, 2, 1)
+        include_labelme_box, self.include_labelme = self.checkbox_with_help(
+            "Labelme 标注文件一并更改",
+            bool(app.settings.get("rename", {}).get("include_labelme", False)),
+        )
+        include_yolo_box, self.include_yolo = self.checkbox_with_help(
+            "YOLO 标注文件一并更改",
+            bool(app.settings.get("rename", {}).get("include_yolo", False)),
+        )
+        grid.addWidget(include_labelme_box, 2, 0)
+        grid.addWidget(include_yolo_box, 2, 1)
         layout.addLayout(grid)
         actions = QHBoxLayout()
         run_button = QPushButton("执行重命名")
@@ -78,6 +99,7 @@ class RenameTab(BasePage):
         self.padding_combo.currentTextChanged.connect(lambda _text: self.preview())
         self.include_labelme.stateChanged.connect(lambda _state: self.preview())
         self.include_yolo.stateChanged.connect(lambda _state: self.preview())
+        self._connect_persistence()
         QTimer.singleShot(100, self.preview)
 
     def label_status(
@@ -136,3 +158,46 @@ class RenameTab(BasePage):
                 f"已重命名图片 {result.renamed_count} 个，Labelme 标注 {result.labelme_renamed_count} 个，YOLO 标注 {result.label_renamed_count} 个。",
             )
         self.preview()
+
+    def _connect_persistence(self):
+        self.folder_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths", "images_dir", value=self.resolve_path_text(self.folder_edit)
+            )
+        )
+        self.labelme_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths",
+                "annotations_dir",
+                value=self.resolve_path_text(self.labelme_edit),
+            )
+        )
+        self.yolo_edit.textChanged.connect(
+            lambda _text: self.update_setting(
+                "paths", "labels_dir", value=self.resolve_path_text(self.yolo_edit)
+            )
+        )
+        self.prefix_edit.textChanged.connect(
+            lambda text: self.update_setting("rename", "prefix", value=text)
+        )
+        self.start_edit.textChanged.connect(self._persist_start_index)
+        self.padding_combo.currentTextChanged.connect(
+            lambda text: self.update_setting("rename", "padding", value=int(text))
+        )
+        self.include_labelme.toggled.connect(
+            lambda checked: self.update_setting(
+                "rename", "include_labelme", value=bool(checked)
+            )
+        )
+        self.include_yolo.toggled.connect(
+            lambda checked: self.update_setting(
+                "rename", "include_yolo", value=bool(checked)
+            )
+        )
+
+    def _persist_start_index(self, text: str):
+        try:
+            value = int(text)
+        except ValueError:
+            return
+        self.update_setting("rename", "start_index", value=value)

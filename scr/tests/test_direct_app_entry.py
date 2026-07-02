@@ -164,8 +164,14 @@ def test_home_page_can_be_constructed_and_refreshed(tmp_path):
 
     page = HomePage(fake_app)
     page.on_show()
+    margins = page.layout().contentsMargins()
 
     assert page.overview_stats["project"].toolTip() == str(tmp_path)
+    assert page.minimumHeight() == 650
+    assert margins.left() == 16
+    assert margins.top() == 16
+    assert margins.right() == 16
+    assert margins.bottom() == 4
     assert all(
         card.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Preferred
         for card in page._home_left_cards + page._home_right_cards
@@ -201,6 +207,185 @@ def test_main_pages_can_be_constructed(tmp_path):
     assert train_page.start_btn.text() == "开始训练"
     assert validate_page.start_det_btn.text() == "批量检测"
     assert "Pixi" in settings_page.status_cards
+    assert settings_page.help_icon_check.isChecked() is True
+
+
+def test_workbench_window_preloads_all_pages():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import QApplication
+    from scr.ui.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    assert list(window.pages.keys()) == window.page_order
+    assert window.stack.count() == len(window.page_order)
+
+
+def test_scheme_b_uses_label_tooltips_instead_of_help_icon():
+    src = PAGE_BASE.read_text(encoding="utf-8")
+    assert "class HelpIcon" not in src
+    assert "ⓘ" in src
+
+
+def test_pages_add_placeholders_and_help_icons(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication, QCheckBox, QLabel
+    from scr.ui.views.convert import ConvertTab
+    from scr.ui.views.preview import PreviewTab
+    from scr.ui.views.rename import RenameTab
+    from scr.ui.views.resize import ResizeTab
+    from scr.ui.views.settings import SettingsPage
+    from scr.ui.views.training import TrainPage
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        refresh_help_icon_visibility=lambda: None,
+    )
+
+    train_page = TrainPage(fake_app)
+    convert_page = ConvertTab(fake_app)
+    preview_page = PreviewTab(fake_app)
+    rename_page = RenameTab(fake_app)
+    resize_page = ResizeTab(fake_app)
+    validate_page = ValidatePage(fake_app)
+    settings_page = SettingsPage(fake_app)
+
+    assert train_page.edits["lr"].placeholderText() == "例如 0.001"
+    assert train_page.edits["epochs"].placeholderText() == "例如 300"
+    assert convert_page.images_edit.placeholderText() == "选择待转换的图片目录"
+    assert preview_page.image_edit.placeholderText() == "选择待预览的图片目录"
+    assert rename_page.prefix_edit.placeholderText() == "例如 weld"
+    assert resize_page.long_edit.placeholderText() == "例如 960"
+    assert validate_page.conf_edit.placeholderText() == "例如 0.25"
+    assert int(convert_page.log.focusPolicy()) == int(convert_page.log.focusPolicy().NoFocus)
+    assert int(resize_page.log.focusPolicy()) == int(resize_page.log.focusPolicy().NoFocus)
+    assert int(validate_page.detect_log.focusPolicy()) == int(validate_page.detect_log.focusPolicy().NoFocus)
+    assert int(settings_page.log.focusPolicy()) == int(settings_page.log.focusPolicy().NoFocus)
+    assert int(train_page.log.focusPolicy()) == int(train_page.log.focusPolicy().NoFocus)
+    train_labels = [label for label in train_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    train_checks = [check for check in train_page.findChildren(QCheckBox) if "ⓘ" in check.text()]
+    convert_labels = [label for label in convert_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    preview_labels = [label for label in preview_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    rename_labels = [label for label in rename_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    resize_labels = [label for label in resize_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    validate_labels = [label for label in validate_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    settings_labels = [label for label in settings_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    assert len(train_labels) == 8
+    assert len(train_checks) == 8
+    assert len(convert_labels) == 6
+    assert len(preview_labels) == 0
+    assert len(rename_labels) == 0
+    assert len(resize_labels) == 0
+    assert len(validate_labels) == 0
+    assert len(settings_labels) == 0
+    assert any(label.text() == "Epochs ⓘ" and label.toolTip() == "控制训练轮数（epochs）；更大通常效果更好，但训练耗时更长。" for label in train_labels)
+    assert any(label.text() == "Workers ⓘ" and label.toolTip() == "数据加载线程数（workers）；提高后通常更快，但会占用更多 CPU 和系统内存。" for label in train_labels)
+    assert any(label.text() == "图片尺寸 ⓘ" and label.toolTip() == "训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。" for label in train_labels)
+    assert any(check.text() == "马赛克 ⓘ" and check.toolTip() == "随机拼图增强（mosaic）；将多张图随机拼接成一张，增强小目标和复杂场景鲁棒性。" for check in train_checks)
+    assert convert_page.labelme_check.text() == "Labelme 转 YOLO ⓘ"
+    assert convert_page.labelme_check.toolTip() == "开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。"
+    assert all(label.text() != "基础模型 ⓘ" for label in train_labels)
+    assert all(label.text() != "图片目录 ⓘ" for label in convert_labels)
+
+
+def test_convert_page_keeps_yolo_path_editable_when_labelme_mode_changes(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.convert import ConvertTab
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        refresh_help_icon_visibility=lambda: None,
+    )
+
+    page = ConvertTab(fake_app)
+
+    assert page.yolo_labels_box.isEnabled() is True
+    assert page.yolo_labels_edit.isEnabled() is True
+    assert page.line_edit.isEnabled() is True
+
+    page.labelme_check.setChecked(False)
+
+    assert page.yolo_labels_box.isEnabled() is True
+    assert page.yolo_labels_edit.isEnabled() is True
+    assert page.line_edit.isEnabled() is False
+
+
+def test_help_icon_toggle_updates_visibility(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication, QLabel
+    from scr.ui.views.settings import SettingsPage
+    from scr.ui.views.training import TrainPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    saved = {}
+
+    class FakeApp(SimpleNamespace):
+        def refresh_help_icon_visibility(self):
+            for page in self.pages:
+                page.refresh_help_icon_visibility()
+
+    fake_app = FakeApp(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda data: saved.update(data)),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        pages=[],
+    )
+
+    train_page = TrainPage(fake_app)
+    settings_page = SettingsPage(fake_app)
+    fake_app.pages = [train_page, settings_page]
+    before_labels = [label.text() for label in train_page.findChildren(QLabel)]
+    assert "Epochs ⓘ" in before_labels
+
+    settings_page.help_icon_check.setChecked(False)
+
+    assert fake_app.settings["features"]["show_help_icons"] is False
+    assert saved["features"]["show_help_icons"] is False
+    after_labels = [label.text() for label in train_page.findChildren(QLabel)]
+    assert "Epochs ⓘ" not in after_labels
+    assert "Epochs" in after_labels
+    epoch_label = next(
+        label for label in train_page.findChildren(QLabel) if label.text() == "Epochs"
+    )
+    assert (
+        epoch_label.toolTip()
+        == "控制训练轮数（epochs）；更大通常效果更好，但训练耗时更长。"
+    )
+
+
+def test_workbench_window_uses_new_default_size():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import QApplication
+    from scr.ui.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    assert window.width() == 1100
+    assert window.height() == 770
 
 
 def test_train_page_resolves_model_file_from_data_models(tmp_path):
@@ -232,3 +417,75 @@ def test_train_page_resolves_model_file_from_data_models(tmp_path):
 
     assert f"model={model_path}" in command
     assert f"pretrained={model_path}" in command
+
+
+def test_command_dialog_uses_wider_size():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.dialogs import CommandDialog
+    from scr.ui.qt import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    dialog = CommandDialog(["pixi", "run", "yolo", "detect", "train"])
+
+    assert dialog.minimumWidth() == 350
+    assert dialog.minimumHeight() == 100
+    assert dialog.width() == 700
+    assert dialog.height() == 200
+
+
+def test_training_page_persists_updated_fields_to_settings(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.training import TrainPage
+
+    app = QApplication.instance() or QApplication([])
+    saved = {}
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda data: saved.update(data)),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = TrainPage(fake_app)
+    page.edits["epochs"].setText("123")
+    page.pretrained_combo.setCurrentText("custom.pt")
+
+    assert fake_app.settings["training"]["epochs"] == "123"
+    assert Path(fake_app.settings["training"]["pretrained"]).name == "custom.pt"
+    assert "training" in saved
+
+
+def test_validation_page_lists_models_from_data_models_first(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    models_dir = tmp_path / "data" / "models"
+    models_dir.mkdir(parents=True)
+    (models_dir / "alpha.pt").write_text("a", encoding="utf-8")
+    (tmp_path / "result" / "train" / "weights").mkdir(parents=True)
+    (tmp_path / "result" / "train" / "weights" / "best.pt").write_text(
+        "b", encoding="utf-8"
+    )
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.on_show()
+
+    assert page.model_combo.itemText(0) == "data\\models\\alpha.pt"

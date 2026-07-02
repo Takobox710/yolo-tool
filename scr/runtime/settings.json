@@ -7,6 +7,7 @@
     "annotations_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images",
     "labels_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\labels",
     "dataset_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\data",
+    "models_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\models",
     "result_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\result"
   },
   "task": {
@@ -36,8 +37,8 @@
   },
   "training": {
     "model_yaml": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\yolov8m-obb.yaml",
-    "base_model": "yolo11n-obb",
-    "pretrained": "yolov8m-obb.pt",
+    "base_model": "D:\\ruanjian\\User\\Python\\yolo_tool\\yolov8m-obb.pt",
+    "pretrained": "D:\\ruanjian\\User\\Python\\yolo_tool\\yolov8m-obb.pt",
     "data": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\data.yaml",
     "project": "D:\\ruanjian\\User\\Python\\yolo_tool\\result",
     "export_format": "onnx",
@@ -50,18 +51,18 @@
     "device": "0",
     "mosaic": 1.0,
     "fliplr": 0.5,
-    "flipud": 0.0,
-    "mixup": 0.0,
+    "flipud": 0,
+    "mixup": 0,
     "scale": 0.5,
     "translate": 0.1,
-    "degrees": 0.0,
+    "degrees": 0,
     "hsv_h": 0.015,
     "hsv_s": 0.7,
     "hsv_v": 0.4,
     "optimizer": "auto"
   },
   "validation": {
-    "model_path": "",
+    "model_path": "D:\\ruanjian\\User\\Python\\yolo_tool\\result\\train-4\\weights\\best.pt",
     "source_mode": "图片文件夹",
     "source_path": "",
     "camera_index": 0,
@@ -69,12 +70,25 @@
     "iou": 0.45,
     "save_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\result\\gui_predict"
   },
+  "conversion": {
+    "use_labelme": true
+  },
+  "rename": {
+    "prefix": "A",
+    "start_index": 1,
+    "padding": 1,
+    "include_labelme": false,
+    "include_yolo": false
+  },
   "ui": {
-    "last_page": "home",
+    "last_page": "settings",
     "window_width": 1100,
-    "window_height": 780
+    "window_height": 770
   },
   "features": {
-    "custom_command_dialog": true
+    "custom_command_dialog": true,
+    "show_help_icons": false,
+    "resize_output_mode": "输出到新文件夹",
+    "resize_save_format": "保持原格式"
   }
 }

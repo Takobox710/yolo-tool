@@ -18,10 +18,16 @@ class PreviewTab(BasePage):
         layout.setContentsMargins(12, 12, 12, 12)
         grid = QGridLayout()
         self.image_box, self.image_edit = self.path_field(
-            "图片文件夹", app.settings["paths"]["images_dir"], self.choose_dir
+            "图片文件夹",
+            app.settings["paths"]["images_dir"],
+            self.choose_dir,
+            "选择待预览的图片目录",
         )
         self.label_box, self.label_edit = self.path_field(
-            "标注文件夹", app.settings["paths"]["labels_dir"], self.choose_dir
+            "标注文件夹",
+            app.settings["paths"]["labels_dir"],
+            self.choose_dir,
+            "选择对应的 YOLO 标注目录",
         )
         grid.addWidget(self.image_box, 0, 0)
         grid.addWidget(self.label_box, 0, 1)

@@ -61,9 +61,6 @@ def find_model_yaml_files(data_dir: Path) -> list[str]:
 
 def find_pt_files_in_data_models(project_root: Path) -> list[str]:
     names: list[str] = []
-    for path in sorted(project_root.glob("*.pt")):
-        if path.is_file():
-            names.append(path.name)
     models_dir = project_root / "data" / "models"
     if models_dir.exists():
         for path in sorted(models_dir.glob("*.pt")):
