@@ -261,9 +261,7 @@ class HomePage(BasePage):
             self, "设置项目目录", self.app.settings["project"]["root"]
         )
         if path:
-            self.app.settings["project"]["root"] = path
-            self.app.settings_service.save(self.app.settings)
-            self.on_show()
+            self.app.switch_project_root(path)
 
     def open_result_dir(self):
         path = Path(self.app.settings["paths"]["result_dir"])

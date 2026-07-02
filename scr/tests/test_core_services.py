@@ -26,6 +26,42 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["features"]["show_help_icons"] is True
 
 
+def test_settings_service_defaults_to_project_data_runtime(tmp_path):
+    from scr.services.settings_service import SettingsService, project_settings_path
+
+    service = SettingsService(project_root=tmp_path)
+    settings = service.load()
+
+    assert service.settings_path == tmp_path / "data" / "runtime" / "settings.json"
+    assert project_settings_path(tmp_path) == service.settings_path
+    assert service.settings_path.exists()
+    assert settings["project"]["root"] == str(tmp_path)
+
+
+def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(tmp_path):
+    from scr.services.settings_service import SettingsService
+
+    stale_root = tmp_path / "old"
+    project_root = tmp_path / "current"
+    settings_path = project_root / "data" / "runtime" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "project": {"root": str(stale_root)},
+                "training": {"epochs": 33},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    settings = SettingsService(project_root=project_root).load()
+
+    assert settings["project"]["root"] == str(project_root)
+    assert settings["training"]["epochs"] == 33
+
+
 def test_conversion_config_rejects_invalid_ratios(tmp_path):
     from scr.services.conversion_service import ConversionConfig
 
@@ -365,7 +401,11 @@ def test_training_command_and_detection_helpers(tmp_path):
     command = build_train_command(
         {"model_yaml": "data/yolov8m-obb.yaml", "data": "data.yaml", "epochs": 800, "lr": 0.001}
     )
-    assert command[:5] == ["pixi", "run", "yolo", "obb", "train"]
+    assert command[-2:] != ["obb", "train"]
+    assert "--yolo-train" in command
+    assert "obb" in command
+    assert "train" in command
+    assert "pixi" not in command
     assert "model=data/yolov8m-obb.yaml" in command
     assert "lr0=0.001" in command
     assert infer_task_mode_from_model("yolo11n-obb.pt") == "obb"
@@ -528,13 +568,49 @@ def test_system_status_uses_short_cache_and_nonzero_sampling(monkeypatch):
         return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    monkeypatch.setattr(environment_service.subprocess, "run", lambda *args, **kwargs: type("R", (), {"returncode": 1, "stdout": ""})())
+    def fake_run(*args, **kwargs):
+        calls["creationflags"] = kwargs.get("creationflags")
+        return type("R", (), {"returncode": 1, "stdout": ""})()
+
+    monkeypatch.setattr(environment_service.subprocess, "run", fake_run)
 
     status = environment_service.system_status()
 
     assert calls["ttl"] == 0.5
     assert calls["interval"] == 0.1
+    assert calls["creationflags"] == getattr(environment_service.subprocess, "CREATE_NO_WINDOW", 0)
     assert status["cpu"] == "7.5% / 32核"
+
+
+def test_logged_process_uses_hidden_windows_subprocess(monkeypatch):
+    from queue import Queue
+
+    from scr.services import runtime_service
+
+    calls = {}
+
+    class FakeStdout:
+        def __iter__(self):
+            return iter(())
+
+    class FakeProcess:
+        stdout = FakeStdout()
+
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        calls["command"] = command
+        calls["creationflags"] = kwargs.get("creationflags")
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime_service.subprocess, "Popen", fake_popen)
+
+    handle = runtime_service.spawn_logged_process(["demo"], str(Path.cwd()), Queue())
+    handle.thread.join(timeout=1)
+
+    assert calls["command"] == ["demo"]
+    assert calls["creationflags"] == getattr(runtime_service.subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def test_rename_can_include_matching_labels_and_blocks_label_conflicts(tmp_path):

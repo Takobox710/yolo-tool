@@ -5,6 +5,8 @@ import threading
 from dataclasses import dataclass
 from queue import Queue
 
+from scr.services.process_utils import hidden_subprocess_kwargs
+
 
 @dataclass
 class ProcessHandle:
@@ -22,6 +24,7 @@ def spawn_logged_process(command: list[str], cwd: str, queue: Queue) -> ProcessH
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        **hidden_subprocess_kwargs(),
     )
 
     def forward() -> None:

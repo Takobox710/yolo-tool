@@ -26,6 +26,11 @@ yolo_tool/
 ├── pixi.lock
 ├── AGENTS.md
 ├── icon.svg
+├── docs/
+│   └── packaging-windows.md
+├── packaging/
+│   ├── YOLOTool.spec
+│   └── build_windows.ps1
 └── scr/
     ├── __init__.py
     ├── main.py
@@ -33,6 +38,7 @@ yolo_tool/
     ├── context.py
     ├── paths.py
     ├── theme.py
+    ├── train_cli.py
     ├── runtime/
     │   └── settings.json
     ├── assets/
@@ -48,6 +54,7 @@ yolo_tool/
     │   ├── training_service.py
     │   ├── detection_service.py
     │   ├── runtime_service.py
+    │   ├── process_utils.py
     │   └── environment_service.py
     ├── ui/
     │   ├── __init__.py
@@ -100,6 +107,14 @@ pixi run python -m scr.main
 pixi run check
 ```
 
+Windows 绿色版打包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
+```
+
+打包产物位于 `dist/YOLOTool/`，入口为 `dist/YOLOTool/YOLOTool.exe`。
+
 ## Pixi 环境说明
 
 `pixi.toml` 使用 Python 3.12，并配置了：
@@ -145,7 +160,9 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 
 当前主 GUI 入口为 `scr/main.py`，应用装配层位于 `scr/app.py`，窗口与页面拆分到 `scr/ui/` 下；服务层保持在 `scr/services/` 下。
 
-除主页默认显示外，用户在训练、验证、标注转换、批量重命名、图片压缩等界面修改过的主要配置项，应持久化到 `scr/runtime/settings.json`，下次启动后继续保留。
+除主页默认显示外，用户在训练、验证、标注转换、批量重命名、图片压缩等界面修改过的主要配置项，应持久化到当前项目目录的 `data/runtime/settings.json`，下次启动或切回该项目后继续保留。
+
+主页点击"设置项目目录"切换项目时，必须重新加载目标项目的 `data/runtime/settings.json`；若不存在则按目标项目目录创建默认配置。`scr/runtime/settings.json` 只作为历史/源码内默认配置参考，不再作为当前项目配置的唯一落点。
 
 程序启动时默认进入"主页"，不再根据上次关闭前的 `last_page` 自动恢复页面。
 
@@ -262,8 +279,10 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 训练命令由 `training_service.build_train_command()` 生成，格式类似：
 
 ```powershell
-pixi run yolo obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
+python -m scr.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
 ```
+
+打包后训练/导出命令通过 `YOLOTool.exe --yolo-train ...` 或 `YOLOTool.exe --yolo-export ...` 进入 `scr/train_cli.py`，目标机器不需要安装 Python、pixi 或 Ultralytics CLI。不要把训练命令恢复为依赖 `pixi run yolo ...` 的形式。
 
 模型目录约定：
 
@@ -279,6 +298,7 @@ Qt 实现注意事项：
 - HSV 勾选项必须同时控制 `hsv_h`、`hsv_s`、`hsv_v` 三个训练参数；取消勾选时三者都传 `0`。
 - 开始训练、停止训练、查看模型报告按钮放在训练控制模块中，不放在训练日志标题栏中。
 - 系统状态检测必须后台执行，不得阻塞页面切换或窗口缩放，并且训练页 GPU/显存/CPU/内存状态需每 `0.5s` 自动刷新一次。
+- Windows 打包后的后台子进程不得弹出终端窗口；调用 `nvidia-smi`、训练/导出等后台进程时应通过 `scr/services/process_utils.py` 提供的隐藏窗口参数。
 - 点击"开始训练"后，若自定义命令框功能开启，先弹出命令编辑对话框，可修改命令后再执行训练；若上一个训练任务未结束则不弹出也不启动新任务。
 - 训练命令编辑对话框当前默认尺寸为 `700 x 200`，最小尺寸为 `350 x 100`。
 - 训练和检测均只允许一次启动，按钮在运行期间禁用，任务结束后恢复。
@@ -385,7 +405,7 @@ Qt 实现注意事项：
 
 核心服务接口在 `scr/services/`：
 
-- `settings_service.py`：设置文件加载、保存、默认值合并，并维护训练、验证、转换、重命名、压缩等页面的持久化默认值。当前包含 `paths.models_dir`、`training.optimizer`、`features.custom_command_dialog` 等字段。
+- `settings_service.py`：项目级设置文件加载、保存、默认值合并；默认路径为当前项目目录 `data/runtime/settings.json`，并维护训练、验证、转换、重命名、压缩等页面的持久化默认值。当前包含 `paths.models_dir`、`training.optimizer`、`features.custom_command_dialog` 等字段。
 - `conversion_service.py`：Labelme 转 YOLO、已有 YOLO `.txt` 分组、自动识别类别、数据集划分、`data.yaml` 生成。
 - `annotation_service.py`：YOLO 标注解析与图像预览绘制。
 - `rename_service.py`：批量重命名预览与执行。
@@ -394,6 +414,7 @@ Qt 实现注意事项：
 - `detection_service.py`：模型扫描、输入源自然排序、单文件/批量检测源收集、检测结果解析、推理流程。
 - 摄像头/视频流的结果图渲染必须显式以当前帧作为底图后再叠加检测结果，不能依赖模型结果对象内部的默认底图回退，避免无目标时出现黑屏。
 - `runtime_service.py`：子进程启动、日志转发、停止进程。
+- `process_utils.py`：Windows 后台子进程隐藏窗口参数，避免 PyInstaller GUI 程序反复弹出终端窗口。
 - `environment_service.py`：pixi、模块、GPU/CPU/内存/磁盘状态检测。
 
 设置文件新增字段：
@@ -406,6 +427,33 @@ Qt 实现注意事项：
 - `conversion.use_labelme`：记录标注转换页当前是否启用 Labelme 转 YOLO。
 - `rename.prefix`、`rename.start_index`、`rename.padding`、`rename.include_labelme`、`rename.include_yolo`：记录批量重命名页当前配置。
 - `features.resize_output_mode`、`features.resize_save_format`：记录图片压缩页的输出方式与保存格式。
+
+## 打包说明
+
+推荐分发形式为 PyInstaller `onedir` 绿色版，不建议优先制作单文件 exe。原因是本项目包含 PySide6、OpenCV、Ultralytics、Torch/CUDA 等大体量依赖，单文件模式启动慢且更容易遇到临时目录和杀毒误报问题。
+
+打包命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
+```
+
+打包后的目录结构约定：
+
+```text
+dist/YOLOTool/
+├── YOLOTool.exe
+├── _internal/
+├── data/
+│   ├── models/
+│   └── runtime/
+│       └── settings.json
+├── images/
+├── labels/
+└── result/
+```
+
+`data/models/`、`data/runtime/`、`images/`、`labels/`、`result/` 都是 exe 同级的项目工作目录。CUDA 版打包后目标机器不需要 Python/pixi，但仍需要兼容的 NVIDIA 驱动。
 
 ## 测试说明
 
@@ -425,6 +473,7 @@ Qt 实现注意事项：
 - 训练命令编辑弹窗尺寸与命令编辑行为。
 - 模型扫描与检测结果归一化。
 - `data/models` 统一模型目录、训练命令模型路径解析、配置持久化与重启恢复。
+- 项目级 `data/runtime/settings.json`、项目目录切换后配置重载、PyInstaller 脚本入口、隐藏后台子进程窗口。
 - 摄像头实时预览、FPS 日志与“无目标时不黑屏”回归。
 - Qt 应用入口和核心功能迁移验证。
 - 图标资源、主页网格布局与滚动、主页图表模块、相对路径、训练曲线、悬停高亮、防重复启动、自定义命令框、系统信息样式、训练页系统状态自动刷新、检测列表与批量检测行为等功能验证。

@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Callable, TypeVar
 
+from scr.services.process_utils import hidden_subprocess_kwargs
+
 
 T = TypeVar("T")
 _CACHE: dict[str, tuple[float, object]] = {}
@@ -66,7 +68,13 @@ def _load_system_status() -> dict[str, str]:
     except Exception:
         pass
     try:
-        result = subprocess.run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=2)
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            **hidden_subprocess_kwargs(),
+        )
         if result.returncode == 0 and result.stdout.strip():
             name, usage, used, total = [part.strip() for part in result.stdout.splitlines()[0].split(",")]
             status["gpu"] = name

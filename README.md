@@ -14,7 +14,8 @@
 - 训练命令由服务层统一生成，支持优化器、HSV、MixUp、Mosaic 等常见参数。
 - 支持扫描 `data/models/*.pt` 与 `result/**/weights/*.pt` 作为模型候选。
 - 支持图片/视频文件夹、单图片/视频、摄像头三类验证输入源。
-- 主要配置会持久化到 `scr/runtime/settings.json`，重启后可继续沿用。
+- 主要配置会持久化到当前项目目录的 `data/runtime/settings.json`，切换项目目录后会自动读取该项目自己的配置。
+- 支持 PyInstaller `onedir` 绿色版打包，目标 Windows 机器无需安装 Python 或 pixi。
 - 服务层与测试已拆分，便于后续继续扩展 GUI 而不把业务逻辑写死在界面回调中。
 
 ## 主要功能
@@ -42,8 +43,10 @@
 训练命令示例：
 
 ```powershell
-pixi run yolo obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
+python -m scr.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
 ```
+
+打包后的程序会通过 `YOLOTool.exe --yolo-train ...` 启动内部训练入口，不依赖目标机器上的 `pixi` 或 `yolo` 命令。
 
 ### 4. 模型验证
 
@@ -81,12 +84,18 @@ yolo_tool/
 ├── README.md
 ├── pixi.toml
 ├── pixi.lock
+├── docs/
+│   └── packaging-windows.md
+├── packaging/
+│   ├── YOLOTool.spec
+│   └── build_windows.ps1
 └── scr/
     ├── app.py
     ├── main.py
     ├── context.py
     ├── paths.py
     ├── theme.py
+    ├── train_cli.py
     ├── runtime/
     │   └── settings.json
     ├── assets/
@@ -129,6 +138,33 @@ pixi run app
 pixi run python -m scr.main
 ```
 
+## Windows 绿色版打包
+
+推荐使用 PyInstaller `onedir` 形式打包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
+```
+
+打包产物位于：
+
+```text
+dist/YOLOTool/
+├── YOLOTool.exe
+├── _internal/
+├── data/
+│   ├── models/
+│   └── runtime/
+│       └── settings.json
+├── images/
+├── labels/
+└── result/
+```
+
+把整个 `dist/YOLOTool/` 文件夹复制到其他 Windows 机器即可运行。CUDA 版仍要求目标机器安装兼容的 NVIDIA 驱动。
+
+更多说明见 `docs/packaging-windows.md`。
+
 ## 测试与检查
 
 运行测试：
@@ -150,7 +186,7 @@ pixi run check
 - 数据集目录：`data/`
 - 基础模型目录：`data/models/`
 - 训练结果目录：`result/`
-- 运行时设置：`scr/runtime/settings.json`
+- 运行时设置：`data/runtime/settings.json`
 
 默认窗口尺寸为 `1100 x 770`，最小尺寸为 `800 x 600`。
 
@@ -165,6 +201,8 @@ pixi run check
 - 批量重命名预览、执行、冲突处理。
 - 图片压缩预览、备份与统一画布输出。
 - 训练命令生成与模型路径解析。
+- 项目级运行时配置、项目目录切换后配置重载。
+- PyInstaller 打包入口与后台子进程隐藏窗口行为。
 - 模型扫描、检测结果归一化、输入源自然排序。
 - 摄像头实时预览与“无目标不黑屏”回归。
 - Qt 应用入口、页面拆分、帮助符号显示、占位提示、日志框只读行为等界面约定。
@@ -174,7 +212,8 @@ pixi run check
 - 本项目当前面向 Windows 本地桌面环境。
 - `.pixi/` 不应提交到 git。
 - `data/`、`images/`、`labels/`、`result/` 属于本地工作数据目录，默认已在 `.gitignore` 中忽略。
-- `scr/runtime/settings.json` 会随着本地使用过程更新，属于运行时配置文件。
+- 当前项目的配置文件位于 `data/runtime/settings.json`；`scr/runtime/settings.json` 仅保留为源码内历史/默认配置参考。
+- PyInstaller 生成的 `build/`、`dist/` 属于构建产物，默认已在 `.gitignore` 中忽略。
 - 如果编译或测试错误连续出现 5 次仍未解决，应停止并由人类介入排查。
 
 ## 与 yolo-weld 的关系

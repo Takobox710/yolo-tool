@@ -7,6 +7,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Build artifacts
+build/
+dist/
+
 # Local working data and outputs
 data/
 labels/

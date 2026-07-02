@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import sys
 from pathlib import Path
 
 
@@ -9,10 +10,16 @@ def infer_task_mode_from_model(model_name: str | Path | None) -> str:
     return "obb" if "obb" in name else "detect"
 
 
+def app_cli_command(*args: str) -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *args]
+    return [sys.executable, "-m", "scr.main", *args]
+
+
 def build_train_command(config: dict) -> list[str]:
     model = config.get("model_yaml") or config.get("base_model") or config.get("model")
     task_mode = infer_task_mode_from_model(model)
-    command = ["pixi", "run", "yolo", task_mode, "train"]
+    command = app_cli_command("--yolo-train", task_mode, "train")
     fields = [
         ("model", model),
         ("data", config.get("data")),
@@ -45,7 +52,7 @@ def build_train_command(config: dict) -> list[str]:
 
 
 def build_export_command(model_path: str, export_format: str, imgsz: int | str = 640) -> list[str]:
-    return ["pixi", "run", "yolo", "export", f"model={model_path}", f"format={export_format}", f"imgsz={imgsz}"]
+    return app_cli_command("--yolo-export", f"model={model_path}", f"format={export_format}", f"imgsz={imgsz}")
 
 
 def latest_result_csv(result_dir: Path) -> Path | None:

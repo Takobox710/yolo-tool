@@ -20,9 +20,7 @@ class WorkbenchWindow(QMainWindow):
         super().__init__()
         self.settings_service = SettingsService()
         self.settings = self.settings_service.load()
-        self.settings.setdefault("features", {}).setdefault("custom_command_dialog", True)
-        self.settings.setdefault("features", {}).setdefault("show_help_icons", True)
-        self.settings.setdefault("training", {}).setdefault("optimizer", "auto")
+        self._apply_settings_defaults()
         self.workers: list[Worker] = []
         self.pages: dict[str, QWidget] = {}
         self.training_handle = None
@@ -43,6 +41,11 @@ class WorkbenchWindow(QMainWindow):
         self.resize(1100, 770)
         self.setMinimumSize(800, 600)
         self._build()
+
+    def _apply_settings_defaults(self) -> None:
+        self.settings.setdefault("features", {}).setdefault("custom_command_dialog", True)
+        self.settings.setdefault("features", {}).setdefault("show_help_icons", True)
+        self.settings.setdefault("training", {}).setdefault("optimizer", "auto")
 
     def _build(self):
         root = QWidget()
@@ -93,6 +96,24 @@ class WorkbenchWindow(QMainWindow):
             page = self.create_page(key)
             self.pages[key] = page
             self.stack.addWidget(page)
+
+    def _clear_pages(self):
+        while self.stack.count():
+            widget = self.stack.widget(0)
+            self.stack.removeWidget(widget)
+            widget.setParent(None)
+        self.pages.clear()
+
+    def reload_pages(self, current_page: str = "home"):
+        self._clear_pages()
+        self._preload_pages()
+        self.show_page(current_page)
+
+    def switch_project_root(self, project_root: str | Path) -> None:
+        self.settings_service = SettingsService(project_root=Path(project_root))
+        self.settings = self.settings_service.load()
+        self._apply_settings_defaults()
+        self.reload_pages("home")
 
     def show_page(self, key: str):
         if key not in self.page_titles:

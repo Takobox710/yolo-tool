@@ -5,7 +5,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from scr.paths import DEFAULT_SETTINGS_PATH, ROOT, RUNTIME_ROOT
+from scr.paths import ROOT
+
+
+def project_settings_path(project_root: Path = ROOT) -> Path:
+    return Path(project_root) / "data" / "runtime" / "settings.json"
 
 
 def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
@@ -100,9 +104,9 @@ def deep_merge(defaults: dict[str, Any], incoming: dict[str, Any]) -> dict[str, 
 
 
 class SettingsService:
-    def __init__(self, settings_path: Path = DEFAULT_SETTINGS_PATH, project_root: Path = ROOT):
-        self.settings_path = Path(settings_path)
+    def __init__(self, settings_path: Path | None = None, project_root: Path = ROOT):
         self.project_root = Path(project_root)
+        self.settings_path = Path(settings_path) if settings_path is not None else project_settings_path(self.project_root)
 
     def load(self) -> dict[str, Any]:
         defaults = build_default_settings(self.project_root)
@@ -114,6 +118,7 @@ class SettingsService:
         except (json.JSONDecodeError, OSError):
             payload = {}
         settings = deep_merge(defaults, payload)
+        settings.setdefault("project", {})["root"] = str(self.project_root)
         self.save(settings)
         return settings
 

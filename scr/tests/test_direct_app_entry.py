@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import subprocess
+import sys
 from types import SimpleNamespace
 
 APP = Path("scr/ui/app.py")
@@ -12,6 +14,9 @@ DATA_VIEW = Path("scr/ui/views/data.py")
 TRAIN_VIEW = Path("scr/ui/views/training.py")
 VALIDATE_VIEW = Path("scr/ui/views/validation.py")
 SETTINGS_VIEW = Path("scr/ui/views/settings.py")
+PACKAGING_SPEC = Path("packaging/YOLOTool.spec")
+PACKAGING_SCRIPT = Path("packaging/build_windows.ps1")
+PACKAGING_DOC = Path("docs/packaging-windows.md")
 
 
 def _read_app():
@@ -53,8 +58,39 @@ def test_qt_app_uses_project_local_icon_assets():
 
 def test_app_file_has_direct_script_import_bootstrap():
     src = Path("scr/main.py").read_text(encoding="utf-8")
-    assert "from .app import run_app" in src
+    assert "from scr.app import run_app" in src
     assert "run_app()" in src
+
+
+def test_direct_script_hidden_train_entry_has_package_context():
+    result = subprocess.run(
+        [sys.executable, "scr/main.py", "--yolo-train"],
+        cwd=Path.cwd(),
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "Usage: --yolo-train" in result.stderr
+    assert "attempted relative import" not in result.stderr
+
+
+def test_windows_packaging_files_document_project_local_runtime_settings():
+    assert PACKAGING_SPEC.exists()
+    assert PACKAGING_SCRIPT.exists()
+    assert PACKAGING_DOC.exists()
+
+    spec = PACKAGING_SPEC.read_text(encoding="utf-8")
+    script = PACKAGING_SCRIPT.read_text(encoding="utf-8")
+    doc = PACKAGING_DOC.read_text(encoding="utf-8")
+
+    assert "onedir" in doc
+    assert "data/runtime/settings.json" in doc
+    assert "scr/main.py" in spec
+    assert '"torch"' in spec
+    assert "collect_all(package)" in spec
+    assert "pyinstaller" in script
 
 
 def test_qt_app_matches_reference_ui_sections():
@@ -221,6 +257,33 @@ def test_workbench_window_preloads_all_pages():
 
     assert list(window.pages.keys()) == window.page_order
     assert window.stack.count() == len(window.page_order)
+
+
+def test_workbench_window_switches_to_project_local_settings(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
+
+    from scr.ui.qt import QApplication
+    from scr.ui.window import WorkbenchWindow
+
+    project_root = tmp_path / "project-b"
+    settings_path = project_root / "data" / "runtime" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps({"training": {"epochs": 77}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    window.switch_project_root(project_root)
+
+    assert window.settings_service.settings_path == settings_path
+    assert window.settings["project"]["root"] == str(project_root)
+    assert window.settings["training"]["epochs"] == 77
+    assert list(window.pages.keys()) == window.page_order
 
 
 def test_scheme_b_uses_label_tooltips_instead_of_help_icon():
