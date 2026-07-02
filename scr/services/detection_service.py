@@ -113,6 +113,9 @@ def collect_prediction_sources(source_mode: str, source_path: str | Path) -> lis
 def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -> None:
     from PIL import Image
     import cv2
+    from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
+
+    ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
     model = YOLO(config["model_path"])

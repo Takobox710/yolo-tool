@@ -9,7 +9,7 @@ sys.path.insert(0, str(SPEC_ROOT))
 from pyinstaller_common import ROOT, build_packaging
 
 
-config = build_packaging("release")
+config = build_packaging("dev")
 
 a = Analysis(
     [str(ROOT / "scr/main.py")],

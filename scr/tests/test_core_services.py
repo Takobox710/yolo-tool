@@ -1,6 +1,8 @@
 import json
 import os
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -500,6 +502,20 @@ def test_stream_result_rendering_uses_current_frame_as_plot_background():
     assert result.received is not None
     assert np.array_equal(result.received, frame)
     assert rendered.size == (5, 4)
+
+
+def test_ultralytics_compat_patches_missing_cv2_highgui_symbols(monkeypatch):
+    from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
+
+    fake_cv2 = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+
+    ensure_cv2_highgui_compat()
+
+    assert callable(fake_cv2.imshow)
+    assert callable(fake_cv2.namedWindow)
+    assert callable(fake_cv2.destroyAllWindows)
+    assert fake_cv2.waitKey() == -1
 
 
 def test_cached_call_reuses_value_until_ttl_expires(monkeypatch):

@@ -39,6 +39,9 @@ def run_train_cli(argv: list[str]) -> int:
     if command != "train":
         raise SystemExit(f"Unsupported training command: {command}")
 
+    from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
+
+    ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
     options = _parse_key_values(items)
@@ -51,6 +54,9 @@ def run_train_cli(argv: list[str]) -> int:
 
 
 def run_export_cli(argv: list[str]) -> int:
+    from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
+
+    ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
     options = _parse_key_values(argv)

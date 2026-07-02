@@ -8,7 +8,12 @@ if __package__ in (None, ""):
 
 
 def main() -> None:
+    from multiprocessing import freeze_support
     import sys
+
+    # PyInstaller on Windows re-enters the same executable for multiprocessing
+    # workers; freeze_support() must run before normal GUI startup branching.
+    freeze_support()
 
     if len(sys.argv) > 1 and sys.argv[1] == "--yolo-train":
         from scr.train_cli import run_train_cli

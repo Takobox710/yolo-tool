@@ -15,7 +15,10 @@ TRAIN_VIEW = Path("scr/ui/views/training.py")
 VALIDATE_VIEW = Path("scr/ui/views/validation.py")
 SETTINGS_VIEW = Path("scr/ui/views/settings.py")
 PACKAGING_SPEC = Path("packaging/YOLOTool.spec")
+PACKAGING_DEV_SPEC = Path("packaging/YOLOTool.dev.spec")
+PACKAGING_COMMON = Path("packaging/pyinstaller_common.py")
 PACKAGING_SCRIPT = Path("packaging/build_windows.ps1")
+PACKAGING_DEV_SCRIPT = Path("packaging/build_windows_dev.ps1")
 PACKAGING_DOC = Path("docs/packaging-windows.md")
 
 
@@ -58,6 +61,7 @@ def test_qt_app_uses_project_local_icon_assets():
 
 def test_app_file_has_direct_script_import_bootstrap():
     src = Path("scr/main.py").read_text(encoding="utf-8")
+    assert "freeze_support()" in src
     assert "from scr.app import run_app" in src
     assert "run_app()" in src
 
@@ -78,19 +82,32 @@ def test_direct_script_hidden_train_entry_has_package_context():
 
 def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_SPEC.exists()
+    assert PACKAGING_DEV_SPEC.exists()
+    assert PACKAGING_COMMON.exists()
     assert PACKAGING_SCRIPT.exists()
+    assert PACKAGING_DEV_SCRIPT.exists()
     assert PACKAGING_DOC.exists()
 
     spec = PACKAGING_SPEC.read_text(encoding="utf-8")
+    dev_spec = PACKAGING_DEV_SPEC.read_text(encoding="utf-8")
+    common = PACKAGING_COMMON.read_text(encoding="utf-8")
     script = PACKAGING_SCRIPT.read_text(encoding="utf-8")
+    dev_script = PACKAGING_DEV_SCRIPT.read_text(encoding="utf-8")
     doc = PACKAGING_DOC.read_text(encoding="utf-8")
 
     assert "onedir" in doc
+    assert "Mode dev" in doc or "-Mode dev" in doc
+    assert "YOLOTool-dev" in doc
     assert "data/runtime/settings.json" in doc
     assert "scr/main.py" in spec
-    assert '"torch"' in spec
-    assert "collect_all(package)" in spec
+    assert 'build_packaging("release")' in spec
+    assert 'build_packaging("dev")' in dev_spec
+    assert "PySide6.scripts.deploy_lib" in common
+    assert "torch.utils.tensorboard" in common
+    assert "excludedimports = [\"torch.utils.tensorboard\"]" in Path("packaging/hooks/hook-torch.py").read_text(encoding="utf-8")
     assert "pyinstaller" in script
+    assert 'ValidateSet("release", "dev")' in script
+    assert "build_windows.ps1" in dev_script
 
 
 def test_qt_app_matches_reference_ui_sections():
