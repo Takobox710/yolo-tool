@@ -46,6 +46,7 @@ class WorkbenchWindow(QMainWindow):
     def _apply_settings_defaults(self) -> None:
         self.settings.setdefault("features", {}).setdefault("custom_command_dialog", True)
         self.settings.setdefault("features", {}).setdefault("show_help_icons", True)
+        self.settings.setdefault("features", {}).setdefault("show_last_training_models", False)
         self.settings.setdefault("training", {}).setdefault("optimizer", "auto")
 
     def _build(self):
@@ -164,6 +165,13 @@ class WorkbenchWindow(QMainWindow):
         for page in self.pages.values():
             target = getattr(page, "inner_page", page)
             hook = getattr(target, "refresh_help_icon_visibility", None)
+            if hook:
+                hook()
+
+    def refresh_validation_model_options(self):
+        for page in self.pages.values():
+            target = getattr(page, "inner_page", page)
+            hook = getattr(target, "refresh_model_choices", None)
             if hook:
                 hook()
 

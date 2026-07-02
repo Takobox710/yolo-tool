@@ -11,9 +11,9 @@ $PreviousPythonWarnings = $env:PYTHONWARNINGS
 $env:PYTHONWARNINGS = "ignore::DeprecationWarning"
 
 $SpecPath = if ($Mode -eq "dev") {
-    "packaging/YOLOTool.dev.spec"
+    "installer/YOLOTool.dev.spec"
 } else {
-    "packaging/YOLOTool.spec"
+    "installer/YOLOTool.spec"
 }
 
 $AppName = if ($Mode -eq "dev") {
@@ -47,6 +47,18 @@ New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "data/models") | Ou
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "images") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "labels") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "result") | Out-Null
+
+$SourceModelsDir = Join-Path $Root "data/models"
+if (Test-Path $SourceModelsDir) {
+    Get-ChildItem -Path $SourceModelsDir -Filter *.pt -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $AppDir "data/models" $_.Name) -Force
+    }
+}
+
+$RootModelPath = Join-Path $Root "yolo26n.pt"
+if (Test-Path $RootModelPath) {
+    Copy-Item -LiteralPath $RootModelPath -Destination (Join-Path $AppDir "yolo26n.pt") -Force
+}
 
 Write-Host "Mode: $Mode"
 Write-Host "Built: $AppDir"

@@ -15,6 +15,7 @@
 - 训练命令由服务层统一生成，支持优化器、HSV、MixUp、Mosaic 等常见参数。
 - 支持扫描 `data/models/*.pt` 与 `result/**/weights/*.pt` 作为模型候选。
 - 支持图片/视频文件夹、单图片/视频、摄像头三类验证输入源。
+- 系统设置提供“训练模型显示 last”开关，默认关闭；关闭时模型验证页只显示训练产物中的 `best.pt`，开启后才额外显示 `last.pt`。
 - 主要配置会持久化到当前项目目录的 `data/runtime/settings.json`，切换项目目录后会自动读取该项目自己的配置。
 - 最近一次使用的项目目录会记录到应用根目录 `data/runtime/app_state.json`，用于下次启动时恢复到最近项目。
 - 支持 PyInstaller `onedir` 绿色版打包，目标 Windows 机器无需安装 Python 或 pixi。
@@ -63,12 +64,14 @@ python -m scr.main --yolo-train obb train model=... data=... epochs=... imgsz=..
 - 支持图片/视频文件夹、单文件、摄像头三种检测模式。
 - 批量检测按自然数字排序处理输入文件。
 - 摄像头实时检测时，即使当前帧无目标，也会持续显示摄像头画面，避免黑屏。
+- “选择模型”下拉框支持扫描训练结果模型；默认仅显示各训练目录下的 `best.pt`，开启系统设置里的“训练模型显示 last”后才会额外显示 `last.pt`。
 
 ### 5. 系统设置
 
 - 页面顶部显示 Pixi、Torch/CUDA、GPU、显存、CPU、内存、磁盘、模块检测结果。
-- 系统信息下方同一行放置“多类别分布模式”“训练前显示自定义命令框”“显示配置解释符号”“恢复默认设置”。
+- 系统信息下方同一行放置“多类别分布模式”“训练前显示自定义命令框”“显示配置解释符号”“训练模型显示 last”“恢复默认设置”。
 - 控制字段名后的 `ⓘ` 解释符号显示，但不会移除 tooltip。
+- “训练模型显示 last”默认关闭，只影响模型验证页的“选择模型”下拉框。
 - 支持一键把当前项目设置恢复为默认值，同时保留当前项目目录不变。
 
 ## 技术栈
@@ -97,7 +100,8 @@ yolo_tool/
 ├── pixi.lock
 ├── docs/
 │   └── packaging-windows.md
-├── packaging/
+├── installer/
+│   ├── yolo_tool.iss
 │   ├── YOLOTool.dev.spec
 │   ├── YOLOTool.spec
 │   ├── build_windows.ps1
@@ -158,19 +162,25 @@ pixi run python -m scr.main
 推荐使用 PyInstaller `onedir` 形式打包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode release -Clean
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -Clean
 ```
 
 本地快速验证可使用开发快包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode dev
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
 或使用快捷脚本：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows_dev.ps1
+powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
+```
+
+如需把 `dist/YOLOTool/` 再封装为 Inno Setup 安装包，可执行：
+
+```powershell
+ISCC installer\yolo_tool.iss
 ```
 
 正式版打包产物位于：
@@ -192,10 +202,11 @@ dist/YOLOTool/
 
 两套打包配置当前约定如下：
 
-- `packaging/YOLOTool.spec`：正式版 spec。
-- `packaging/YOLOTool.dev.spec`：开发快包 spec。
-- `packaging/pyinstaller_common.py`：两套 spec 共用的打包配置。
-- `packaging/hooks/`：自定义 PyInstaller hooks，用于减少无关依赖探测造成的误报。
+- `installer/yolo_tool.iss`：Inno Setup 安装包脚本。
+- `installer/YOLOTool.spec`：正式版 spec。
+- `installer/YOLOTool.dev.spec`：开发快包 spec。
+- `installer/pyinstaller_common.py`：两套 spec 共用的打包配置。
+- `installer/hooks/`：自定义 PyInstaller hooks，用于减少无关依赖探测造成的误报。
 
 当前打包流程不再对 `torch`、`PySide6` 等大包执行 `collect_all(...)` 全量扫描，因为那会明显拖慢打包，并制造大量和本项目无关的 warning。
 
@@ -242,6 +253,7 @@ pixi run check
 - 训练基础模型：`data/models/yolov8s.pt`
 - 模型 YAML：默认留空
 - 训练参数：`epochs=500`、`patience=100`、`workers=2`、`batch=16`、`imgsz=640`、`device=0`
+- 模型验证训练结果列表默认仅显示 `best.pt`，需在系统设置开启“训练模型显示 last”后才显示 `last.pt`
 
 默认窗口尺寸为 `1100 x 770`，最小尺寸为 `800 x 600`。
 
@@ -261,6 +273,7 @@ pixi run check
 - PyInstaller 打包入口与后台子进程隐藏窗口行为。
 - 训练停止后的按钮状态恢复、停止期日志噪声抑制，以及 GUI 日志 ANSI 控制符清洗。
 - 模型扫描、检测结果归一化、输入源自然排序。
+- 模型验证页“选择模型”下拉框对 `best.pt / last.pt` 的显示开关与切换行为。
 - 摄像头实时预览与“无目标不黑屏”回归。
 - Qt 应用入口、页面拆分、帮助符号显示、占位提示、主页分布模式切换、日志框只读且支持 `Ctrl+C` 复制等界面约定。
 

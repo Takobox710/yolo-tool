@@ -20,6 +20,7 @@ class ValidatePage(BasePage):
         self.is_detecting = False
         self.is_batch_detection = False
         self._all_model_paths: list[Path] = []
+        self._model_display_paths: dict[str, Path] = {}
         self.source_items: list[Path] = []
         self.source_index = -1
         self.result_by_source: dict[str, dict] = {}
@@ -222,36 +223,64 @@ class ValidatePage(BasePage):
             self.source_index = 0
 
     def on_show(self):
-        result_dir = Path(self.app.settings["paths"]["result_dir"])
+        self.refresh_model_choices(self.app.settings["validation"].get("model_path", ""))
+        self._connect_validation_persistence()
+
+    def refresh_model_choices(self, preferred_model: str | None = None):
+        current_text = preferred_model
+        if current_text is None:
+            current_text = self.model_combo.currentText()
         project_root = self.project_root()
+        result_dir = Path(self.app.settings["paths"]["result_dir"])
+        show_last = self.app.settings.get("features", {}).get(
+            "show_last_training_models", False
+        )
+        current_path = None
+        mapped_current = self._model_display_paths.get(str(current_text or "").strip())
+        if mapped_current is not None:
+            current_path = mapped_current
+        elif current_text:
+            current_path = Path(current_text)
+            if not current_path.is_absolute():
+                current_path = Path(self.resolve_combo_path_text(str(current_text)))
         self._all_model_paths = []
+        self._model_display_paths = {}
         seen: set[str] = set()
-        for path in _find_models_full_paths(result_dir):
-            resolved = str(path.resolve())
-            if resolved not in seen:
-                self._all_model_paths.append(path.resolve())
-                seen.add(resolved)
-        display_names = [
-            _simplified_model_path(str(m), project_root)
-            for m in self._all_model_paths
-        ]
+        for path in _find_models_full_paths(
+            result_dir, show_last_training_models=show_last
+        ):
+            resolved_path = path.resolve()
+            resolved = str(resolved_path)
+            if resolved in seen:
+                continue
+            self._all_model_paths.append(resolved_path)
+            display_name = _simplified_model_path(str(resolved_path), project_root)
+            self._model_display_paths[display_name] = resolved_path
+            seen.add(resolved)
+        display_names = list(self._model_display_paths.keys())
+        selected_display = str(current_text or "").strip()
+        if current_path:
+            for display_name, resolved_path in self._model_display_paths.items():
+                if resolved_path == current_path:
+                    selected_display = display_name
+                    break
+            else:
+                if (
+                    not show_last
+                    and current_path.name.lower() == "last.pt"
+                    and current_path.parent.name.lower() == "weights"
+                ):
+                    best_path = current_path.with_name("best.pt")
+                    best_display = _simplified_model_path(str(best_path), project_root)
+                    if best_display in self._model_display_paths:
+                        selected_display = best_display
+                elif current_path.exists():
+                    selected_display = _simplified_model_path(str(current_path), project_root)
+        self.model_combo.blockSignals(True)
         self.model_combo.clear()
         self.model_combo.addItems(display_names)
-        # Set current from settings
-        current = self.app.settings["validation"].get("model_path", "")
-        if current:
-            current_path = Path(current)
-            display = (
-                _simplified_model_path(current, project_root)
-                if current_path.exists()
-                else current
-            )
-            idx = self.model_combo.findText(display)
-            if idx >= 0:
-                self.model_combo.setCurrentIndex(idx)
-            else:
-                self.model_combo.setEditText(current)
-        self._connect_validation_persistence()
+        self.model_combo.setCurrentText(selected_display)
+        self.model_combo.blockSignals(False)
 
     def _connect_validation_persistence(self):
         if getattr(self, "_persistence_connected", False):
@@ -296,6 +325,9 @@ class ValidatePage(BasePage):
     def _get_model_path(self) -> str:
         """Resolve the selected model combo to an absolute path."""
         text = self.model_combo.currentText()
+        mapped = self._model_display_paths.get(text)
+        if mapped is not None:
+            return str(mapped)
         # Try to find it in our known paths
         for p in self._all_model_paths:
             if (

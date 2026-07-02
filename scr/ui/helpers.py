@@ -52,8 +52,13 @@ def find_models_in_dir(result_dir: Path, project_root: str | Path = ROOT) -> lis
     ]
 
 
-def find_models_full_paths(result_dir: Path) -> list[Path]:
-    return scan_candidate_models(result_dir)
+def find_models_full_paths(
+    result_dir: Path, *, show_last_training_models: bool = True
+) -> list[Path]:
+    models = scan_candidate_models(result_dir)
+    if show_last_training_models:
+        return models
+    return [path for path in models if path.name.lower() != "last.pt"]
 
 
 def find_model_yaml_files(data_dir: Path) -> list[str]:
@@ -63,13 +68,64 @@ def find_model_yaml_files(data_dir: Path) -> list[str]:
 
 
 def find_pt_files_in_data_models(project_root: Path) -> list[str]:
+    return find_training_model_names(project_root)
+
+
+def training_model_dirs(project_root: Path, app_root: Path | None = None) -> list[Path]:
+    app_root = ROOT if app_root is None else Path(app_root)
+    project_models_dir = (Path(project_root) / "data" / "models").resolve()
+    app_models_dir = (app_root / "data" / "models").resolve()
+    model_dirs = [project_models_dir]
+    if app_models_dir != project_models_dir:
+        model_dirs.append(app_models_dir)
+    return model_dirs
+
+
+def find_training_model_names(project_root: Path, app_root: Path | None = None) -> list[str]:
     names: list[str] = []
-    models_dir = project_root / "data" / "models"
-    if models_dir.exists():
+    for models_dir in training_model_dirs(project_root, app_root):
+        if not models_dir.exists():
+            continue
         for path in sorted(models_dir.glob("*.pt")):
             if path.is_file() and path.name not in names:
                 names.append(path.name)
     return names
+
+
+def resolve_training_model_reference(
+    model_text: str,
+    project_root: Path,
+    app_root: Path | None = None,
+) -> str:
+    text = str(model_text or "").strip()
+    if not text:
+        return ""
+
+    path = Path(text)
+    if path.is_absolute():
+        return str(path.resolve()) if path.exists() else str(path)
+
+    resolved_project_root = Path(project_root).resolve()
+    resolved_app_root = Path(ROOT if app_root is None else app_root).resolve()
+    project_models_dir = resolved_project_root / "data" / "models"
+    app_models_dir = resolved_app_root / "data" / "models"
+
+    candidates: list[Path] = []
+    if len(path.parts) == 1:
+        candidates.append(project_models_dir / text)
+        if app_models_dir != project_models_dir:
+            candidates.append(app_models_dir / text)
+    candidates.append(resolved_project_root / text)
+    if resolved_app_root != resolved_project_root:
+        candidates.append(resolved_app_root / text)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate.resolve())
+
+    if path.suffix.lower() == ".pt" and len(path.parts) == 1:
+        return str((project_models_dir / text).resolve())
+    return text
 
 
 def home_column_widths(total_width: int, margins: int = 32, spacing: int = 12) -> tuple[int, int]:
@@ -146,6 +202,8 @@ _find_models_in_dir = find_models_in_dir
 _find_models_full_paths = find_models_full_paths
 _find_model_yaml_files = find_model_yaml_files
 _find_pt_files_in_data_models = find_pt_files_in_data_models
+_find_training_model_names = find_training_model_names
+_resolve_training_model_reference = resolve_training_model_reference
 _home_column_widths = home_column_widths
 _history_model_sort_key = history_model_sort_key
 _history_number_sort_key = history_number_sort_key

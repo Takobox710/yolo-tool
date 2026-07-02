@@ -10,7 +10,7 @@ from scr.services.runtime_service import spawn_logged_process, stop_process
 from scr.services.settings_service import build_default_settings
 from scr.services.training_service import build_train_command, infer_task_mode_from_model
 from scr.ui.dialogs import CommandDialog
-from scr.ui.helpers import _find_pt_files_in_data_models
+from scr.ui.helpers import _find_training_model_names, _resolve_training_model_reference
 from scr.ui.page_base import BasePage, Card
 from scr.ui.qt import QDialog, QGridLayout, QHBoxLayout, QPushButton, QTimer, QTextEdit, QVBoxLayout, QWidget
 
@@ -48,11 +48,11 @@ class TrainPage(BasePage):
         left.layout.addLayout(left_form)
 
         # 基础模型 - stacked combo
-        model_files = _find_pt_files_in_data_models(
-            Path(self.app.settings["project"]["root"])
-        )
         current_pretrained = training.get("pretrained", "")
         current_name = Path(current_pretrained).name if current_pretrained else ""
+        model_files = _find_training_model_names(
+            Path(self.app.settings["project"]["root"])
+        )
         base_box, self.pretrained_combo = self.stacked_combo_field(
             "基础模型",
             current_name,
@@ -60,9 +60,9 @@ class TrainPage(BasePage):
             browse=lambda combo: self._choose_pt_for_combo(combo),
             placeholder="选择或输入 .pt 模型",
         )
+        left_form.addWidget(base_box, 0, 0)
         if current_name:
             self.pretrained_combo.setCurrentText(current_name)
-        left_form.addWidget(base_box, 0, 0)
 
         # 数据集YAML
         self.edits["data"], _ = None, None
@@ -458,23 +458,10 @@ class TrainPage(BasePage):
         self.refresh_command_preview()
 
     def _resolve_model_reference(self, model_text: str) -> str:
-        model_text = str(model_text or "").strip()
-        if not model_text:
-            return ""
-        model_path = Path(model_text)
-        if model_path.is_absolute() and model_path.exists():
-            return str(model_path.resolve())
-        project_root = Path(self.app.settings["project"]["root"])
-        models_dir = self._models_dir()
-        for candidate in (
-            models_dir / model_text,
-            project_root / model_text,
-        ):
-            if candidate.exists():
-                return str(candidate.resolve())
-        if model_path.suffix.lower() == ".pt" and len(model_path.parts) == 1:
-            return str((models_dir / model_text).resolve())
-        return model_text
+        return _resolve_training_model_reference(
+            model_text,
+            Path(self.app.settings["project"]["root"]),
+        )
 
     def refresh_command_preview(self):
         self.log.setPlainText(

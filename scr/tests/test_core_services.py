@@ -26,6 +26,7 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["training"]["batch"] == 16
     assert settings["image_resize"]["canvas_size"] == 960
     assert settings["features"]["show_help_icons"] is True
+    assert settings["features"]["show_last_training_models"] is False
     assert settings["task"]["mode"] == "detect"
     assert settings["dataset"]["split_ratios"] == {"train": 0.8, "val": 0.2, "test": 0.0}
     assert settings["training"]["model_yaml"] == ""
@@ -44,6 +45,14 @@ def test_settings_service_defaults_to_project_data_runtime(tmp_path):
     assert project_settings_path(tmp_path) == service.settings_path
     assert service.settings_path.exists()
     assert settings["project"]["root"] == str(tmp_path)
+    saved = json.loads(service.settings_path.read_text(encoding="utf-8"))
+    assert saved["project"]["root"] == "."
+    assert saved["paths"]["images_dir"] == "images"
+    assert saved["paths"]["dataset_dir"] == "data"
+    assert saved["paths"]["models_dir"] == str(Path("data") / "models")
+    assert saved["training"]["data"] == str(Path("data") / "data.yaml")
+    assert saved["training"]["project"] == "result"
+    assert saved["validation"]["save_dir"] == str(Path("result") / "gui_predict")
 
 
 def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(tmp_path):
@@ -91,9 +100,71 @@ def test_settings_service_can_reset_current_project_to_defaults(tmp_path):
     service = SettingsService(project_root=project_root)
     settings = service.reset_to_defaults()
     defaults = build_default_settings(project_root)
+    persisted = json.loads(settings_path.read_text(encoding="utf-8"))
 
     assert settings == defaults
-    assert json.loads(settings_path.read_text(encoding="utf-8")) == defaults
+    assert persisted["project"]["root"] == "."
+    assert persisted["paths"]["result_dir"] == "result"
+    assert persisted["training"]["pretrained"] == "data\\models\\yolov8s.pt"
+
+
+def test_settings_service_reads_relative_project_paths_as_absolute_runtime_paths(tmp_path):
+    from scr.services.settings_service import SettingsService
+
+    project_root = tmp_path / "portable-project"
+    settings_path = project_root / "data" / "runtime" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "project": {"root": "."},
+                "paths": {
+                    "images_dir": "images",
+                    "dataset_dir": "data",
+                    "models_dir": "data/models",
+                    "result_dir": "result",
+                },
+                "training": {
+                    "data": "data/data.yaml",
+                    "project": "result",
+                    "pretrained": "data/models/yolov8s.pt",
+                },
+                "validation": {
+                    "save_dir": "result/gui_predict",
+                    "source_path": "images/demo.jpg",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    settings = SettingsService(project_root=project_root).load()
+
+    assert settings["project"]["root"] == str(project_root)
+    assert settings["paths"]["images_dir"] == str((project_root / "images").resolve())
+    assert settings["paths"]["models_dir"] == str((project_root / "data" / "models").resolve())
+    assert settings["training"]["data"] == str((project_root / "data" / "data.yaml").resolve())
+    assert settings["training"]["pretrained"] == str((project_root / "data" / "models" / "yolov8s.pt").resolve())
+    assert settings["validation"]["save_dir"] == str((project_root / "result" / "gui_predict").resolve())
+    assert settings["validation"]["source_path"] == str((project_root / "images" / "demo.jpg").resolve())
+
+
+def test_settings_service_preserves_model_bare_name_for_portable_download_target(tmp_path):
+    from scr.services.settings_service import SettingsService
+
+    project_root = tmp_path / "project-model-name"
+    service = SettingsService(project_root=project_root)
+    settings = service.load()
+    settings["training"]["pretrained"] = "custom.pt"
+    settings["training"]["base_model"] = "custom.pt"
+
+    service.save(settings)
+    persisted = json.loads(service.settings_path.read_text(encoding="utf-8"))
+    reloaded = service.load()
+
+    assert persisted["training"]["pretrained"] == "custom.pt"
+    assert reloaded["training"]["pretrained"] == "custom.pt"
 
 
 def test_conversion_config_rejects_invalid_ratios(tmp_path):
@@ -635,6 +706,60 @@ def test_training_command_and_detection_helpers(tmp_path):
     assert scan_candidate_models(tmp_path)[0] == train2 / "weights" / "best.pt"
     assert item.center_x == 5
     assert item.height == 2
+
+
+def test_training_model_helpers_merge_project_and_app_models_with_project_priority(
+    tmp_path, monkeypatch
+):
+    from scr.ui import helpers
+
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "app"
+    (project_root / "data" / "models").mkdir(parents=True)
+    (app_root / "data" / "models").mkdir(parents=True)
+    (project_root / "data" / "models" / "shared.pt").write_text("project", encoding="utf-8")
+    (project_root / "data" / "models" / "project-only.pt").write_text("project", encoding="utf-8")
+    (app_root / "data" / "models" / "shared.pt").write_text("app", encoding="utf-8")
+    (app_root / "data" / "models" / "app-only.pt").write_text("app", encoding="utf-8")
+
+    monkeypatch.setattr(helpers, "ROOT", app_root)
+
+    names = helpers.find_training_model_names(project_root)
+    shared_resolved = helpers.resolve_training_model_reference("shared.pt", project_root)
+    app_only_resolved = helpers.resolve_training_model_reference("app-only.pt", project_root)
+    missing_resolved = helpers.resolve_training_model_reference("missing.pt", project_root)
+
+    assert names == ["project-only.pt", "shared.pt", "app-only.pt"]
+    assert shared_resolved == str((project_root / "data" / "models" / "shared.pt").resolve())
+    assert app_only_resolved == str((app_root / "data" / "models" / "app-only.pt").resolve())
+    assert missing_resolved == str((project_root / "data" / "models" / "missing.pt").resolve())
+
+
+def test_validation_model_choices_include_result_best_and_optional_last(tmp_path):
+    from scr.ui.helpers import find_models_full_paths
+
+    run_dir = tmp_path / "result" / "train-2" / "weights"
+    run_dir.mkdir(parents=True)
+    (run_dir / "best.pt").write_text("best", encoding="utf-8")
+    (run_dir / "last.pt").write_text("last", encoding="utf-8")
+
+    with_last = find_models_full_paths(tmp_path / "result", show_last_training_models=True)
+    without_last = find_models_full_paths(
+        tmp_path / "result", show_last_training_models=False
+    )
+
+    assert [path.name for path in with_last] == ["best.pt", "last.pt"]
+    assert [path.name for path in without_last] == ["best.pt"]
+
+
+def test_training_model_helpers_avoid_duplicate_scan_when_project_is_app_root(tmp_path):
+    from scr.ui.helpers import find_training_model_names
+
+    models_dir = tmp_path / "data" / "models"
+    models_dir.mkdir(parents=True)
+    (models_dir / "alpha.pt").write_text("a", encoding="utf-8")
+
+    assert find_training_model_names(tmp_path, tmp_path) == ["alpha.pt"]
 
 
 def test_training_command_includes_all_hsv_params_when_configured():

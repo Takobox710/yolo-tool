@@ -14,11 +14,12 @@ DATA_VIEW = Path("scr/ui/views/data.py")
 TRAIN_VIEW = Path("scr/ui/views/training.py")
 VALIDATE_VIEW = Path("scr/ui/views/validation.py")
 SETTINGS_VIEW = Path("scr/ui/views/settings.py")
-PACKAGING_SPEC = Path("packaging/YOLOTool.spec")
-PACKAGING_DEV_SPEC = Path("packaging/YOLOTool.dev.spec")
-PACKAGING_COMMON = Path("packaging/pyinstaller_common.py")
-PACKAGING_SCRIPT = Path("packaging/build_windows.ps1")
-PACKAGING_DEV_SCRIPT = Path("packaging/build_windows_dev.ps1")
+PACKAGING_SPEC = Path("installer/YOLOTool.spec")
+PACKAGING_DEV_SPEC = Path("installer/YOLOTool.dev.spec")
+PACKAGING_COMMON = Path("installer/pyinstaller_common.py")
+PACKAGING_SCRIPT = Path("installer/build_windows.ps1")
+PACKAGING_DEV_SCRIPT = Path("installer/build_windows_dev.ps1")
+INSTALLER_ISS = Path("installer/yolo_tool.iss")
 PACKAGING_DOC = Path("docs/packaging-windows.md")
 
 
@@ -86,6 +87,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_COMMON.exists()
     assert PACKAGING_SCRIPT.exists()
     assert PACKAGING_DEV_SCRIPT.exists()
+    assert INSTALLER_ISS.exists()
     assert PACKAGING_DOC.exists()
 
     spec = PACKAGING_SPEC.read_text(encoding="utf-8")
@@ -93,6 +95,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     common = PACKAGING_COMMON.read_text(encoding="utf-8")
     script = PACKAGING_SCRIPT.read_text(encoding="utf-8")
     dev_script = PACKAGING_DEV_SCRIPT.read_text(encoding="utf-8")
+    iss = INSTALLER_ISS.read_text(encoding="utf-8")
     doc = PACKAGING_DOC.read_text(encoding="utf-8")
 
     assert "onedir" in doc
@@ -104,11 +107,18 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert 'build_packaging("dev")' in dev_spec
     assert "PySide6.scripts.deploy_lib" in common
     assert "torch.utils.tensorboard" in common
-    assert "excludedimports = [\"torch.utils.tensorboard\"]" in Path("packaging/hooks/hook-torch.py").read_text(encoding="utf-8")
-    assert 'module_collection_mode = "pyz+py"' in Path("packaging/hooks/hook-torch.py").read_text(encoding="utf-8")
-    assert 'collect_submodules("torch")' in Path("packaging/hooks/hook-torch.py").read_text(encoding="utf-8")
+    assert "excludedimports = [\"torch.utils.tensorboard\"]" in Path("installer/hooks/hook-torch.py").read_text(encoding="utf-8")
+    assert 'module_collection_mode = "pyz+py"' in Path("installer/hooks/hook-torch.py").read_text(encoding="utf-8")
+    assert 'collect_submodules("torch")' in Path("installer/hooks/hook-torch.py").read_text(encoding="utf-8")
     assert "pyinstaller" in script
     assert 'ValidateSet("release", "dev")' in script
+    assert 'ROOT / "yolo26n.pt"' in common
+    assert '"data/models"' in common
+    assert 'HOOKS_DIR = ROOT / "installer" / "hooks"' in common
+    assert 'SetupIconFile=..\\scr\\assets\\app_icon.ico' in iss
+    assert 'Source: "..\\dist\\YOLOTool\\{#MyAppExeName}"' in iss
+    assert 'Copy-Item -LiteralPath $RootModelPath -Destination (Join-Path $AppDir "yolo26n.pt") -Force' in script
+    assert 'Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $AppDir "data/models" $_.Name) -Force' in script
     assert "build_windows.ps1" in dev_script
 
 
@@ -302,6 +312,8 @@ def test_workbench_window_switches_to_project_local_settings(tmp_path):
     assert window.settings_service.settings_path == settings_path
     assert window.settings["project"]["root"] == str(project_root)
     assert window.settings["training"]["epochs"] == 77
+    persisted = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert persisted["project"]["root"] == "."
     assert list(window.pages.keys()) == window.page_order
 
 
@@ -727,7 +739,7 @@ def test_settings_page_places_system_info_above_controls(tmp_path):
     controls_row = page.layout().itemAt(2).widget()
 
     assert info_outer.objectName() == "systemInfoOuter"
-    assert controls_row.layout().count() == 5
+    assert controls_row.layout().count() == 6
 
 
 def test_workbench_window_uses_new_default_size():
@@ -772,6 +784,145 @@ def test_train_page_resolves_model_file_from_data_models(tmp_path):
 
     assert f"model={model_path}" in command
     assert f"pretrained={model_path}" in command
+
+
+def test_train_page_merges_project_and_app_model_lists_with_project_priority(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui import helpers
+    from scr.ui.qt import QApplication
+    from scr.ui.views.training import TrainPage
+
+    project_model = tmp_path / "project" / "data" / "models" / "shared.pt"
+    app_model_dir = tmp_path / "app" / "data" / "models"
+    project_model.parent.mkdir(parents=True)
+    app_model_dir.mkdir(parents=True)
+    project_model.write_text("project", encoding="utf-8")
+    (tmp_path / "project" / "data" / "models" / "project-only.pt").write_text("project", encoding="utf-8")
+    (app_model_dir / "shared.pt").write_text("app", encoding="utf-8")
+    (app_model_dir / "app-only.pt").write_text("app", encoding="utf-8")
+
+    monkeypatch.setattr(helpers, "ROOT", tmp_path / "app")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path / "project")
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = TrainPage(fake_app)
+    items = [page.pretrained_combo.itemText(i) for i in range(page.pretrained_combo.count())]
+
+    assert items == ["project-only.pt", "shared.pt", "app-only.pt"]
+    assert page._resolve_model_reference("shared.pt") == str(project_model.resolve())
+
+
+def test_validation_page_lists_training_best_and_last_models_by_feature_flag(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    run_dir = tmp_path / "result" / "train-2" / "weights"
+    run_dir.mkdir(parents=True)
+    (run_dir / "best.pt").write_text("best", encoding="utf-8")
+    (run_dir / "last.pt").write_text("last", encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["show_last_training_models"] = True
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.on_show()
+    items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
+
+    assert "train-2\\best.pt" in items
+    assert "train-2\\last.pt" in items
+
+    fake_app.settings["features"]["show_last_training_models"] = False
+    page.refresh_model_choices()
+    items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
+
+    assert "train-2\\best.pt" in items
+    assert "train-2\\last.pt" not in items
+
+
+def test_settings_toggle_refreshes_validation_page_model_choices(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.settings import SettingsPage
+    from scr.ui.views.validation import ValidatePage
+
+    run_dir = tmp_path / "result" / "train-5" / "weights"
+    run_dir.mkdir(parents=True)
+    (run_dir / "best.pt").write_text("best", encoding="utf-8")
+    (run_dir / "last.pt").write_text("last", encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["show_last_training_models"] = True
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        pages={},
+    )
+
+    validate_page = ValidatePage(fake_app)
+    validate_page.on_show()
+    settings_page = SettingsPage(fake_app)
+    fake_app.pages = {"validate": validate_page}
+
+    before = [validate_page.model_combo.itemText(i) for i in range(validate_page.model_combo.count())]
+    assert "train-5\\last.pt" in before
+
+    settings_page.show_last_models_check.setChecked(False)
+
+    after = [validate_page.model_combo.itemText(i) for i in range(validate_page.model_combo.count())]
+    assert fake_app.settings["features"]["show_last_training_models"] is False
+    assert "train-5\\last.pt" not in after
+    assert "train-5\\best.pt" in after
+
+
+def test_train_page_unknown_model_defaults_to_project_models_dir(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.training import TrainPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = TrainPage(fake_app)
+
+    assert page._resolve_model_reference("missing.pt") == str(
+        (tmp_path / "data" / "models" / "missing.pt").resolve()
+    )
 
 
 def test_command_dialog_uses_wider_size():
@@ -984,3 +1135,38 @@ def test_validation_page_lists_only_training_output_models(tmp_path):
     items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
 
     assert items == ["train\\best.pt"]
+
+
+def test_validation_page_uses_best_when_last_is_selected_and_flag_turns_off(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["show_last_training_models"] = True
+    run_dir = tmp_path / "result" / "train-8" / "weights"
+    run_dir.mkdir(parents=True)
+    best_path = run_dir / "best.pt"
+    last_path = run_dir / "last.pt"
+    best_path.write_text("best", encoding="utf-8")
+    last_path.write_text("last", encoding="utf-8")
+    settings["validation"]["model_path"] = str(last_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.on_show()
+    assert page.model_combo.currentText() == "train-8\\last.pt"
+
+    fake_app.settings["features"]["show_last_training_models"] = False
+    page.refresh_model_choices()
+
+    assert page.model_combo.currentText() == "train-8\\best.pt"

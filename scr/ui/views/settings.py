@@ -80,6 +80,18 @@ class SettingsPage(BasePage):
         )
         self.help_icon_check.stateChanged.connect(self._toggle_help_icons)
         controls_layout.addWidget(help_box)
+
+        model_box, self.show_last_models_check = self.checkbox_with_help(
+            "训练模型显示 last",
+            self.app.settings.get("features", {}).get("show_last_training_models", False),
+        )
+        self.show_last_models_check.setChecked(
+            self.app.settings.get("features", {}).get("show_last_training_models", False)
+        )
+        self.show_last_models_check.stateChanged.connect(
+            self._toggle_show_last_training_models
+        )
+        controls_layout.addWidget(model_box)
         controls_layout.addStretch(1)
         self.reset_btn = QPushButton("恢复默认设置")
         self.reset_btn.setObjectName("softButton")
@@ -129,6 +141,22 @@ class SettingsPage(BasePage):
         else:
             self.refresh_help_icon_visibility()
 
+    def _toggle_show_last_training_models(self, state):
+        self.app.settings.setdefault("features", {})["show_last_training_models"] = (
+            state == Qt.CheckState.Checked.value
+        )
+        self.app.settings_service.save(self.app.settings)
+        refresh = getattr(self.app, "refresh_validation_model_options", None)
+        if refresh:
+            refresh()
+            return
+        pages = getattr(self.app, "pages", {}) or {}
+        validate_page = pages.get("validate") if isinstance(pages, dict) else None
+        target = getattr(validate_page, "inner_page", validate_page)
+        hook = getattr(target, "refresh_model_choices", None)
+        if hook:
+            hook()
+
     def _reset_defaults(self):
         answer = QMessageBox.question(
             self,
@@ -160,6 +188,9 @@ class SettingsPage(BasePage):
         )
         self.help_icon_check.setChecked(
             self.app.settings.get("features", {}).get("show_help_icons", True)
+        )
+        self.show_last_models_check.setChecked(
+            self.app.settings.get("features", {}).get("show_last_training_models", False)
         )
         refresh = getattr(self.app, "refresh_help_icon_visibility", None)
         if refresh:

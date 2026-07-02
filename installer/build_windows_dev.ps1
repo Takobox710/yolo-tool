@@ -5,4 +5,4 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 
-& (Join-Path $Root "packaging/build_windows.ps1") -Mode dev -Clean:$Clean
+& (Join-Path $Root "installer/build_windows.ps1") -Mode dev -Clean:$Clean

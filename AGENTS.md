@@ -28,7 +28,8 @@ yolo_tool/
 ├── icon.svg
 ├── docs/
 │   └── packaging-windows.md
-├── packaging/
+├── installer/
+│   ├── yolo_tool.iss
 │   ├── YOLOTool.dev.spec
 │   ├── YOLOTool.spec
 │   ├── build_windows.ps1
@@ -117,20 +118,22 @@ pixi run check
 Windows 绿色版打包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode release
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release
 ```
 
 开发快速打包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode dev
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
 或：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows_dev.ps1
+powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
 ```
+
+Inno Setup 安装包脚本位于 `installer/yolo_tool.iss`，与 PyInstaller 的 spec、hooks、PowerShell 打包脚本统一放在 `installer/` 目录维护。
 
 正式版产物位于 `dist/YOLOTool/`，开发快包位于 `dist/YOLOTool-dev/`。
 
@@ -351,6 +354,10 @@ Qt 实现注意事项：
 
 支持自动扫描 `data/models/*.pt` 与 `result/**/weights/*.pt`，也可手动选择模型；列表中优先显示 `data/models` 下的基础模型。
 
+- 模型验证页的“选择模型”下拉框默认只显示各训练目录下的 `best.pt`。
+- 当系统设置开启“训练模型显示 last”时，模型验证页的“选择模型”下拉框才额外显示各训练目录下的 `last.pt`。
+- 若当前已选中某个训练目录的 `last.pt`，随后关闭“训练模型显示 last”，模型验证页应自动回退到同一训练目录下的 `best.pt`。
+
 验证页 UI 注意事项：
 
 - 左侧和右侧采用可缩放的 2:7 权重，不要用固定像素宽度锁死，否则小窗口会截断右侧内容。
@@ -387,9 +394,10 @@ Qt 实现注意事项：
 系统设置页面还包含：
 
 - 系统信息区域放在页面最上方。
-- 系统信息下方使用同一行放置以下控件：`训练前显示自定义命令框`、`显示配置解释符号`、`恢复默认设置`。
+- 系统信息下方使用同一行放置以下控件：`训练前显示自定义命令框`、`显示配置解释符号`、`训练模型显示 last`、`恢复默认设置`。
 - "训练前显示自定义命令框"开关，控制训练页是否弹出命令编辑对话框。
 - "显示配置解释符号"开关，控制是否显示字段名后的 `ⓘ`。
+- "训练模型显示 last"开关，控制模型验证页“选择模型”下拉框是否显示训练结果中的 `last.pt`；默认关闭，关闭时只显示 `best.pt`。
 - "恢复默认设置"按钮，点击后将当前项目的设置恢复到代码默认值，但保留当前项目目录不变。
 
 关于"显示配置解释符号"开关：
@@ -443,7 +451,7 @@ Qt 实现注意事项：
 
 核心服务接口在 `scr/services/`：
 
-- `settings_service.py`：项目级设置文件加载、保存、默认值合并与恢复默认值；默认路径为当前项目目录 `data/runtime/settings.json`，并维护训练、验证、转换、重命名、压缩等页面的持久化默认值。当前包含 `paths.models_dir`、`training.optimizer`、`features.custom_command_dialog`、`features.distribution_multi_class_mode` 等字段。
+- `settings_service.py`：项目级设置文件加载、保存、默认值合并与恢复默认值；默认路径为当前项目目录 `data/runtime/settings.json`，并维护训练、验证、转换、重命名、压缩等页面的持久化默认值。当前包含 `paths.models_dir`、`training.optimizer`、`features.custom_command_dialog`、`features.distribution_multi_class_mode`、`features.show_last_training_models` 等字段。
 - `data/runtime/app_state.json`：应用级最近项目状态文件，当前保存 `last_project_root`，仅用于下次启动时恢复最近一次使用的项目目录。
 - `conversion_service.py`：Labelme 转 YOLO、已有 YOLO `.txt` 分组、自动识别类别、类别映射、自定义类别名校验、数据集划分、`data.yaml` 生成，以及转换产物备份。
 - `annotation_service.py`：YOLO 标注解析与图像预览绘制；预览时按标签内容自动识别 `detect/obb`，并使用更接近 YOLO 官方的框与标签样式。
@@ -465,6 +473,7 @@ Qt 实现注意事项：
 - `features.custom_command_dialog`：训练前是否弹出自定义命令框。
 - `features.distribution_multi_class_mode`：主页“各类别图片分布”是否切换为多类别统计模式。
 - `features.show_help_icons`：是否显示字段名后的 `ⓘ`；关闭时只隐藏 `ⓘ`，不移除字段名称上的 tooltip。
+- `features.show_last_training_models`：模型验证页“选择模型”下拉框是否额外显示训练结果中的 `last.pt`；默认 `False`，关闭时只显示 `best.pt`。
 - `conversion.use_labelme`：记录标注转换页当前是否启用 Labelme 转 YOLO。
 - `conversion.backup_yolo_files`：记录标注转换页是否备份本次转换生成的 YOLO 标注与 `data.yaml`。
 - `conversion.class_name_mappings`：记录 Labelme 类别名到 YOLO 类别名的映射关系。
@@ -479,19 +488,25 @@ Qt 实现注意事项：
 打包命令：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode release -Clean
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -Clean
 ```
 
 开发联调时可使用更快的开发快包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode dev
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
 或：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows_dev.ps1
+powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
+```
+
+如需继续生成 Inno Setup 安装包，可在完成 `dist/YOLOTool/` 构建后使用：
+
+```powershell
+ISCC installer\yolo_tool.iss
 ```
 
 打包后的目录结构约定：
@@ -513,10 +528,11 @@ dist/YOLOTool/
 
 当前打包体系约定：
 
-- `packaging/YOLOTool.spec`：正式版 PyInstaller spec。
-- `packaging/YOLOTool.dev.spec`：开发快速打包 spec。
-- `packaging/pyinstaller_common.py`：两套 spec 共享的打包配置。
-- `packaging/hooks/`：用于压制无关 PyInstaller 探测噪声的自定义 hooks。
+- `installer/yolo_tool.iss`：Inno Setup 安装包脚本。
+- `installer/YOLOTool.spec`：正式版 PyInstaller spec。
+- `installer/YOLOTool.dev.spec`：开发快速打包 spec。
+- `installer/pyinstaller_common.py`：两套 spec 共享的打包配置。
+- `installer/hooks/`：用于压制无关 PyInstaller 探测噪声的自定义 hooks。
 
 当前不再使用对 `torch`、`PySide6` 等大包的 `collect_all(...)` 全量扫描；原因是它会显著拖慢打包，并制造大量与本项目无关的误报。
 
@@ -550,6 +566,7 @@ dist/YOLOTool/
 - 训练命令编辑弹窗尺寸与命令编辑行为。
 - 模型扫描与检测结果归一化。
 - `data/models` 统一模型目录、训练命令模型路径解析、配置持久化与重启恢复。
+- 模型验证页“选择模型”下拉框对 `best.pt / last.pt` 的显示开关与自动回退行为。
 - 项目级 `data/runtime/settings.json`、`data/runtime/app_state.json` 最近项目恢复、项目目录切换后配置重载、PyInstaller 脚本入口、隐藏后台子进程窗口。
 - 训练停止后按钮状态恢复、停止期日志噪声抑制，以及 GUI 日志 ANSI 控制符清洗。
 - 摄像头实时预览、FPS 日志与“无目标时不黑屏”回归。

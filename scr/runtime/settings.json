@@ -88,6 +88,7 @@
   "features": {
     "custom_command_dialog": true,
     "show_help_icons": true,
+    "show_last_training_models": false,
     "resize_output_mode": "输出到新文件夹",
     "resize_save_format": "保持原格式"
   }

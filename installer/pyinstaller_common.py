@@ -6,8 +6,12 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 
 ROOT = Path(__file__).resolve().parent.parent
-HOOKS_DIR = ROOT / "packaging" / "hooks"
+HOOKS_DIR = ROOT / "installer" / "hooks"
 ASSETS_DIR = ROOT / "scr" / "assets"
+MODELS_DIR = ROOT / "data" / "models"
+ROOT_MODEL_FILES = [
+    ROOT / "yolo26n.pt",
+]
 
 BASE_EXCLUDES = [
     "pytest",
@@ -31,6 +35,13 @@ def build_packaging(mode: str) -> dict[str, object]:
         (str(ASSETS_DIR), "scr/assets"),
         *collect_data_files("ultralytics"),
     ]
+    if MODELS_DIR.exists():
+        for model_path in sorted(MODELS_DIR.glob("*.pt")):
+            if model_path.is_file():
+                datas.append((str(model_path), "data/models"))
+    for model_path in ROOT_MODEL_FILES:
+        if model_path.exists():
+            datas.append((str(model_path), "."))
     binaries = []
     for package in ("torch", "cv2"):
         binaries += collect_dynamic_libs(package)

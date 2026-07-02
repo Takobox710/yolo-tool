@@ -7,19 +7,25 @@
 正式版：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode release
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release
 ```
 
 开发快包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode dev
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
 或：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows_dev.ps1
+powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
+```
+
+如需把 `dist/YOLOTool/` 再封装成 Inno Setup 安装包，可执行：
+
+```powershell
+ISCC installer\yolo_tool.iss
 ```
 
 ## 输出目录
@@ -28,3 +34,5 @@ powershell -ExecutionPolicy Bypass -File packaging\build_windows_dev.ps1
 - 开发版输出到 `dist/YOLOTool-dev/`
 
 运行时配置使用项目内的 `data/runtime/settings.json`。
+
+Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与 PyInstaller 的 spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。
