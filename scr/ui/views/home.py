@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 
 from scr.services.detection_service import scan_candidate_models
@@ -61,7 +62,7 @@ class HomePage(BasePage):
             ("annotations", "标注路径"),
             ("result", "结果路径"),
             ("image_count", "图片数量"),
-            ("label_count", "标签文件"),
+            ("label_count", "标注数量"),
         ]:
             card, value = self.stat_card(label)
             overview.layout.addWidget(card)
@@ -169,7 +170,7 @@ class HomePage(BasePage):
             if images.exists()
             else 0
         )
-        label_count = len(list(labels.glob("*.txt"))) if labels.exists() else 0
+        label_count = self._count_label_entries(labels)
 
         # Task 3: relative paths (except project folder)
         def set_overview_stat(key: str, text: str):
@@ -192,28 +193,93 @@ class HomePage(BasePage):
         set_overview_stat("image_count", str(image_count))
         set_overview_stat("label_count", str(label_count))
 
-        dataset_dir = Path(paths["dataset_dir"])
-        split_counts = {}
-        for split in ("train", "val", "test"):
-            img_dir = dataset_dir / split / "images"
-            split_counts[split] = (
-                len(
-                    [
-                        p
-                        for p in img_dir.glob("*")
-                        if p.suffix.lower() in _IMAGE_SUFFIXES
-                    ]
-                )
-                if img_dir.exists()
-                else 0
-            )
-        self.distribution_view.set_counts(
-            split_counts, self.app.settings["dataset"]["class_names"]
+        single_counts, multi_counts, class_names = self._build_distribution_data(
+            Path(paths["dataset_dir"])
         )
+        if self.app.settings.get("features", {}).get(
+            "distribution_multi_class_mode", False
+        ) and len(multi_counts) > 1:
+            self.distribution_view.set_multi_class_counts(multi_counts)
+        else:
+            default_class = class_names[0] if class_names else "数据集"
+            self.distribution_view.set_single_class_counts(single_counts, default_class)
         self.curve_view.set_curve_data(
             read_results_csv_for_curves(Path(paths["result_dir"]))
         )
         self.refresh_history()
+
+    def _build_distribution_data(
+        self, dataset_dir: Path
+    ) -> tuple[dict[str, int], dict[str, int], list[str]]:
+        class_names = self._resolve_dataset_class_names(dataset_dir)
+        split_class_counts: dict[str, dict[str, int]] = {
+            split: {name: 0 for name in class_names} for split in ("train", "val", "test")
+        }
+        for split in ("train", "val", "test"):
+            label_dir = dataset_dir / split / "labels"
+            if not label_dir.exists():
+                continue
+            for label_path in sorted(label_dir.glob("*.txt")):
+                present_ids = self._read_label_class_ids(label_path)
+                for class_id in present_ids:
+                    if 0 <= class_id < len(class_names):
+                        split_class_counts[split][class_names[class_id]] += 1
+        default_class = class_names[0] if class_names else "数据集"
+        single_counts = {
+            split: split_class_counts[split].get(default_class, 0)
+            for split in ("train", "val", "test")
+        }
+        multi_counts = {
+            name: sum(split_class_counts[split].get(name, 0) for split in ("train", "val", "test"))
+            for name in class_names
+        }
+        return single_counts, multi_counts, class_names
+
+    def _resolve_dataset_class_names(self, dataset_dir: Path) -> list[str]:
+        yaml_path = dataset_dir / "data.yaml"
+        if yaml_path.exists():
+            text = yaml_path.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if line.strip().startswith("names:"):
+                    _, raw_names = line.split(":", 1)
+                    raw_names = raw_names.strip()
+                    try:
+                        parsed = json.loads(raw_names.replace("'", '"'))
+                    except json.JSONDecodeError:
+                        parsed = []
+                    names = [str(name).strip() for name in parsed if str(name).strip()]
+                    if names:
+                        return names
+        names = [
+            str(name).strip()
+            for name in self.app.settings.get("dataset", {}).get("class_names", [])
+            if str(name).strip()
+        ]
+        return names or ["weld"]
+
+    def _read_label_class_ids(self, label_path: Path) -> set[int]:
+        present_ids: set[int] = set()
+        for line in label_path.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            try:
+                present_ids.add(int(float(parts[0])))
+            except ValueError:
+                continue
+        return present_ids
+
+    def _count_label_entries(self, labels_dir: Path) -> int:
+        if not labels_dir.exists():
+            return 0
+        total = 0
+        for label_path in labels_dir.glob("*.txt"):
+            total += sum(
+                1
+                for line in label_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+        return total
 
     def refresh_history(self):
         paths = self.app.settings["paths"]

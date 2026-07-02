@@ -26,6 +26,12 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["training"]["batch"] == 16
     assert settings["image_resize"]["canvas_size"] == 960
     assert settings["features"]["show_help_icons"] is True
+    assert settings["task"]["mode"] == "detect"
+    assert settings["dataset"]["split_ratios"] == {"train": 0.8, "val": 0.2, "test": 0.0}
+    assert settings["training"]["model_yaml"] == ""
+    assert settings["training"]["base_model"] == "yolov8s.pt"
+    assert Path(settings["training"]["pretrained"]).name == "yolov8s.pt"
+    assert settings["training"]["patience"] == 100
 
 
 def test_settings_service_defaults_to_project_data_runtime(tmp_path):
@@ -62,6 +68,32 @@ def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(t
 
     assert settings["project"]["root"] == str(project_root)
     assert settings["training"]["epochs"] == 33
+
+
+def test_settings_service_can_reset_current_project_to_defaults(tmp_path):
+    from scr.services.settings_service import SettingsService, build_default_settings
+
+    project_root = tmp_path / "project-reset"
+    settings_path = project_root / "data" / "runtime" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "training": {"epochs": 12},
+                "rename": {"prefix": "custom"},
+                "features": {"show_help_icons": False},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    service = SettingsService(project_root=project_root)
+    settings = service.reset_to_defaults()
+    defaults = build_default_settings(project_root)
+
+    assert settings == defaults
+    assert json.loads(settings_path.read_text(encoding="utf-8")) == defaults
 
 
 def test_conversion_config_rejects_invalid_ratios(tmp_path):
@@ -266,6 +298,46 @@ def test_conversion_tracks_multi_class_stats_and_formats_result(tmp_path):
     assert str(result.yaml_path) in report
 
 
+def test_preview_conversion_reports_real_box_counts(tmp_path):
+    from scr.services.conversion_service import ConversionConfig, preview_conversion
+
+    images = tmp_path / "images"
+    images.mkdir()
+    make_image(images / "multi.jpg")
+    (images / "multi.json").write_text(
+        json.dumps(
+            {
+                "imageWidth": 100,
+                "imageHeight": 100,
+                "shapes": [
+                    {"label": "weld", "shape_type": "rectangle", "points": [[10, 10], [30, 30]]},
+                    {"label": "scratch", "shape_type": "rectangle", "points": [[40, 40], [60, 60]]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = preview_conversion(
+        ConversionConfig(
+            task_mode="detect",
+            source_format="labelme",
+            images_dir=images,
+            annotations_dir=images,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels",
+            class_names=[],
+            train_ratio=1.0,
+            val_ratio=0.0,
+            test_ratio=0.0,
+        )
+    )
+
+    assert result.labeled_train_count == 1
+    assert result.total_boxes == 2
+    assert result.stats["train"] == {"weld": 1, "scratch": 1}
+
+
 def test_conversion_auto_detects_labelme_classes(tmp_path):
     from scr.services.conversion_service import ConversionConfig, run_conversion
 
@@ -350,6 +422,24 @@ def test_annotation_preview_services(tmp_path):
     assert preview.size == (100, 100)
 
 
+def test_annotation_preview_auto_detects_obb_labels(tmp_path):
+    from scr.services.annotation_service import load_yolo_annotations, render_annotation_preview
+
+    image_path = tmp_path / "obb.jpg"
+    make_image(image_path, size=(100, 100), color="white")
+    label = tmp_path / "obb.txt"
+    label.write_text(
+        "0 0.1 0.2 0.8 0.2 0.8 0.3 0.1 0.3\n",
+        encoding="utf-8",
+    )
+
+    annotations = load_yolo_annotations((100, 100), label, "detect", ["weld"])
+    preview = render_annotation_preview(image_path, annotations)
+
+    assert annotations[0].points == [(10.0, 20.0), (80.0, 20.0), (80.0, 30.0), (10.0, 30.0)]
+    assert preview.size == (100, 100)
+
+
 def test_rename_preview_execute_and_conflict(tmp_path):
     from scr.services.rename_service import execute_rename, preview_rename
 
@@ -382,7 +472,15 @@ def test_resize_preview_and_run(tmp_path):
     source = tmp_path / "images"
     source.mkdir()
     make_image(source / "a.jpg", size=(1920, 1080), color="red")
-    config = ResizeConfig(source, tmp_path / "out", tmp_path / "backup", 960, 960, "white")
+    config = ResizeConfig(
+        source,
+        tmp_path / "out",
+        tmp_path / "backup",
+        960,
+        960,
+        "white",
+        True,
+    )
 
     preview = preview_resize(config)
     result = run_resize(config)
@@ -394,6 +492,116 @@ def test_resize_preview_and_run(tmp_path):
     assert Image.open(tmp_path / "out" / "a.jpg").size == (960, 960)
     assert (tmp_path / "backup" / "a.jpg").exists()
     assert result.processed_count == 1
+
+
+def test_resize_can_skip_backup_by_default(tmp_path):
+    from scr.services.resize_service import ResizeConfig, run_resize
+
+    source = tmp_path / "images"
+    source.mkdir()
+    make_image(source / "a.jpg", size=(640, 480), color="blue")
+
+    result = run_resize(
+        ResizeConfig(
+            source_dir=source,
+            output_dir=tmp_path / "out",
+            backup_dir=tmp_path / "backup",
+            long_edge=320,
+            canvas_size=320,
+            background="white",
+            backup_enabled=False,
+        )
+    )
+
+    assert result.processed_count == 1
+    assert (tmp_path / "out" / "a.jpg").exists()
+    assert not (tmp_path / "backup").exists()
+
+
+def test_resize_recursively_scans_and_preserves_relative_structure(tmp_path):
+    from scr.services.resize_service import ResizeConfig, preview_resize, run_resize
+
+    source = tmp_path / "images"
+    nested = source / "10" / "2"
+    nested.mkdir(parents=True)
+    make_image(source / "1.jpg", size=(1000, 500), color="red")
+    make_image(source / "10.jpg", size=(500, 1000), color="green")
+    make_image(nested / "3.jpg", size=(1200, 600), color="blue")
+
+    config = ResizeConfig(
+        source_dir=source,
+        output_dir=tmp_path / "out",
+        backup_dir=tmp_path / "backup",
+        canvas_size=800,
+        background="white",
+        backup_enabled=True,
+    )
+
+    preview = preview_resize(config)
+    result = run_resize(config)
+
+    assert [str(item.source.relative_to(source)) for item in preview.items] == [
+        "1.jpg",
+        str(Path("10") / "2" / "3.jpg"),
+        "10.jpg",
+    ]
+    assert [item.output.relative_to(tmp_path / "out") for item in preview.items] == [
+        Path("1.jpg"),
+        Path("10") / "2" / "3.jpg",
+        Path("10.jpg"),
+    ]
+    assert (tmp_path / "out" / "10" / "2" / "3.jpg").exists()
+    assert (tmp_path / "backup" / "10" / "2" / "3.jpg").exists()
+    assert result.processed_count == 3
+
+
+def test_conversion_supports_class_mapping_and_backup_folder(tmp_path):
+    from scr.services.conversion_service import ConversionConfig, run_conversion
+
+    images = tmp_path / "images"
+    images.mkdir()
+    make_image(images / "multi.jpg")
+    (images / "multi.json").write_text(
+        json.dumps(
+            {
+                "imageWidth": 100,
+                "imageHeight": 100,
+                "shapes": [
+                    {"label": "a", "shape_type": "rectangle", "points": [[10, 10], [30, 30]]},
+                    {"label": "b", "shape_type": "rectangle", "points": [[40, 40], [60, 60]]},
+                    {"label": "c", "shape_type": "rectangle", "points": [[65, 65], [80, 80]]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_conversion(
+        ConversionConfig(
+            task_mode="detect",
+            source_format="labelme",
+            images_dir=images,
+            annotations_dir=images,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels",
+            train_ratio=1.0,
+            val_ratio=0.0,
+            test_ratio=0.0,
+            backup_yolo_files=True,
+            class_name_mapping={"a": "merged", "b": "merged", "c": "solo"},
+        )
+    )
+
+    label_text = (tmp_path / "data" / "train" / "labels" / "multi.txt").read_text(
+        encoding="utf-8"
+    )
+
+    assert result.class_names == ["merged", "solo"]
+    assert "0 " in label_text
+    assert "1 " in label_text
+    assert result.backup_dir is not None
+    assert (result.backup_dir / "data.yaml").exists()
+    assert (result.backup_dir / "labels" / "multi.txt").exists()
 
 
 def test_training_command_and_detection_helpers(tmp_path):
@@ -445,6 +653,77 @@ def test_training_command_includes_all_hsv_params_when_configured():
     assert "hsv_h=0.015" in command
     assert "hsv_s=0.7" in command
     assert "hsv_v=0.4" in command
+
+
+def test_training_command_ignores_dataset_yaml_in_model_field(tmp_path):
+    from scr.services.training_service import build_train_command
+
+    dataset_yaml = tmp_path / "data.yaml"
+    dataset_yaml.write_text(
+        "path: data\ntrain: train/images\nval: val/images\nnames: ['weld']\n",
+        encoding="utf-8",
+    )
+    obb_model = tmp_path / "data" / "models" / "yolov8m-obb.pt"
+    obb_model.parent.mkdir(parents=True)
+    obb_model.write_text("weights", encoding="utf-8")
+
+    command = build_train_command(
+        {
+            "model_yaml": str(dataset_yaml),
+            "base_model": str(obb_model),
+            "pretrained": str(obb_model),
+            "data": str(dataset_yaml),
+        }
+    )
+
+    assert "model=" + str(dataset_yaml) not in command
+    assert "model=" + str(obb_model) in command
+    assert "pretrained=" + str(obb_model) in command
+    assert "obb" in command
+
+
+def test_train_cli_falls_back_to_pretrained_when_model_points_to_dataset_yaml(monkeypatch, tmp_path):
+    from scr.train_cli import run_train_cli
+
+    dataset_yaml = tmp_path / "data.yaml"
+    dataset_yaml.write_text(
+        "path: data\ntrain: train/images\nval: val/images\nnames: ['weld']\n",
+        encoding="utf-8",
+    )
+    obb_model = tmp_path / "data" / "models" / "yolov8m-obb.pt"
+    obb_model.parent.mkdir(parents=True)
+    obb_model.write_text("weights", encoding="utf-8")
+    calls = {}
+
+    class FakeYOLO:
+        def __init__(self, model):
+            calls["model"] = model
+
+        def train(self, **kwargs):
+            calls["kwargs"] = kwargs
+
+    monkeypatch.setitem(
+        sys.modules,
+        "scr.services.ultralytics_compat",
+        SimpleNamespace(ensure_cv2_highgui_compat=lambda: None),
+    )
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+
+    exit_code = run_train_cli(
+        [
+            "detect",
+            "train",
+            f"model={dataset_yaml}",
+            f"data={dataset_yaml}",
+            f"pretrained={obb_model}",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["model"] == str(obb_model)
+    assert calls["kwargs"]["task"] == "obb"
+    assert calls["kwargs"]["data"] == str(dataset_yaml)
+    assert calls["kwargs"]["pretrained"] == str(obb_model)
 
 
 def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
@@ -627,6 +906,46 @@ def test_logged_process_uses_hidden_windows_subprocess(monkeypatch):
 
     assert calls["command"] == ["demo"]
     assert calls["creationflags"] == getattr(runtime_service.subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def test_sanitize_terminal_line_removes_ansi_sequences():
+    from scr.services.runtime_service import sanitize_terminal_line
+
+    raw = "\x1b[K\x1b[34m\x1b[1mtrain: \x1b[0mScanning labels.cache... 91/91 0.0s\r\n"
+
+    assert sanitize_terminal_line(raw) == "train: Scanning labels.cache... 91/91 0.0s"
+
+
+def test_logged_process_cleans_terminal_escape_sequences(monkeypatch):
+    from queue import Queue
+
+    from scr.services import runtime_service
+
+    class FakeStdout:
+        def __iter__(self):
+            return iter(
+                (
+                    "\x1b[K1/500 640: 5% 1/20 1.1it/s\r\n",
+                    "\x1b[34moptimizer:\x1b[0m AdamW(lr=0.002)\n",
+                    "\x1b[K\r\n",
+                )
+            )
+
+    class FakeProcess:
+        stdout = FakeStdout()
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(runtime_service.subprocess, "Popen", lambda *_args, **_kwargs: FakeProcess())
+
+    queue = Queue()
+    handle = runtime_service.spawn_logged_process(["demo"], str(Path.cwd()), queue)
+    handle.thread.join(timeout=1)
+
+    assert queue.get(timeout=1) == ("log", "1/500 640: 5% 1/20 1.1it/s")
+    assert queue.get(timeout=1) == ("log", "optimizer: AdamW(lr=0.002)")
+    assert queue.get(timeout=1) == ("exit", 0)
 
 
 def test_rename_can_include_matching_labels_and_blocks_label_conflicts(tmp_path):

@@ -9,8 +9,11 @@ class ResizeTab(BasePage):
         super().__init__(app)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
         resize = app.settings["image_resize"]
         grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(10)
         self.source_box, self.source_edit = self.path_field(
             "图片目录",
             app.settings["paths"]["images_dir"],
@@ -29,11 +32,6 @@ class ResizeTab(BasePage):
             self.choose_dir,
             "选择压缩结果输出目录",
         )
-        self.long_box, self.long_edit = self.field(
-            "长边缩放",
-            str(resize["long_edge"]),
-            placeholder="例如 960",
-        )
         self.canvas_box, self.canvas_edit = self.field(
             "画布尺寸",
             str(resize["canvas_size"]),
@@ -51,26 +49,22 @@ class ResizeTab(BasePage):
             ),
             ["输出到新文件夹", "覆盖原文件"],
         )
-        self.save_format_box, self.save_format_combo = self.combo_field(
-            "保存格式",
-            app.settings.get("features", {}).get(
-                "resize_save_format", "保持原格式"
-            ),
-            ["保持原格式", "jpg", "png"],
-        )
         for index, widget in enumerate(
             [
                 self.source_box,
                 self.backup_box,
                 self.output_box,
-                self.output_mode_box,
-                self.long_box,
                 self.canvas_box,
+                self.output_mode_box,
                 self.bg_box,
-                self.save_format_box,
             ]
         ):
-            grid.addWidget(widget, index // 2, index % 2)
+            grid.addWidget(widget, index // 3, index % 3)
+        backup_toggle_box, self.backup_check = self.checkbox_with_help(
+            "备份原始图片",
+            bool(resize.get("backup_enabled", False)),
+        )
+        grid.addWidget(backup_toggle_box, 2, 0)
         layout.addLayout(grid)
         actions = QHBoxLayout()
         preview_button = QPushButton("预览压缩")
@@ -91,19 +85,20 @@ class ResizeTab(BasePage):
             source_dir=self.path_from_edit(self.source_edit),
             output_dir=self.path_from_edit(self.output_edit),
             backup_dir=self.path_from_edit(self.backup_edit),
-            long_edge=int(self.long_edit.text()),
             canvas_size=int(self.canvas_edit.text()),
             background=self.bg_combo.currentText(),
+            backup_enabled=self.backup_check.isChecked(),
         )
 
     def preview(self):
         result = preview_resize(self.config())
         self.log.setPlainText(
-            f"计划处理 {len(result.items)} 张图片\n输出方式: {self.output_mode_combo.currentText()}\n保存格式: {self.save_format_combo.currentText()}\n"
+            f"计划处理 {len(result.items)} 张图片\n输出方式: {self.output_mode_combo.currentText()}\n"
         )
+        source_root = self.path_from_edit(self.source_edit)
         for item in result.items[:80]:
             self.log.append(
-                f"{item.source.name}: {item.original_size} -> {item.resized_size}, scale={item.scale:.3f}"
+                f"{item.source.relative_to(source_root)}: {item.original_size} -> {item.resized_size}, scale={item.scale:.3f}"
             )
 
     def run(self):
@@ -132,7 +127,11 @@ class ResizeTab(BasePage):
                 value=self.resolve_path_text(self.output_edit),
             )
         )
-        self.long_edit.textChanged.connect(self._persist_long_edge)
+        self.backup_check.toggled.connect(
+            lambda checked: self.update_setting(
+                "image_resize", "backup_enabled", value=bool(checked)
+            )
+        )
         self.canvas_edit.textChanged.connect(self._persist_canvas_size)
         self.bg_combo.currentTextChanged.connect(
             lambda value: self.update_setting("image_resize", "background", value=value)
@@ -142,18 +141,6 @@ class ResizeTab(BasePage):
                 "features", "resize_output_mode", value=value
             )
         )
-        self.save_format_combo.currentTextChanged.connect(
-            lambda value: self.update_setting(
-                "features", "resize_save_format", value=value
-            )
-        )
-
-    def _persist_long_edge(self, text: str):
-        try:
-            value = int(text)
-        except ValueError:
-            return
-        self.update_setting("image_resize", "long_edge", value=value)
 
     def _persist_canvas_size(self, text: str):
         try:

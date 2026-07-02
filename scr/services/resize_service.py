@@ -6,6 +6,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from scr.services.rename_service import natural_sort_key
+
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
 
@@ -18,6 +20,7 @@ class ResizeConfig:
     long_edge: int = 960
     canvas_size: int = 960
     background: str = "white"
+    backup_enabled: bool = False
 
 
 @dataclass
@@ -45,7 +48,14 @@ class ResizeResult:
 def _image_files(folder: Path) -> list[Path]:
     if not Path(folder).exists():
         return []
-    return sorted(path for path in Path(folder).iterdir() if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES)
+    return sorted(
+        (
+            path
+            for path in Path(folder).rglob("*")
+            if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        ),
+        key=natural_sort_key,
+    )
 
 
 def preview_resize(config: ResizeConfig) -> ResizePreview:
@@ -53,12 +63,13 @@ def preview_resize(config: ResizeConfig) -> ResizePreview:
     for source in _image_files(config.source_dir):
         with Image.open(source) as image:
             width, height = image.size
-        scale = config.long_edge / max(width, height)
+        scale = config.canvas_size / max(width, height)
         resized_size = (max(1, round(width * scale)), max(1, round(height * scale)))
+        relative_source = source.relative_to(config.source_dir)
         items.append(
             ResizePlanItem(
                 source=source,
-                output=Path(config.output_dir) / source.name,
+                output=Path(config.output_dir) / relative_source,
                 original_size=(width, height),
                 resized_size=resized_size,
                 scale=scale,
@@ -70,15 +81,22 @@ def preview_resize(config: ResizeConfig) -> ResizePreview:
 def run_resize(config: ResizeConfig) -> ResizeResult:
     preview = preview_resize(config)
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
-    Path(config.backup_dir).mkdir(parents=True, exist_ok=True)
+    if config.backup_enabled:
+        Path(config.backup_dir).mkdir(parents=True, exist_ok=True)
     background = (255, 255, 255) if config.background == "white" else (0, 0, 0)
     for item in preview.items:
-        shutil.copy2(item.source, Path(config.backup_dir) / item.source.name)
+        if config.backup_enabled:
+            backup_target = Path(config.backup_dir) / item.source.relative_to(
+                config.source_dir
+            )
+            backup_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item.source, backup_target)
         with Image.open(item.source).convert("RGB") as image:
             resized = image.resize(item.resized_size, Image.Resampling.LANCZOS)
             canvas = Image.new("RGB", (config.canvas_size, config.canvas_size), background)
             x = (config.canvas_size - item.resized_size[0]) // 2
             y = (config.canvas_size - item.resized_size[1]) // 2
             canvas.paste(resized, (x, y))
+            item.output.parent.mkdir(parents=True, exist_ok=True)
             canvas.save(item.output)
     return ResizeResult(processed_count=len(preview.items), backup_dir=Path(config.backup_dir), output_dir=Path(config.output_dir))

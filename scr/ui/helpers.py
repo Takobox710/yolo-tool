@@ -37,16 +37,19 @@ def relative_path(path_str: str, project_root: str | Path = ROOT) -> str:
     return display_project_path(path_str, project_root)
 
 
-def simplified_model_path(path_str: str) -> str:
-    rel = relative_path(path_str)
+def simplified_model_path(path_str: str, project_root: str | Path = ROOT) -> str:
+    rel = relative_path(path_str, project_root)
     parts = Path(rel).parts
     if len(parts) >= 3 and parts[0].lower() == "result" and parts[-2].lower() == "weights":
         return str(Path(*parts[1:-2] + (parts[-1],)))
     return rel
 
 
-def find_models_in_dir(result_dir: Path) -> list[str]:
-    return [simplified_model_path(str(model)) for model in scan_candidate_models(result_dir)]
+def find_models_in_dir(result_dir: Path, project_root: str | Path = ROOT) -> list[str]:
+    return [
+        simplified_model_path(str(model), project_root)
+        for model in scan_candidate_models(result_dir)
+    ]
 
 
 def find_models_full_paths(result_dir: Path) -> list[Path]:

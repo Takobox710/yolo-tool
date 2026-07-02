@@ -6,7 +6,7 @@ from typing import Any
 from scr.paths import ROOT
 from scr.ui.helpers import _display_project_path, _history_number_sort_key, _history_time_sort_key, _resolve_project_path
 from scr.ui.widgets.base import Card, ImageView
-from scr.ui.qt import QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QTableWidgetItem, Qt, QTextEdit, QVBoxLayout, QWidget
+from scr.ui.qt import QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QKeySequence, QLineEdit, QPushButton, QShortcut, QSizePolicy, QTableWidgetItem, Qt, QTextEdit, QVBoxLayout, QWidget
 
 
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
@@ -69,7 +69,18 @@ class BasePage(QWidget):
         edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         edit.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         edit.setCursorWidth(0)
+        copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, edit)
+        copy_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        copy_shortcut.activated.connect(lambda text_edit=edit: self._copy_readonly_text(text_edit))
+        edit._copy_shortcut = copy_shortcut
         return edit
+
+    def _copy_readonly_text(self, edit: QTextEdit):
+        if not edit.isVisible():
+            return
+        if not edit.textCursor().hasSelection():
+            return
+        edit.copy()
 
     def help_icons_enabled(self) -> bool:
         return bool(

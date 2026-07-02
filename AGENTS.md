@@ -29,8 +29,15 @@ yolo_tool/
 ├── docs/
 │   └── packaging-windows.md
 ├── packaging/
+│   ├── YOLOTool.dev.spec
 │   ├── YOLOTool.spec
-│   └── build_windows.ps1
+│   ├── build_windows.ps1
+│   ├── build_windows_dev.ps1
+│   ├── pyinstaller_common.py
+│   └── hooks/
+│       ├── hook-PySide6.scripts.deploy_lib.py
+│       ├── hook-torch.py
+│       └── hook-torch.utils.tensorboard.py
 └── scr/
     ├── __init__.py
     ├── main.py
@@ -110,10 +117,22 @@ pixi run check
 Windows 绿色版打包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
+powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode release
 ```
 
-打包产物位于 `dist/YOLOTool/`，入口为 `dist/YOLOTool/YOLOTool.exe`。
+开发快速打包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode dev
+```
+
+或：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_windows_dev.ps1
+```
+
+正式版产物位于 `dist/YOLOTool/`，开发快包位于 `dist/YOLOTool-dev/`。
 
 ## Pixi 环境说明
 
@@ -164,11 +183,13 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 
 主页点击"设置项目目录"切换项目时，必须重新加载目标项目的 `data/runtime/settings.json`；若不存在则按目标项目目录创建默认配置。`scr/runtime/settings.json` 只作为历史/源码内默认配置参考，不再作为当前项目配置的唯一落点。
 
+程序最近一次打开的项目根目录应单独持久化到应用根目录 `data/runtime/app_state.json` 的 `last_project_root`；它只用于恢复最近项目，不得覆盖当前项目自己的 `data/runtime/settings.json`，测试中也不得误写真实工作区的该文件。
+
 程序启动时默认进入"主页"，不再根据上次关闭前的 `last_page` 自动恢复页面。
 
 ### 主页
 
-主页必须按旧版整体设计重建，展示项目路径、图片数量、标签文件数量、训练曲线、训练结果模型等概览信息。
+主页必须按旧版整体设计重建，展示项目路径、图片数量、标注数量、训练曲线、训练结果模型等概览信息。
 
 主页布局约定：
 
@@ -177,11 +198,12 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 - 主页页面本体当前最小高度为 `650`；默认窗口下应尽量避免轻微溢出导致刚启动就出现竖向滚动条。
 - 主页列宽由代码按可用宽度固定计算，左列约 30%，右列约 70%，避免放大窗口时左列漂移或比例变化。
 - 顶部保留欢迎标题和简短环境标签；不要显示标题下方的说明标语。
-- 上半区左侧为"项目概览"（标题与"设置项目目录"按钮同行），包含项目文件夹、图片路径、标注路径、结果路径、图片数量、标签数量。
+- 上半区左侧为"项目概览"（标题与"设置项目目录"按钮同行），包含项目文件夹、图片路径、标注路径、结果路径、图片数量、标注数量。
 - 项目概览每行保持左侧字段名、右侧数据结构；字段名固定窄宽，右侧长路径使用中间省略显示，完整内容放入 tooltip。
 - "设置项目目录"与"打开结果目录"按钮采用紧凑按钮样式，高度约 30px，小字号，不要通过继续加宽按钮解决文字显示问题。
 - 上半区右侧为"各类别图片分布"，使用 `scr/ui/widgets/charts.py` 中的独立图表组件渲染柱状图。
-- 各类别图片分布显示四根柱：总照片、训练、验证、测试；显示类别、照片总数、各柱数量与占比。柱状图坐标轴左侧留白保持紧凑，当前约定左边距为 30px。
+- 各类别图片分布显示四根柱：总照片、训练、验证、测试。单类别模式下顶部显示当前类别名，不显示“总计 xx 张图片”；训练、验证、测试三项之间单独计算占比，总照片不参与这三项百分比分母。柱状图坐标轴左侧留白保持紧凑，当前约定左边距为 30px。
+- 当项目存在多个类别且系统设置开启多类别分布模式时，顶部只显示“总计 xx 张照片”，不显示类别名；柱状图改为按类别展示，各柱名称为各类别名称。
 - 下半区左侧为训练曲线卡片，但不显示"训练曲线"标题，以节省空间。
 - 训练曲线使用 `scr/ui/widgets/charts.py` 中的独立图表组件，从 `results.csv` 读取数据，顶部只显示 Epoch，不显示 mAP50 或 Box Loss 的数值摘要。
 - 训练曲线绘制 mAP50 与 Box Loss 两条关键曲线并保留图例；曲线必须只画线，不得填充折线路径区域，避免出现三角形色块。
@@ -220,15 +242,19 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 - 生成 `data.yaml`
 - 汇总 `labels`
 - 类别名称不再由界面手动输入。Labelme 模式下从 `.json` 的 `label` 自动识别类别，按首次出现顺序生成 class id；YOLO `.txt` 分组模式下若没有类别名称来源，则按数字 id 自动显示为 `class_0`、`class_1` 等。
+- 支持“备份标注文件”开关；开启后，每次转换生成的 YOLO 标注文件和 `data.yaml` 都会备份到 `data/old/backup-时间戳/` 下独立文件夹，支持多次共存。
+- 支持“自定义类别名称”窗口，可把多个 Labelme 类别通过英文逗号映射到同一个 YOLO 类别，并在保存时校验是否引用了不存在或重复的 Labelme 类别。
 
 标注转换页面布局与交互约定：
 
 - 页面顶部采用类似模型训练页的左右两张卡片布局。
-- 左侧卡片标题为"数据集与转换配置"，上方 2x2 放置图片目录、Labelme 标注目录、YOLO 标注目录、输出目录；下方放置"Labelme 转 YOLO"开关。
+- 左侧卡片标题为"数据集与转换配置"，上方 2x2 放置图片目录、Labelme 标注目录、YOLO 标注目录、输出目录；下方放置"Labelme 转 YOLO"、"备份标注文件"和"自定义类别名称"。
 - 右侧卡片标题为"转换参数"，按从左到右、从上到下排列为：任务类型、训练、验证、测试、随机种子、直线拓展宽度。
+- 任务类型下拉框默认值为 `detect`，下拉顺序固定为 `detect` 在前、`obb` 在后。
+- 默认数据集划分比例为 `train=0.8`、`val=0.2`、`test=0.0`。
 - 解释方式固定采用方案 B：直接在字段名称后追加 `ⓘ`，tooltip 继续挂在对应名称控件本身，不要再实现独立解释图标控件、悬浮说明层或自定义气泡。
 - 图片目录、Labelme 标注目录、YOLO 标注目录、输出目录这四个路径字段不要显示 `ⓘ`。
-- 标注转换页仅以下项目显示 `ⓘ`：`Labelme 转 YOLO`、任务类型、训练、验证、测试、随机种子、直线拓展宽度。
+- 标注转换页仅以下项目显示 `ⓘ`：`Labelme 转 YOLO`、`备份标注文件`、任务类型、训练、验证、测试、随机种子、直线拓展宽度。
 - 解释只通过鼠标悬停 tooltip 显示，不要在界面上额外显示说明段落。
 - 不要显示"开启时读取同名 json 并转换..."、比例合计提示、"OBB + Labelme 直线标注..."等常驻说明文字；这些内容如需保留，只能放入 tooltip。
 - Tooltip 应关闭动画或采用更快的显示方式，避免鼠标悬停后等待过久。
@@ -237,10 +263,12 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 
 图片压缩支持：
 
-- 执行前备份原图。
-- 按长边等比缩放，默认长边 960。
-- 创建默认 960 x 960 白色或黑色画布。
+- 可选是否备份原始图片，默认不备份。
+- 以“画布尺寸”作为长边对齐目标，按长边等比缩放。
+- 默认创建 `960 x 960` 白色或黑色画布。
 - 将缩放后的图片居中粘贴到画布。
+- 递归扫描图片目录及其子目录中的图片，并按自然数字顺序预览与处理。
+- 输出目录与备份目录都应保持与原图片目录一致的相对目录结构。
 
 ### 模型训练
 
@@ -248,6 +276,8 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 
 - 左侧：基础模型（下拉框，自动读取 `data/models/*.pt`，也可手动输入）、数据集 YAML、模型 YAML（默认空白）、项目输出、数据增强选项。
 - 右侧：优化器（auto/SGD/Adam/AdamW/RMSProp 下拉框）、设备、学习率、Epochs、Patience、Workers、Batch、图片尺寸。
+- 默认基础模型为 `yolov8s.pt`，默认训练参数为：优化器 `auto`、学习率 `0.001`、`Epochs=500`、`Patience=100`、`Workers=2`、`Batch=16`、`图片尺寸=640`、`设备=0`。
+- 默认增强勾选状态与当前界面一致：马赛克、缩放、平移、HSV、左右翻转默认开启；上下翻转、旋转、MixUp 默认关闭。
 - 中部左侧保留训练控制模块（开始训练、停止训练、查看模型报告），但不显示"训练控制"标题。
 - 中部右侧保留系统状态模块（GPU/显存/CPU/内存），但不显示"系统状态"标题。
 - 训练日志面板不显示标题和进度条，只保留日志文本框。
@@ -302,6 +332,9 @@ Qt 实现注意事项：
 - 点击"开始训练"后，若自定义命令框功能开启，先弹出命令编辑对话框，可修改命令后再执行训练；若上一个训练任务未结束则不弹出也不启动新任务。
 - 训练命令编辑对话框当前默认尺寸为 `700 x 200`，最小尺寸为 `350 x 100`。
 - 训练和检测均只允许一次启动，按钮在运行期间禁用，任务结束后恢复。
+- 点击"停止训练"后，训练页应立即进入"停止中"状态，禁用停止按钮，待训练进程真正退出后再统一恢复"开始训练"按钮，避免出现已停止但开始按钮仍为灰色的状态不同步问题。
+- 训练停止后，若后台的 Windows `multiprocessing` dataloader 子进程继续抛出 `WinError 5` 等停止期噪声，不应继续污染 GUI 日志；训练页应优先呈现"已请求停止训练"和最终停止结果。
+- GUI 训练日志不得直接显示终端 ANSI 控制序列；像 `ESC[K`、`ESC[34m`、`ESC[1m` 这类进度刷新和颜色控制符必须在写入文本框前清洗掉，避免日志出现 `[K`、`[34m` 等乱码残留。
 
 ### 模型验证
 
@@ -353,8 +386,11 @@ Qt 实现注意事项：
 
 系统设置页面还包含：
 
+- 系统信息区域放在页面最上方。
+- 系统信息下方使用同一行放置以下控件：`训练前显示自定义命令框`、`显示配置解释符号`、`恢复默认设置`。
 - "训练前显示自定义命令框"开关，控制训练页是否弹出命令编辑对话框。
 - "显示配置解释符号"开关，控制是否显示字段名后的 `ⓘ`。
+- "恢复默认设置"按钮，点击后将当前项目的设置恢复到代码默认值，但保留当前项目目录不变。
 
 关于"显示配置解释符号"开关：
 
@@ -376,7 +412,7 @@ Qt 实现注意事项：
 - 页面级滚动区域和表格不得出现横向滚动条；界面横向宽度应固定在当前窗口可见范围内，通过列宽/布局自适应解决显示问题。
 - 训练和检测启动按钮在运行期间禁用，任务结束后恢复。
 - 训练控制模块中三个按钮要视觉居中、上下间距一致；"开始训练"按钮为黑字。模型验证页检测控制的"开始检测 / 暂停 / 停止"三个按钮必须等分宽度，不能因为窗口较窄隐藏"停止"。
-- 所有只读日志/输出文本框应视为展示控件而不是编辑控件：必须 `readOnly`、`NoFocus`、只保留鼠标选中文本能力，并隐藏文本光标，避免切页或初始加载时出现输入光标样式残留。
+- 所有只读日志/输出文本框应视为展示控件而不是编辑控件：必须 `readOnly`、`NoFocus`、隐藏文本光标，并保留鼠标选中文本与 `Ctrl+C` 复制能力，避免切页或初始加载时出现输入光标样式残留。
 
 ### 数据处理交互细节
 
@@ -387,6 +423,8 @@ Qt 实现注意事项：
 - 自动显示当前图片，不需要额外点击"预览"。
 - 必须提供上一张、下一张。
 - 提供与模型验证同款的"列表"按钮；弹窗只显示文件名，支持搜索并可直接跳转到当前图片。
+- 预览时应根据标签内容自动识别 `detect` 或 `obb` 格式，不得完全依赖当前全局任务类型。
+- 标注框样式应接近 YOLO 官方预览风格：彩色框线、实心标签底色、白色文字；标签位置需尽量贴近无方向框或旋转框本体。
 
 批量重命名：
 
@@ -405,15 +443,17 @@ Qt 实现注意事项：
 
 核心服务接口在 `scr/services/`：
 
-- `settings_service.py`：项目级设置文件加载、保存、默认值合并；默认路径为当前项目目录 `data/runtime/settings.json`，并维护训练、验证、转换、重命名、压缩等页面的持久化默认值。当前包含 `paths.models_dir`、`training.optimizer`、`features.custom_command_dialog` 等字段。
-- `conversion_service.py`：Labelme 转 YOLO、已有 YOLO `.txt` 分组、自动识别类别、数据集划分、`data.yaml` 生成。
-- `annotation_service.py`：YOLO 标注解析与图像预览绘制。
+- `settings_service.py`：项目级设置文件加载、保存、默认值合并与恢复默认值；默认路径为当前项目目录 `data/runtime/settings.json`，并维护训练、验证、转换、重命名、压缩等页面的持久化默认值。当前包含 `paths.models_dir`、`training.optimizer`、`features.custom_command_dialog`、`features.distribution_multi_class_mode` 等字段。
+- `data/runtime/app_state.json`：应用级最近项目状态文件，当前保存 `last_project_root`，仅用于下次启动时恢复最近一次使用的项目目录。
+- `conversion_service.py`：Labelme 转 YOLO、已有 YOLO `.txt` 分组、自动识别类别、类别映射、自定义类别名校验、数据集划分、`data.yaml` 生成，以及转换产物备份。
+- `annotation_service.py`：YOLO 标注解析与图像预览绘制；预览时按标签内容自动识别 `detect/obb`，并使用更接近 YOLO 官方的框与标签样式。
 - `rename_service.py`：批量重命名预览与执行。
 - `resize_service.py`：图片备份、缩放、画布归一化。
 - `training_service.py`：训练与导出命令生成，支持优化器参数、HSV 三参数及从 `results.csv` 读取训练曲线数据。
 - `detection_service.py`：模型扫描、输入源自然排序、单文件/批量检测源收集、检测结果解析、推理流程。
 - 摄像头/视频流的结果图渲染必须显式以当前帧作为底图后再叠加检测结果，不能依赖模型结果对象内部的默认底图回退，避免无目标时出现黑屏。
 - `runtime_service.py`：子进程启动、日志转发、停止进程。
+- `runtime_service.py`：子进程启动、日志转发、停止进程；Windows 下优先回收训练进程树，并在日志入队前清洗 ANSI/控制字符，避免 GUI 文本框出现终端转义符残留。
 - `process_utils.py`：Windows 后台子进程隐藏窗口参数，避免 PyInstaller GUI 程序反复弹出终端窗口。
 - `environment_service.py`：pixi、模块、GPU/CPU/内存/磁盘状态检测。
 
@@ -423,10 +463,14 @@ Qt 实现注意事项：
 - `training.optimizer`：优化器选择（auto/SGD/Adam/AdamW/RMSProp）。
 - `training.hsv_s`、`training.hsv_v`：HSV 饱和度与明度增强参数，和 `training.hsv_h` 一起由训练页 HSV 勾选项控制。
 - `features.custom_command_dialog`：训练前是否弹出自定义命令框。
+- `features.distribution_multi_class_mode`：主页“各类别图片分布”是否切换为多类别统计模式。
 - `features.show_help_icons`：是否显示字段名后的 `ⓘ`；关闭时只隐藏 `ⓘ`，不移除字段名称上的 tooltip。
 - `conversion.use_labelme`：记录标注转换页当前是否启用 Labelme 转 YOLO。
+- `conversion.backup_yolo_files`：记录标注转换页是否备份本次转换生成的 YOLO 标注与 `data.yaml`。
+- `conversion.class_name_mappings`：记录 Labelme 类别名到 YOLO 类别名的映射关系。
 - `rename.prefix`、`rename.start_index`、`rename.padding`、`rename.include_labelme`、`rename.include_yolo`：记录批量重命名页当前配置。
-- `features.resize_output_mode`、`features.resize_save_format`：记录图片压缩页的输出方式与保存格式。
+- `image_resize.backup_enabled`：记录图片压缩页是否备份原始图片。
+- `features.resize_output_mode`：记录图片压缩页的输出方式。
 
 ## 打包说明
 
@@ -435,7 +479,19 @@ Qt 实现注意事项：
 打包命令：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
+powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode release -Clean
+```
+
+开发联调时可使用更快的开发快包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Mode dev
+```
+
+或：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_windows_dev.ps1
 ```
 
 打包后的目录结构约定：
@@ -453,6 +509,26 @@ dist/YOLOTool/
 └── result/
 ```
 
+开发快包输出到 `dist/YOLOTool-dev/`，用于本地快速验证 GUI 启动、训练入口和检测入口，不覆盖正式版目录。
+
+当前打包体系约定：
+
+- `packaging/YOLOTool.spec`：正式版 PyInstaller spec。
+- `packaging/YOLOTool.dev.spec`：开发快速打包 spec。
+- `packaging/pyinstaller_common.py`：两套 spec 共享的打包配置。
+- `packaging/hooks/`：用于压制无关 PyInstaller 探测噪声的自定义 hooks。
+
+当前不再使用对 `torch`、`PySide6` 等大包的 `collect_all(...)` 全量扫描；原因是它会显著拖慢打包，并制造大量与本项目无关的误报。
+
+已知仍可能出现但当前可接受的打包日志噪声包括：
+
+- `triton not found`
+- `Hidden import "tzdata" not found`
+- `Hidden import "scipy.special._cdflib" not found`
+- `Ignoring /usr/lib64/libgomp.so.1 ... only basenames are supported with ctypes imports`
+
+这些日志目前不影响 GUI 启动、训练入口或检测入口；若后续出现真正的运行时缺模块，再按实际功能回补依赖，不要为了“清空所有 warning”恢复全量扫描。
+
 `data/models/`、`data/runtime/`、`images/`、`labels/`、`result/` 都是 exe 同级的项目工作目录。CUDA 版打包后目标机器不需要 Python/pixi，但仍需要兼容的 NVIDIA 驱动。
 
 ## 测试说明
@@ -460,6 +536,7 @@ dist/YOLOTool/
 当前测试覆盖：
 
 - 设置加载与深合并。
+- 当前项目配置恢复默认值。
 - 转换配置校验。
 - Labelme OBB 转换。
 - Labelme line 转 OBB。
@@ -468,16 +545,18 @@ dist/YOLOTool/
 - Labelme 类别自动识别与 YOLO 数字类别自动命名。
 - YOLO 标注读取与预览渲染。
 - 批量重命名预览、执行、冲突检测。
-- 图片压缩预览、备份、960 x 960 输出。
+- 图片压缩递归扫描、自然排序、可选备份与保持目录结构的 960 x 960 输出。
 - 训练命令生成。
 - 训练命令编辑弹窗尺寸与命令编辑行为。
 - 模型扫描与检测结果归一化。
 - `data/models` 统一模型目录、训练命令模型路径解析、配置持久化与重启恢复。
-- 项目级 `data/runtime/settings.json`、项目目录切换后配置重载、PyInstaller 脚本入口、隐藏后台子进程窗口。
+- 项目级 `data/runtime/settings.json`、`data/runtime/app_state.json` 最近项目恢复、项目目录切换后配置重载、PyInstaller 脚本入口、隐藏后台子进程窗口。
+- 训练停止后按钮状态恢复、停止期日志噪声抑制，以及 GUI 日志 ANSI 控制符清洗。
 - 摄像头实时预览、FPS 日志与“无目标时不黑屏”回归。
 - Qt 应用入口和核心功能迁移验证。
-- 图标资源、主页网格布局与滚动、主页图表模块、相对路径、训练曲线、悬停高亮、防重复启动、自定义命令框、系统信息样式、训练页系统状态自动刷新、检测列表与批量检测行为等功能验证。
-- 配置项占位文本、方案 B 的 `ⓘ + tooltip` 解释方式、解释符号显示开关、只读日志框无焦点、主页面预创建减少首切卡顿等交互验证。
+- 图标资源、主页网格布局与滚动、主页图表模块、主页标注数量统计、多类别图片分布模式、相对路径、训练曲线、悬停高亮、防重复启动、自定义命令框、系统信息样式、训练页系统状态自动刷新、检测列表与批量检测行为等功能验证。
+- 转换页默认任务类型与下拉顺序、训练页默认基础模型与训练参数、系统设置页系统信息与控制区布局等默认界面行为验证。
+- 配置项占位文本、方案 B 的 `ⓘ + tooltip` 解释方式、解释符号显示开关、只读日志框无焦点且支持 `Ctrl+C` 复制、主页面预创建减少首切卡顿等交互验证。
 
 运行：
 

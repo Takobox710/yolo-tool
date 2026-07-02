@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from scr.services.training_service import infer_task_mode_from_config, select_training_model
+
 
 def _parse_value(raw: str) -> Any:
     text = str(raw)
@@ -45,9 +47,14 @@ def run_train_cli(argv: list[str]) -> int:
     from ultralytics import YOLO
 
     options = _parse_key_values(items)
-    model_path = options.pop("model", None)
+    model_path = select_training_model(options)
     if not model_path:
         raise SystemExit("Missing model=... for training")
+    options.pop("model", None)
+    if task_mode != "obb" and infer_task_mode_from_config(
+        {"model": model_path, "pretrained": options.get("pretrained")}
+    ) == "obb":
+        task_mode = "obb"
     model = YOLO(str(model_path))
     model.train(task=task_mode, **options)
     return 0

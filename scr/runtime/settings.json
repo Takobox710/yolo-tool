@@ -1,6 +1,6 @@
 {
   "project": {
-    "root": "D:/ruanjian/User/Python/yolo_tool"
+    "root": "D:\\ruanjian\\User\\Python\\yolo_tool"
   },
   "paths": {
     "images_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images",
@@ -11,16 +11,16 @@
     "result_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\result"
   },
   "task": {
-    "mode": "obb"
+    "mode": "detect"
   },
   "dataset": {
     "class_names": [
       "weld"
     ],
     "split_ratios": {
-      "train": 0.7,
+      "train": 0.8,
       "val": 0.2,
-      "test": 0.1
+      "test": 0.0
     },
     "line_to_obb": {
       "enabled": true,
@@ -36,15 +36,15 @@
     "backup_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images_backup"
   },
   "training": {
-    "model_yaml": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\yolov8m-obb.yaml",
-    "base_model": "D:\\ruanjian\\User\\Python\\yolo_tool\\yolov8m-obb.pt",
-    "pretrained": "D:\\ruanjian\\User\\Python\\yolo_tool\\yolov8m-obb.pt",
+    "model_yaml": "",
+    "base_model": "yolov8s.pt",
+    "pretrained": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\models\\yolov8s.pt",
     "data": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\data.yaml",
     "project": "D:\\ruanjian\\User\\Python\\yolo_tool\\result",
     "export_format": "onnx",
     "lr": 0.001,
-    "epochs": 800,
-    "patience": 150,
+    "epochs": 500,
+    "patience": 100,
     "workers": 2,
     "batch": 16,
     "imgsz": 640,
@@ -62,8 +62,8 @@
     "optimizer": "auto"
   },
   "validation": {
-    "model_path": "D:\\ruanjian\\User\\Python\\yolo_tool\\result\\train-4\\weights\\best.pt",
-    "source_mode": "图片文件夹",
+    "model_path": "",
+    "source_mode": "图片/视频文件夹",
     "source_path": "",
     "camera_index": 0,
     "confidence": 0.25,
@@ -81,13 +81,13 @@
     "include_yolo": false
   },
   "ui": {
-    "last_page": "settings",
+    "last_page": "home",
     "window_width": 1100,
     "window_height": 770
   },
   "features": {
     "custom_command_dialog": true,
-    "show_help_icons": false,
+    "show_help_icons": true,
     "resize_output_mode": "输出到新文件夹",
     "resize_save_format": "保持原格式"
   }

@@ -4,10 +4,64 @@ import csv
 import sys
 from pathlib import Path
 
+import yaml
+
 
 def infer_task_mode_from_model(model_name: str | Path | None) -> str:
     name = Path(str(model_name or "")).name.lower()
     return "obb" if "obb" in name else "detect"
+
+
+def _read_yaml_mapping(path_like: str | Path | None) -> dict | None:
+    path_text = str(path_like or "").strip()
+    if not path_text:
+        return None
+    path = Path(path_text)
+    if path.suffix.lower() not in {".yaml", ".yml"} or not path.exists():
+        return None
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def is_dataset_yaml(path_like: str | Path | None) -> bool:
+    path_text = str(path_like or "").strip()
+    if not path_text:
+        return False
+    path = Path(path_text)
+    if path.suffix.lower() not in {".yaml", ".yml"}:
+        return False
+    if path.name.lower() == "data.yaml":
+        return True
+    payload = _read_yaml_mapping(path)
+    if payload is None:
+        return False
+    keys = set(payload)
+    has_model_keys = {"backbone", "head"} & keys
+    has_dataset_keys = {"path", "train", "val", "test", "names", "nc"} & keys
+    return bool(has_dataset_keys) and not has_model_keys
+
+
+def select_training_model(config: dict) -> str:
+    model_yaml = config.get("model_yaml")
+    if model_yaml and not is_dataset_yaml(model_yaml):
+        return str(model_yaml)
+    for key in ("base_model", "model", "pretrained"):
+        value = config.get(key)
+        if key == "model" and is_dataset_yaml(value):
+            continue
+        if value:
+            return str(value)
+    return ""
+
+
+def infer_task_mode_from_config(config: dict) -> str:
+    for key in ("model_yaml", "base_model", "model", "pretrained"):
+        if infer_task_mode_from_model(config.get(key)) == "obb":
+            return "obb"
+    return "detect"
 
 
 def app_cli_command(*args: str) -> list[str]:
@@ -17,8 +71,8 @@ def app_cli_command(*args: str) -> list[str]:
 
 
 def build_train_command(config: dict) -> list[str]:
-    model = config.get("model_yaml") or config.get("base_model") or config.get("model")
-    task_mode = infer_task_mode_from_model(model)
+    model = select_training_model(config)
+    task_mode = infer_task_mode_from_config(config)
     command = app_cli_command("--yolo-train", task_mode, "train")
     fields = [
         ("model", model),

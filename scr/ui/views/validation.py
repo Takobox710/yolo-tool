@@ -222,22 +222,17 @@ class ValidatePage(BasePage):
             self.source_index = 0
 
     def on_show(self):
-        models_dir = Path(self.app.settings["paths"]["models_dir"])
         result_dir = Path(self.app.settings["paths"]["result_dir"])
+        project_root = self.project_root()
         self._all_model_paths = []
         seen: set[str] = set()
-        for path in sorted(models_dir.glob("*.pt")) if models_dir.exists() else []:
-            resolved = str(path.resolve())
-            if resolved not in seen:
-                self._all_model_paths.append(path.resolve())
-                seen.add(resolved)
         for path in _find_models_full_paths(result_dir):
             resolved = str(path.resolve())
             if resolved not in seen:
                 self._all_model_paths.append(path.resolve())
                 seen.add(resolved)
         display_names = [
-            self.display_path(m) if Path(m).is_relative_to(models_dir) else _simplified_model_path(str(m))
+            _simplified_model_path(str(m), project_root)
             for m in self._all_model_paths
         ]
         self.model_combo.clear()
@@ -247,9 +242,9 @@ class ValidatePage(BasePage):
         if current:
             current_path = Path(current)
             display = (
-                self.display_path(current_path)
-                if current_path.exists() and current_path.is_relative_to(models_dir)
-                else _simplified_model_path(current)
+                _simplified_model_path(current, project_root)
+                if current_path.exists()
+                else current
             )
             idx = self.model_combo.findText(display)
             if idx >= 0:
@@ -304,7 +299,7 @@ class ValidatePage(BasePage):
         # Try to find it in our known paths
         for p in self._all_model_paths:
             if (
-                _simplified_model_path(str(p)) == text
+                _simplified_model_path(str(p), self.project_root()) == text
                 or self.display_path(p) == text
                 or str(p) == text
             ):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from math import ceil
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
@@ -15,13 +16,44 @@ class DatasetDistributionWidget(QLabel):
         self.setObjectName("chartView")
         self.setMinimumHeight(200)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self._class_names: list[str] = []
-        self._counts = {"train": 0, "val": 0, "test": 0}
+        self._single_class_name = ""
+        self._summary_title = ""
+        self._show_total_summary = True
+        self._bars: list[tuple[str, int]] = []
+
+    def set_single_class_counts(
+        self, split_counts: Mapping[str, int], class_name: str
+    ) -> None:
+        counts = {
+            split: max(int(split_counts.get(split, 0)), 0)
+            for split in ("train", "val", "test")
+        }
+        total = sum(counts.values())
+        self._single_class_name = str(class_name or "").strip()
+        self._summary_title = ""
+        self._show_total_summary = False
+        self._bars = [
+            ("总照片", total),
+            ("训练", counts["train"]),
+            ("验证", counts["val"]),
+            ("测试", counts["test"]),
+        ]
+        self._redraw()
+
+    def set_multi_class_counts(self, class_counts: Mapping[str, int]) -> None:
+        self._single_class_name = ""
+        self._summary_title = "总计"
+        self._show_total_summary = True
+        self._bars = [
+            (str(name), max(int(count), 0))
+            for name, count in class_counts.items()
+            if str(name).strip()
+        ]
+        self._redraw()
 
     def set_counts(self, split_counts: Mapping[str, int], class_names: Sequence[str]) -> None:
-        self._counts = {split: max(int(split_counts.get(split, 0)), 0) for split in ("train", "val", "test")}
-        self._class_names = [str(name) for name in class_names if str(name).strip()]
-        self._redraw()
+        class_name = next((str(name) for name in class_names if str(name).strip()), "")
+        self.set_single_class_counts(split_counts, class_name)
 
     def resizeEvent(self, event):  # noqa: N802 - Qt API name
         super().resizeEvent(event)
@@ -35,21 +67,43 @@ class DatasetDistributionWidget(QLabel):
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        total = sum(self._counts.values())
-        title = ", ".join(self._class_names) if self._class_names else "数据集"
-        labels = {"total": "总照片", "train": "训练", "val": "验证", "test": "测试"}
-        colors = {"total": QColor("#64748B"), "train": QColor("#3B82F6"), "val": QColor("#22A06B"), "test": QColor("#F2A900")}
+        total = sum(count for _label, count in self._bars)
+        labels = [label for label, _count in self._bars]
+        colors = [
+            QColor("#64748B"),
+            QColor("#3B82F6"),
+            QColor("#22A06B"),
+            QColor("#F2A900"),
+            QColor("#EF4444"),
+            QColor("#8B5CF6"),
+            QColor("#06B6D4"),
+            QColor("#F97316"),
+        ]
 
         painter.setPen(QColor("#14233A"))
         painter.setFont(QFont("Microsoft YaHei UI", 11, QFont.Weight.Bold))
-        painter.drawText(18, 12, max(width - 36, 1), 22, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"类别 {title}")
-        painter.setFont(QFont("Microsoft YaHei UI", 10))
-        painter.setPen(QColor("#5B6773"))
-        painter.drawText(18, 34, max(width - 36, 1), 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"总计 {total} 张图片")
+        if self._show_total_summary:
+            painter.drawText(
+                18,
+                12,
+                max(width - 36, 1),
+                22,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                f"总计 {total} 张照片",
+            )
+        elif self._single_class_name:
+            painter.drawText(
+                18,
+                12,
+                max(width - 36, 1),
+                22,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                self._single_class_name,
+            )
 
         left = 30
         right = max(width - 22, left + 1)
-        top = 70
+        top = 46
         bottom = max(height - 38, top + 1)
         chart_w = right - left
         chart_h = bottom - top
@@ -61,35 +115,70 @@ class DatasetDistributionWidget(QLabel):
             y = bottom - round(chart_h * tick / 5)
             painter.drawLine(left, y, right, y)
 
-        bar_counts = {"total": total, **self._counts}
-        max_count = max(max(bar_counts.values()), 1)
-        slot_w = chart_w / 4
+        max_count = max((count for _label, count in self._bars), default=0)
+        max_count = max(max_count, 1)
+        percent_total = sum(
+            count for label, count in self._bars if label in {"训练", "验证", "测试"}
+        )
+        bar_count = max(len(self._bars), 1)
+        slot_w = chart_w / bar_count
         bar_width = max(18, min(72, int(slot_w * 0.42)))
         painter.setFont(QFont("Microsoft YaHei UI", 9))
-        for index, split in enumerate(("total", "train", "val", "test")):
-            count = bar_counts[split]
-            percent = (count / total * 100) if total else 0
+        for index, (label_text, count) in enumerate(self._bars):
+            if label_text == "总照片":
+                percent = 100.0 if count else 0.0
+            elif percent_total:
+                percent = count / percent_total * 100
+            else:
+                percent = 0.0
             bar_h = round((count / max_count) * (chart_h - 24)) if count else 0
             x = round(left + slot_w * index + (slot_w - bar_width) / 2)
             y = bottom - bar_h
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(colors[split])
+            painter.setBrush(colors[index % len(colors)])
             painter.drawRect(x, y, bar_width, bar_h)
             painter.setPen(QColor("#14233A"))
             painter.setFont(QFont("Microsoft YaHei UI", 10, QFont.Weight.Bold))
             painter.drawText(x - 18, max(top, y - 22), bar_width + 36, 18, Qt.AlignmentFlag.AlignCenter, str(count))
             painter.setFont(QFont("Microsoft YaHei UI", 9))
             painter.setPen(QColor("#5B6773"))
-            label = f"{labels[split]} {percent:.0f}%"
-            painter.drawText(round(left + slot_w * index), bottom + 8, round(slot_w), 18, Qt.AlignmentFlag.AlignCenter, label)
+            label = f"{label_text} {percent:.0f}%"
+            painter.drawText(
+                round(left + slot_w * index),
+                bottom + 8,
+                round(slot_w),
+                30,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                self._wrap_text(label, ceil(slot_w)),
+            )
 
-        if not total:
+        if not total or not self._bars:
             painter.setPen(QColor("#94A2AD"))
             painter.setFont(QFont("Microsoft YaHei UI", 10))
             painter.drawText(left, top, chart_w, chart_h, Qt.AlignmentFlag.AlignCenter, "暂无已划分的数据集")
 
         painter.end()
         self.setPixmap(pixmap)
+
+    def _wrap_text(self, text: str, max_width: int) -> str:
+        if not text:
+            return text
+        fm = self.fontMetrics()
+        if fm.horizontalAdvance(text) <= max_width:
+            return text
+        parts = text.split(" ")
+        lines: list[str] = []
+        current = ""
+        for part in parts:
+            candidate = part if not current else f"{current} {part}"
+            if fm.horizontalAdvance(candidate) <= max_width or not current:
+                current = candidate
+                continue
+            lines.append(current)
+            current = part
+        if current:
+            lines.append(current)
+        return "\n".join(lines[:2])
 
 
 class TrainingCurveWidget(QLabel):

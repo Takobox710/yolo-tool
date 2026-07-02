@@ -22,6 +22,7 @@ class TrainPage(BasePage):
         self.metric_labels = {}
         self.log_queue: Queue | None = None
         self.is_training = False
+        self.stop_requested = False
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.poll_training_queue)
         self.train_status_timer = QTimer(self)
@@ -199,6 +200,7 @@ class TrainPage(BasePage):
         self.start_btn.clicked.connect(self.start)
         self.stop_btn = QPushButton("停止训练")
         self.stop_btn.setObjectName("softButton")
+        self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop)
         report = QPushButton("查看模型报告")
         report.setObjectName("softButton")
@@ -271,10 +273,10 @@ class TrainPage(BasePage):
         )
         config["lr"] = self.edits["lr"].text() if self.edits.get("lr") else "0.001"
         config["epochs"] = (
-            self.edits["epochs"].text() if self.edits.get("epochs") else "800"
+            self.edits["epochs"].text() if self.edits.get("epochs") else "500"
         )
         config["patience"] = (
-            self.edits["patience"].text() if self.edits.get("patience") else "150"
+            self.edits["patience"].text() if self.edits.get("patience") else "100"
         )
         config["workers"] = (
             self.edits["workers"].text() if self.edits.get("workers") else "2"
@@ -518,7 +520,9 @@ class TrainPage(BasePage):
             command = self._normalize_command_model_targets(command)
 
         self.is_training = True
+        self.stop_requested = False
         self.start_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
         self.log.clear()
         self.log.append(" ".join(command))
         self.log_queue = Queue()
@@ -530,21 +534,51 @@ class TrainPage(BasePage):
 
     def poll_training_queue(self):
         if self.log_queue is None:
+            self._recover_training_state_if_process_exited()
             return
         while not self.log_queue.empty():
             event, payload = self.log_queue.get()
             if event == "log":
+                if self.stop_requested:
+                    continue
                 self.log.append(payload)
             elif event == "exit":
-                self.log.append(f"训练进程结束，退出码：{payload}")
-                self.poll_timer.stop()
-                self.is_training = False
-                self.start_btn.setEnabled(True)
-                self.app.status.setText("训练结束")
+                self._finish_training(payload)
+                return
+        self._recover_training_state_if_process_exited()
 
     def stop(self):
+        if not self.is_training or self.stop_requested:
+            return
+        self.stop_requested = True
+        self.stop_btn.setEnabled(False)
+        self.app.status.setText("停止训练中")
         stop_process(self.app.training_handle)
         self.log.append("已请求停止训练。")
+
+    def _recover_training_state_if_process_exited(self):
+        handle = getattr(self.app, "training_handle", None)
+        if not self.is_training or handle is None:
+            return
+        exit_code = handle.process.poll()
+        if exit_code is None:
+            return
+        self._finish_training(exit_code)
+
+    def _finish_training(self, exit_code: int):
+        if self.stop_requested:
+            self.log.append("训练已停止。")
+            self.app.status.setText("训练已停止")
+        else:
+            self.log.append(f"训练进程结束，退出码：{exit_code}")
+            self.app.status.setText("训练结束" if exit_code == 0 else "训练异常结束")
+        self.poll_timer.stop()
+        self.is_training = False
+        self.stop_requested = False
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.log_queue = None
+        self.app.training_handle = None
 
     def open_result(self):
         path = Path(

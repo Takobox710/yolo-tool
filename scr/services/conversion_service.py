@@ -4,6 +4,7 @@ import json
 import math
 import random
 import shutil
+from datetime import datetime
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,13 +23,15 @@ class ConversionConfig:
     labels_dir: Path
     class_names: list[str] | None = None
     source_format: str = "labelme"
-    train_ratio: float = 0.7
+    train_ratio: float = 0.8
     val_ratio: float = 0.2
-    test_ratio: float = 0.1
+    test_ratio: float = 0.0
     random_seed: int = 42
     line_to_obb: bool = True
     line_half_width: float = 10.0
     backup_existing: bool = True
+    backup_yolo_files: bool = False
+    class_name_mapping: dict[str, str] | None = None
 
     def validate(self) -> "ConversionConfig":
         if self.task_mode not in {"obb", "detect"}:
@@ -45,11 +48,17 @@ class ConversionConfig:
 
 @dataclass
 class ConversionPreview:
-    labeled_count: int
+    labeled_train_count: int
+    labeled_val_count: int
+    labeled_test_count: int
+    total_boxes: int
     unlabeled_count: int
+    yaml_path: Path
     output_dir: Path
     labels_dir: Path
-    planned_splits: dict[str, int]
+    missing_labels: dict[str, list[str]]
+    stats: dict[str, dict[str, int]]
+    class_names: list[str]
 
 
 @dataclass
@@ -64,6 +73,13 @@ class ConversionResult:
     missing_labels: dict[str, list[str]]
     stats: dict[str, dict[str, int]]
     class_names: list[str]
+    backup_dir: Path | None = None
+
+
+@dataclass
+class ClassMappingRow:
+    yolo_name: str
+    labelme_names: str
 
 
 def image_files(folder: Path) -> list[Path]:
@@ -117,13 +133,41 @@ def split_labeled(items: list[tuple[Path, Path]], config: ConversionConfig) -> d
 def preview_conversion(config: ConversionConfig) -> ConversionPreview:
     active = config.validate()
     labeled, unlabeled = collect_inputs(active)
+    if not labeled:
+        raise ValueError("没有找到可转换的已标注图片")
+    class_names = detect_class_names(active, labeled)
+    active.class_names = class_names
     split_map = split_labeled(labeled, active)
+    stats: dict[str, defaultdict[str, int]] = {
+        "train": defaultdict(int),
+        "val": defaultdict(int),
+        "test": defaultdict(int),
+    }
+    missing_labels: defaultdict[str, list[str]] = defaultdict(list)
+    total_boxes = 0
+    for split, pairs in split_map.items():
+        for image_path, label_source_path in pairs:
+            if active.source_format == "labelme":
+                lines = convert_label_file(label_source_path, active, missing_labels)
+            else:
+                label_text = label_source_path.read_text(encoding="utf-8")
+                lines = [line.strip() for line in label_text.splitlines() if line.strip()]
+            _add_label_stats(
+                stats[split], lines, active.class_names, missing_labels, label_source_path.name
+            )
+            total_boxes += len(lines)
     return ConversionPreview(
-        labeled_count=len(labeled),
+        labeled_train_count=len(split_map["train"]),
+        labeled_val_count=len(split_map["val"]),
+        labeled_test_count=len(split_map["test"]),
+        total_boxes=total_boxes,
         unlabeled_count=len(unlabeled),
+        yaml_path=active.output_dir / "data.yaml",
         output_dir=active.output_dir,
         labels_dir=active.labels_dir,
-        planned_splits={key: len(value) for key, value in split_map.items()},
+        missing_labels={key: value[:] for key, value in missing_labels.items()},
+        stats={key: dict(value) for key, value in stats.items()},
+        class_names=class_names,
     )
 
 
@@ -136,7 +180,7 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
     active.class_names = class_names
 
     split_map = split_labeled(labeled, active)
-    _prepare_output_dirs(active)
+    backup_dir = _prepare_output_dirs(active)
 
     stats: dict[str, defaultdict[str, int]] = {
         "train": defaultdict(int),
@@ -162,6 +206,8 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
             total_boxes += len(lines)
 
     yaml_path = write_data_yaml(active)
+    if active.backup_yolo_files:
+        backup_dir = backup_converted_outputs(active, yaml_path)
     return ConversionResult(
         labeled_train_count=len(split_map["train"]),
         labeled_val_count=len(split_map["val"]),
@@ -173,10 +219,19 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
         missing_labels={key: value[:] for key, value in missing_labels.items()},
         stats={key: dict(value) for key, value in stats.items()},
         class_names=class_names,
+        backup_dir=backup_dir,
     )
 
 
 def detect_class_names(config: ConversionConfig, labeled: list[tuple[Path, Path]] | None = None) -> list[str]:
+    if config.source_format == "labelme":
+        mappings = normalize_class_name_mapping(config.class_name_mapping or {})
+        if mappings:
+            ordered: list[str] = []
+            for yolo_name in mappings.values():
+                if yolo_name not in ordered:
+                    ordered.append(yolo_name)
+            return ordered
     existing = [str(name).strip() for name in (config.class_names or []) if str(name).strip()]
     if existing:
         return existing
@@ -211,6 +266,97 @@ def detect_class_names(config: ConversionConfig, labeled: list[tuple[Path, Path]
     raise ValueError("未能自动识别类别，请检查标注文件是否包含有效类别")
 
 
+def detect_labelme_classes(annotation_dir: Path) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for label_path in sorted(Path(annotation_dir).glob("*.json")):
+        try:
+            payload = json.loads(label_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        for shape in payload.get("shapes", []):
+            label = str(shape.get("label") or "").strip()
+            if label and label not in seen:
+                seen.add(label)
+                names.append(label)
+    return names
+
+
+def normalize_class_name_mapping(mapping: dict[str, str]) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for labelme_name, yolo_name in (mapping or {}).items():
+        source = str(labelme_name or "").strip()
+        target = str(yolo_name or "").strip()
+        if source and target:
+            normalized[source] = target
+    return normalized
+
+
+def build_class_mapping_rows(labelme_names: list[str], stored_mapping: dict[str, str] | None = None) -> list[ClassMappingRow]:
+    stored_mapping = normalize_class_name_mapping(stored_mapping or {})
+    grouped: dict[str, list[str]] = {}
+    used: set[str] = set()
+    for labelme_name in labelme_names:
+        yolo_name = stored_mapping.get(labelme_name, labelme_name)
+        grouped.setdefault(yolo_name, []).append(labelme_name)
+        used.add(labelme_name)
+    for labelme_name, yolo_name in stored_mapping.items():
+        if labelme_name not in used:
+            grouped.setdefault(yolo_name, []).append(labelme_name)
+    rows = [
+        ClassMappingRow(yolo_name=yolo_name, labelme_names=", ".join(names))
+        for yolo_name, names in grouped.items()
+    ]
+    rows.sort(key=lambda row: labelme_names.index(row.labelme_names.split(",")[0].strip()) if row.labelme_names.split(",")[0].strip() in labelme_names else len(labelme_names))
+    return rows
+
+
+def parse_class_mapping_rows(
+    rows: Iterable[ClassMappingRow], detected_labelme_names: Iterable[str]
+) -> tuple[dict[str, str], list[str]]:
+    detected = {str(name).strip() for name in detected_labelme_names if str(name).strip()}
+    mapping: dict[str, str] = {}
+    errors: list[str] = []
+    seen_sources: set[str] = set()
+    seen_targets: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        target = str(row.yolo_name or "").strip()
+        raw_sources = str(row.labelme_names or "").strip()
+        if not target:
+            errors.append(f"第 {index} 行的 YOLO 类别名称不能为空。")
+            continue
+        if not raw_sources:
+            errors.append(f"第 {index} 行的 Labelme 类别名称不能为空。")
+            continue
+        names = [part.strip() for part in raw_sources.split(",") if part.strip()]
+        if not names:
+            errors.append(f"第 {index} 行的 Labelme 类别名称不能为空。")
+            continue
+        for name in names:
+            if name not in detected:
+                errors.append(f"第 {index} 行包含不存在的 Labelme 类别：{name}")
+                continue
+            if name in seen_sources:
+                errors.append(f"Labelme 类别 {name} 被重复配置。")
+                continue
+            seen_sources.add(name)
+            mapping[name] = target
+        if target not in seen_targets:
+            seen_targets.append(target)
+    missing = sorted(detected - seen_sources)
+    if missing:
+        errors.append(f"仍有未配置的 Labelme 类别：{', '.join(missing)}")
+    if errors:
+        return {}, errors
+    ordered_mapping = {
+        labelme_name: mapping[labelme_name]
+        for target in seen_targets
+        for labelme_name in mapping
+        if mapping[labelme_name] == target
+    }
+    return ordered_mapping, []
+
+
 def _add_label_stats(
     split_stats: defaultdict[str, int],
     lines: list[str],
@@ -233,7 +379,7 @@ def _add_label_stats(
             missing_labels[f"class-id:{class_id}"].append(source_name)
 
 
-def _prepare_output_dirs(config: ConversionConfig) -> None:
+def _prepare_output_dirs(config: ConversionConfig) -> Path | None:
     if config.output_dir.exists():
         if config.backup_existing:
             backup = config.output_dir / "old"
@@ -248,6 +394,24 @@ def _prepare_output_dirs(config: ConversionConfig) -> None:
     if config.labels_dir.exists():
         shutil.rmtree(config.labels_dir)
     config.labels_dir.mkdir(parents=True, exist_ok=True)
+    return None
+
+
+def backup_converted_outputs(config: ConversionConfig, yaml_path: Path) -> Path:
+    backup_root = config.output_dir / "old"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_dir = backup_root / f"backup-{timestamp}"
+    counter = 1
+    while backup_dir.exists():
+        counter += 1
+        backup_dir = backup_root / f"backup-{timestamp}-{counter}"
+    labels_backup_dir = backup_dir / "labels"
+    labels_backup_dir.mkdir(parents=True, exist_ok=True)
+    for label_file in sorted(config.labels_dir.glob("*.txt")):
+        shutil.copy2(label_file, labels_backup_dir / label_file.name)
+    shutil.copy2(yaml_path, backup_dir / yaml_path.name)
+    return backup_dir
 
 
 def convert_label_file(json_path: Path, config: ConversionConfig, missing_labels: dict[str, list[str]]) -> list[str]:
@@ -259,22 +423,25 @@ def convert_label_file(json_path: Path, config: ConversionConfig, missing_labels
 
     lines: list[str] = []
     for shape in payload.get("shapes", []):
-        label = shape.get("label")
-        if label not in config.class_names:
-            missing_labels[label or "unknown"].append(Path(json_path).name)
+        raw_label = str(shape.get("label") or "").strip()
+        mapped_name = normalize_class_name_mapping(config.class_name_mapping or {}).get(
+            raw_label, raw_label
+        )
+        if mapped_name not in config.class_names:
+            missing_labels[raw_label or "unknown"].append(Path(json_path).name)
             continue
-        class_id = config.class_names.index(label)
+        class_id = config.class_names.index(mapped_name)
         if config.task_mode == "obb":
             points = shape_to_obb_points(shape, config)
             if points is None:
-                missing_labels[f"{label}(unsupported)"].append(Path(json_path).name)
+                missing_labels[f"{raw_label}(unsupported)"].append(Path(json_path).name)
                 continue
             coords = normalize_points(points, width, height)
             lines.append(f"{class_id} " + " ".join(f"{value:.6f}" for pair in coords for value in pair))
         else:
             bbox = shape_to_detect_bbox(shape)
             if bbox is None:
-                missing_labels[f"{label}(unsupported)"].append(Path(json_path).name)
+                missing_labels[f"{raw_label}(unsupported)"].append(Path(json_path).name)
                 continue
             x_center, y_center, box_width, box_height = bbox
             lines.append(
@@ -390,6 +557,8 @@ def format_conversion_result(result: ConversionResult, config: ConversionConfig,
             f"  - 汇总标签: {result.labels_dir}",
         ]
     )
+    if getattr(result, "backup_dir", None):
+        lines.append(f"  - 备份目录: {result.backup_dir}")
     if preview:
         lines.append("")
         lines.append("预览模式未执行任何写入。")

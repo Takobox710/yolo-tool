@@ -25,6 +25,7 @@ class WorkbenchWindow(QMainWindow):
         self.pages: dict[str, QWidget] = {}
         self.training_handle = None
         self.export_handle = None
+        self.current_page_key = "home"
         self.page_order = ["home", "data", "train", "validate", "settings"]
         self.page_titles = {
             "home": "主页",
@@ -118,6 +119,7 @@ class WorkbenchWindow(QMainWindow):
     def show_page(self, key: str):
         if key not in self.page_titles:
             key = "home"
+        self.current_page_key = key
         self.dismiss_help_bubbles()
         self.stack.setCurrentWidget(self.pages[key])
         for name, button in self.nav_buttons.items():
@@ -171,6 +173,15 @@ class WorkbenchWindow(QMainWindow):
             hook = getattr(target, "dismiss_help_bubbles", None)
             if hook:
                 hook()
+
+    def reset_project_settings(self, current_page: str | None = None) -> dict:
+        target_page = current_page or self.current_page_key
+        self.settings = self.settings_service.reset_to_defaults()
+        self._apply_settings_defaults()
+        self.reload_pages(target_page)
+        self.status.setText("已恢复默认设置")
+        QMessageBox.information(self, "恢复默认设置", "当前项目设置已恢复为默认值。")
+        return self.settings
 
     def closeEvent(self, event):
         self.settings["ui"]["window_width"] = 1100

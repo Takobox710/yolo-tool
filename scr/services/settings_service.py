@@ -15,9 +15,9 @@ def project_settings_path(project_root: Path = ROOT) -> Path:
     return Path(project_root) / "data" / "runtime" / "settings.json"
 
 
-def load_last_project_root(app_state_path: Path = APP_STATE_PATH, fallback: Path = ROOT) -> Path:
+def load_last_project_root(app_state_path: Path | None = None, fallback: Path = ROOT) -> Path:
     fallback = Path(fallback)
-    app_state_path = Path(app_state_path)
+    app_state_path = Path(app_state_path or APP_STATE_PATH)
     try:
         payload = json.loads(app_state_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
@@ -32,9 +32,9 @@ def load_last_project_root(app_state_path: Path = APP_STATE_PATH, fallback: Path
 
 
 def save_last_project_root(
-    project_root: Path, app_state_path: Path = APP_STATE_PATH
+    project_root: Path, app_state_path: Path | None = None
 ) -> None:
-    app_state_path = Path(app_state_path)
+    app_state_path = Path(app_state_path or APP_STATE_PATH)
     app_state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"last_project_root": str(Path(project_root).resolve())}
     app_state_path.write_text(
@@ -56,10 +56,10 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "models_dir": str(models_root),
             "result_dir": str(project_root / "result"),
         },
-        "task": {"mode": "obb"},
+        "task": {"mode": "detect"},
         "dataset": {
             "class_names": ["weld"],
-            "split_ratios": {"train": 0.7, "val": 0.2, "test": 0.1},
+            "split_ratios": {"train": 0.8, "val": 0.2, "test": 0.0},
             "line_to_obb": {"enabled": True, "half_width": 10.0},
             "random_seed": 42,
         },
@@ -69,17 +69,18 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "background": "white",
             "output_dir": str(project_root / "images_resized"),
             "backup_dir": str(project_root / "images_backup"),
+            "backup_enabled": False,
         },
         "training": {
-            "model_yaml": str(data_root / "yolov8m-obb.yaml"),
-            "base_model": "yolo11n-obb",
-            "pretrained": str(models_root / "yolov8m-obb.pt"),
+            "model_yaml": "",
+            "base_model": "yolov8s.pt",
+            "pretrained": str(models_root / "yolov8s.pt"),
             "data": str(data_root / "data.yaml"),
             "project": str(project_root / "result"),
             "export_format": "onnx",
             "lr": 0.001,
-            "epochs": 800,
-            "patience": 150,
+            "epochs": 500,
+            "patience": 100,
             "workers": 2,
             "batch": 16,
             "imgsz": 640,
@@ -105,7 +106,11 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "iou": 0.45,
             "save_dir": str(project_root / "result" / "gui_predict"),
         },
-        "conversion": {"use_labelme": True},
+        "conversion": {
+            "use_labelme": True,
+            "backup_yolo_files": False,
+            "class_name_mappings": {},
+        },
         "rename": {
             "prefix": "A",
             "start_index": 1,
@@ -115,10 +120,10 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
         },
         "ui": {"last_page": "home", "window_width": 1100, "window_height": 770},
         "features": {
+            "distribution_multi_class_mode": False,
             "custom_command_dialog": True,
             "show_help_icons": True,
             "resize_output_mode": "输出到新文件夹",
-            "resize_save_format": "保持原格式",
         },
     }
 
@@ -154,6 +159,11 @@ class SettingsService:
         settings.setdefault("project", {})["root"] = str(self.project_root)
         self.save(settings)
         return settings
+
+    def reset_to_defaults(self) -> dict[str, Any]:
+        defaults = build_default_settings(self.project_root)
+        self.save(defaults)
+        return defaults
 
     def save(self, data: dict[str, Any]) -> None:
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)

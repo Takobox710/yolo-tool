@@ -105,6 +105,8 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "PySide6.scripts.deploy_lib" in common
     assert "torch.utils.tensorboard" in common
     assert "excludedimports = [\"torch.utils.tensorboard\"]" in Path("packaging/hooks/hook-torch.py").read_text(encoding="utf-8")
+    assert 'module_collection_mode = "pyz+py"' in Path("packaging/hooks/hook-torch.py").read_text(encoding="utf-8")
+    assert 'collect_submodules("torch")' in Path("packaging/hooks/hook-torch.py").read_text(encoding="utf-8")
     assert "pyinstaller" in script
     assert 'ValidateSet("release", "dev")' in script
     assert "build_windows.ps1" in dev_script
@@ -122,7 +124,7 @@ def test_qt_app_matches_reference_ui_sections():
         "标注路径",
         "结果路径",
         "图片数量",
-        "标签文件",
+        "标注数量",
         "马赛克",
         "图片/视频文件夹",
         "QComboBox",
@@ -303,6 +305,45 @@ def test_workbench_window_switches_to_project_local_settings(tmp_path):
     assert list(window.pages.keys()) == window.page_order
 
 
+def test_workbench_window_can_reset_current_project_settings(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
+
+    from scr.ui.qt import QApplication, QMessageBox
+    from scr.ui.window import WorkbenchWindow
+
+    project_root = tmp_path / "project-reset"
+    settings_path = project_root / "data" / "runtime" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "training": {"epochs": 12},
+                "rename": {"prefix": "custom"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    window.switch_project_root(project_root)
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args, **_kwargs: None)
+
+    window.reset_project_settings("settings")
+
+    assert window.settings["project"]["root"] == str(project_root)
+    assert window.settings["training"]["epochs"] == 500
+    assert window.settings["training"]["patience"] == 100
+    assert window.settings["training"]["base_model"] == "yolov8s.pt"
+    assert window.settings["task"]["mode"] == "detect"
+    assert window.settings["rename"]["prefix"] == "A"
+    assert json.loads(settings_path.read_text(encoding="utf-8"))["training"]["epochs"] == 500
+    assert window.current_page_key == "settings"
+
+
 def test_workbench_window_restores_last_selected_project_root_on_restart(tmp_path, monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -332,6 +373,7 @@ def test_workbench_window_restores_last_selected_project_root_on_restart(tmp_pat
     assert second_window.settings_service.settings_path == settings_path
     assert second_window.settings["project"]["root"] == str(project_root)
     assert second_window.settings["training"]["epochs"] == 66
+    assert json.loads(app_state_path.read_text(encoding="utf-8"))["last_project_root"] == str(project_root.resolve())
 
 
 def test_scheme_b_uses_label_tooltips_instead_of_help_icon():
@@ -377,7 +419,7 @@ def test_pages_add_placeholders_and_help_icons(tmp_path):
     assert convert_page.images_edit.placeholderText() == "选择待转换的图片目录"
     assert preview_page.image_edit.placeholderText() == "选择待预览的图片目录"
     assert rename_page.prefix_edit.placeholderText() == "例如 weld"
-    assert resize_page.long_edit.placeholderText() == "例如 960"
+    assert resize_page.canvas_edit.placeholderText() == "例如 960"
     assert validate_page.conf_edit.placeholderText() == "例如 0.25"
     assert int(convert_page.log.focusPolicy()) == int(convert_page.log.focusPolicy().NoFocus)
     assert int(resize_page.log.focusPolicy()) == int(resize_page.log.focusPolicy().NoFocus)
@@ -406,8 +448,148 @@ def test_pages_add_placeholders_and_help_icons(tmp_path):
     assert any(check.text() == "马赛克 ⓘ" and check.toolTip() == "随机拼图增强（mosaic）；将多张图随机拼接成一张，增强小目标和复杂场景鲁棒性。" for check in train_checks)
     assert convert_page.labelme_check.text() == "Labelme 转 YOLO ⓘ"
     assert convert_page.labelme_check.toolTip() == "开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。"
+    assert convert_page.class_mapping_btn.text() == "自定义类别名称"
+    assert convert_page.backup_yolo_check.text() == "备份标注文件 ⓘ"
+    assert "data/old" in convert_page.backup_yolo_check.toolTip()
+    assert convert_page.task_combo.itemText(0) == "detect"
+    assert convert_page.task_combo.itemText(1) == "obb"
+    assert convert_page.task_combo.currentText() == "detect"
+    assert train_page.pretrained_combo.currentText() == "yolov8s.pt"
+    assert train_page.edits["epochs"].text() == "500"
+    assert train_page.edits["patience"].text() == "100"
     assert all(label.text() != "基础模型 ⓘ" for label in train_labels)
     assert all(label.text() != "图片目录 ⓘ" for label in convert_labels)
+
+
+def test_resize_page_defaults_backup_checkbox_off(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.resize import ResizeTab
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = ResizeTab(fake_app)
+
+    assert page.backup_check.isChecked() is False
+    assert page.backup_check.text() == "备份原始图片"
+    assert not hasattr(page, "long_edit")
+
+
+def test_class_mapping_dialog_disables_double_click_edit(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.dialogs import ClassMappingDialog
+    from scr.ui.qt import QApplication, QAbstractItemView
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ClassMappingDialog(["a", "b"], {"a": "a", "b": "b"})
+    triggers = dialog.table.editTriggers()
+
+    assert not bool(triggers & QAbstractItemView.EditTrigger.DoubleClicked)
+    assert bool(triggers & QAbstractItemView.EditTrigger.SelectedClicked)
+
+
+def test_class_mapping_dialog_clears_current_cell_on_blank_click(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.dialogs import ClassMappingDialog
+    from scr.ui.qt import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ClassMappingDialog(["a"], {"a": "a"})
+    dialog.table.setCurrentCell(0, 0)
+    dialog.table.clearSelection()
+    dialog.table.setCurrentIndex(dialog.table.model().index(-1, -1))
+
+    assert dialog.table.currentRow() == -1
+
+
+def test_resize_page_uses_three_column_layout(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.resize import ResizeTab
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = ResizeTab(fake_app)
+    grid = page.layout().itemAt(0).layout()
+
+    assert grid.itemAtPosition(0, 0).widget() is page.source_box
+    assert grid.itemAtPosition(0, 1).widget() is page.backup_box
+    assert grid.itemAtPosition(0, 2).widget() is page.output_box
+    assert not hasattr(page, "save_format_combo")
+
+
+def test_settings_page_exposes_distribution_mode_before_custom_command(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication, QCheckBox
+    from scr.ui.views.settings import SettingsPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        pages={},
+    )
+
+    page = SettingsPage(fake_app)
+    checks = [check.text() for check in page.findChildren(QCheckBox)]
+
+    assert checks.index("多类别分布模式") < checks.index("训练前显示自定义命令框")
+
+
+def test_readonly_logs_can_copy_selected_text_without_focus(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.training import TrainPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        refresh_help_icon_visibility=lambda: None,
+    )
+
+    train_page = TrainPage(fake_app)
+    train_page.show()
+    train_page.log.setPlainText("first line\nsecond line")
+    cursor = train_page.log.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(10, cursor.MoveMode.KeepAnchor)
+    train_page.log.setTextCursor(cursor)
+
+    clipboard = app.clipboard()
+    clipboard.clear()
+    train_page.log._copy_shortcut.activated.emit()
+
+    assert int(train_page.log.focusPolicy()) == int(train_page.log.focusPolicy().NoFocus)
+    assert clipboard.text() == "first line"
 
 
 def test_convert_page_keeps_yolo_path_editable_when_labelme_mode_changes(tmp_path):
@@ -429,7 +611,7 @@ def test_convert_page_keeps_yolo_path_editable_when_labelme_mode_changes(tmp_pat
 
     assert page.yolo_labels_box.isEnabled() is True
     assert page.yolo_labels_edit.isEnabled() is True
-    assert page.line_edit.isEnabled() is True
+    assert page.line_edit.isEnabled() is False
 
     page.labelme_check.setChecked(False)
 
@@ -484,6 +666,68 @@ def test_help_icon_toggle_updates_visibility(tmp_path):
         epoch_label.toolTip()
         == "控制训练轮数（epochs）；更大通常效果更好，但训练耗时更长。"
     )
+
+
+def test_settings_page_can_reset_defaults_with_confirmation(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication, QMessageBox
+    from scr.ui.views.settings import SettingsPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["custom_command_dialog"] = False
+    settings["features"]["show_help_icons"] = False
+    calls = {"count": 0}
+
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        reset_project_settings=lambda current_page=None: calls.update(
+            {"count": calls["count"] + 1, "page": current_page}
+        ),
+    )
+
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+
+    page = SettingsPage(fake_app)
+    page.reset_btn.click()
+
+    assert calls["count"] == 1
+    assert calls["page"] == "settings"
+
+
+def test_settings_page_places_system_info_above_controls(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.settings import SettingsPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = SettingsPage(fake_app)
+    info_outer = page.layout().itemAt(1).widget()
+    controls_row = page.layout().itemAt(2).widget()
+
+    assert info_outer.objectName() == "systemInfoOuter"
+    assert controls_row.layout().count() == 5
 
 
 def test_workbench_window_uses_new_default_size():
@@ -572,7 +816,145 @@ def test_training_page_persists_updated_fields_to_settings(tmp_path):
     assert "training" in saved
 
 
-def test_validation_page_lists_models_from_data_models_first(tmp_path):
+def test_train_page_stop_flow_recovers_buttons_and_hides_stop_noise(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views import training as training_view
+    from scr.ui.views.training import TrainPage
+
+    class FakeStatus:
+        def __init__(self):
+            self.text = ""
+
+        def setText(self, value):
+            self.text = value
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = None
+
+        def poll(self):
+            return self.returncode
+
+    class FakeHandle:
+        def __init__(self):
+            self.process = FakeProcess()
+            self.thread = None
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["custom_command_dialog"] = False
+    fake_status = FakeStatus()
+    fake_handle = FakeHandle()
+    stop_calls = {"count": 0}
+
+    def fake_spawn(_command, _cwd, _queue):
+        return fake_handle
+
+    def fake_stop(_handle):
+        stop_calls["count"] += 1
+        fake_handle.process.returncode = 1
+
+    monkeypatch.setattr(training_view, "spawn_logged_process", fake_spawn)
+    monkeypatch.setattr(training_view, "stop_process", fake_stop)
+
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=fake_status,
+        training_handle=None,
+    )
+
+    page = TrainPage(fake_app)
+    page.start()
+
+    assert page.is_training is True
+    assert page.start_btn.isEnabled() is False
+    assert page.stop_btn.isEnabled() is True
+
+    page.stop()
+    page.log_queue.put(("log", "Traceback (most recent call last):"))
+    page.log_queue.put(("log", "PermissionError: [WinError 5] Access is denied"))
+    page.log_queue.put(("exit", 1))
+    page.poll_training_queue()
+
+    log_text = page.log.toPlainText()
+
+    assert stop_calls["count"] == 1
+    assert page.is_training is False
+    assert page.start_btn.isEnabled() is True
+    assert page.stop_btn.isEnabled() is False
+    assert fake_app.training_handle is None
+    assert fake_status.text == "训练已停止"
+    assert "已请求停止训练。" in log_text
+    assert "训练已停止。" in log_text
+    assert "Traceback (most recent call last):" not in log_text
+    assert "PermissionError: [WinError 5]" not in log_text
+
+
+def test_train_page_recovers_if_process_exits_without_queue_exit_event(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views import training as training_view
+    from scr.ui.views.training import TrainPage
+
+    class FakeStatus:
+        def __init__(self):
+            self.text = ""
+
+        def setText(self, value):
+            self.text = value
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = None
+
+        def poll(self):
+            return self.returncode
+
+    class FakeHandle:
+        def __init__(self):
+            self.process = FakeProcess()
+            self.thread = None
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["custom_command_dialog"] = False
+    fake_status = FakeStatus()
+    fake_handle = FakeHandle()
+
+    monkeypatch.setattr(
+        training_view,
+        "spawn_logged_process",
+        lambda _command, _cwd, _queue: fake_handle,
+    )
+
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=fake_status,
+        training_handle=None,
+    )
+
+    page = TrainPage(fake_app)
+    page.start()
+    fake_handle.process.returncode = 1
+    page.poll_training_queue()
+
+    assert page.is_training is False
+    assert page.start_btn.isEnabled() is True
+    assert page.stop_btn.isEnabled() is False
+    assert fake_app.training_handle is None
+    assert fake_status.text == "训练异常结束"
+
+
+def test_validation_page_lists_only_training_output_models(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from scr.services.settings_service import build_default_settings
@@ -599,4 +981,6 @@ def test_validation_page_lists_models_from_data_models_first(tmp_path):
     page = ValidatePage(fake_app)
     page.on_show()
 
-    assert page.model_combo.itemText(0) == "data\\models\\alpha.pt"
+    items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
+
+    assert items == ["train\\best.pt"]

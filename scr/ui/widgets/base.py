@@ -35,7 +35,7 @@ class Card(QFrame):
         self.layout.setSpacing(10)
         if title:
             label = QLabel(title)
-            label.setObjectName("cardTitle")
+            label.setObjectName("sectionTitle")
             self.layout.addWidget(label)
 
 
