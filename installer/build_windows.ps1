@@ -43,20 +43,20 @@ finally {
 
 $AppDir = Join-Path $Root "dist/$AppName"
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "data/runtime") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "data/models") | Out-Null
+$TargetModelsDir = Join-Path $AppDir "data/models"
+New-Item -ItemType Directory -Force -Path $TargetModelsDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "images") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "labels") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "result") | Out-Null
 
 $SourceModelsDir = Join-Path $Root "data/models"
-if (Test-Path $SourceModelsDir) {
-    Get-ChildItem -Path $SourceModelsDir -Filter *.pt -File | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $AppDir "data/models" $_.Name) -Force
-    }
+if (Test-Path -LiteralPath $SourceModelsDir) {
+    # Copy the full models directory contents into dist/data/models.
+    Copy-Item -Path (Join-Path $SourceModelsDir "*") -Destination $TargetModelsDir -Recurse -Force
 }
 
 $RootModelPath = Join-Path $Root "yolo26n.pt"
-if (Test-Path $RootModelPath) {
+if (Test-Path -LiteralPath $RootModelPath) {
     Copy-Item -LiteralPath $RootModelPath -Destination (Join-Path $AppDir "yolo26n.pt") -Force
 }
 

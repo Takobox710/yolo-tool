@@ -10,6 +10,7 @@ __pycache__/
 # Build artifacts
 build/
 dist/
+installer/output/
 
 # Local working data and outputs
 data/
