@@ -9,12 +9,8 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $Root
 $PreviousPythonWarnings = $env:PYTHONWARNINGS
 $env:PYTHONWARNINGS = "ignore::DeprecationWarning"
-
-$SpecPath = if ($Mode -eq "dev") {
-    "installer/YOLOTool.dev.spec"
-} else {
-    "installer/YOLOTool.spec"
-}
+$PreviousBuildMode = $env:YOLO_TOOL_BUILD_MODE
+$env:YOLO_TOOL_BUILD_MODE = $Mode
 
 $AppName = if ($Mode -eq "dev") {
     "YOLOTool-dev"
@@ -31,7 +27,7 @@ try {
     pixi run pyinstaller --noconfirm --log-level=WARN `
         --workpath "build\$AppName" `
         --distpath "dist" `
-        $SpecPath
+        "installer/YOLOTool.spec"
 
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed with exit code $LASTEXITCODE"
@@ -39,6 +35,7 @@ try {
 }
 finally {
     $env:PYTHONWARNINGS = $PreviousPythonWarnings
+    $env:YOLO_TOOL_BUILD_MODE = $PreviousBuildMode
 }
 
 $AppDir = Join-Path $Root "dist/$AppName"
@@ -51,8 +48,9 @@ New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "result") | Out-Nul
 
 $SourceModelsDir = Join-Path $Root "data/models"
 if (Test-Path -LiteralPath $SourceModelsDir) {
-    # Copy the full models directory contents into dist/data/models.
-    Copy-Item -Path (Join-Path $SourceModelsDir "*") -Destination $TargetModelsDir -Recurse -Force
+    Get-ChildItem -LiteralPath $SourceModelsDir -Filter *.pt -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $AppDir "data/models" $_.Name) -Force
+    }
 }
 
 $RootModelPath = Join-Path $Root "yolo26n.pt"

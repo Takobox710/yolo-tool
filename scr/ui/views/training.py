@@ -100,25 +100,25 @@ class TrainPage(BasePage):
         left.layout.addLayout(aug)
         for index, (key, label) in enumerate(
             [
-                ("mosaic", "马赛克"),
+                ("mosaic", "随机拼图"),
                 ("scale", "缩放"),
                 ("translate", "平移"),
-                ("hsv_h", "HSV"),
+                ("hsv_h", "调色"),
                 ("fliplr", "左右翻转"),
                 ("flipud", "上下翻转"),
                 ("degrees", "旋转"),
-                ("mixup", "MixUp"),
+                ("mixup", "混合"),
             ]
         ):
             help_text = {
                 "mosaic": "随机拼图增强（mosaic）；将多张图随机拼接成一张，增强小目标和复杂场景鲁棒性。",
                 "scale": "随机缩放增强（scale）；随机缩放目标与画面，提升对尺寸变化的适应能力。",
                 "translate": "随机平移增强（translate）；随机平移图像内容，提升对目标位置变化的适应能力。",
-                "hsv_h": "颜色增强（hsv_h / hsv_s / hsv_v）；同时控制三个 HSV 颜色增强参数。",
+                "hsv_h": "HSV 颜色增强（hsv_h / hsv_s / hsv_v）；同时调节色相、饱和度和明度，提升对光照与色彩变化的适应能力。",
                 "fliplr": "左右翻转增强（fliplr）；适合左右方向都合理的场景。",
                 "flipud": "上下翻转增强（flipud）；只建议在上下方向同样合理时开启。",
                 "degrees": "旋转增强（degrees）；帮助模型适应目标角度变化。",
-                "mixup": "混合增强（mixup）；将两张图按比例混合，可增强泛化但可能拉长收敛时间。",
+                "mixup": "MixUp 混合增强（mixup）；将两张图按比例混合，提升泛化能力，但可能拉长收敛时间。",
             }[key]
             box, check = self.checkbox_with_help(
                 label, float(training.get(key, 0)) > 0, help_text=help_text
@@ -135,7 +135,7 @@ class TrainPage(BasePage):
             "优化器",
             training.get("optimizer", "auto"),
             ["auto", "SGD", "Adam", "AdamW", "RMSProp"],
-            help_text="选择优化器；auto 会交给 Ultralytics 自动决定。",
+            help_text="训练优化器（optimizer）；用于控制参数更新方式，auto 会交给 Ultralytics 自动决定。",
         )
         current_opt = training.get("optimizer", "auto")
         if current_opt in ["auto", "SGD", "Adam", "AdamW", "RMSProp"]:
@@ -153,10 +153,10 @@ class TrainPage(BasePage):
 
         # Rows 1-3: remaining params, device last (next to 图片尺寸)
         param_order = [
-            ("epochs", "Epochs"),
-            ("patience", "Patience"),
-            ("workers", "Workers"),
-            ("batch", "Batch"),
+            ("epochs", "训练轮数"),
+            ("patience", "早停轮数"),
+            ("workers", "线程数"),
+            ("batch", "批次大小"),
             ("imgsz", "图片尺寸"),
         ]
         for i, (key, label) in enumerate(param_order):
@@ -168,10 +168,10 @@ class TrainPage(BasePage):
                 "imgsz": "例如 640",
             }[key]
             help_text = {
-                "epochs": "控制训练轮数（epochs）；更大通常效果更好，但训练耗时更长。",
-                "patience": "早停等待轮数（patience）；长期无提升时自动结束训练。",
+                "epochs": "训练轮数（epochs）；设置完整训练的总轮次，更大通常效果更好，但训练耗时更长。",
+                "patience": "早停轮数（patience）；连续多轮无提升时自动停止训练，避免无效等待。",
                 "workers": "数据加载线程数（workers）；提高后通常更快，但会占用更多 CPU 和系统内存。",
-                "batch": "每次迭代送入显存的图片数量（batch）；受显存容量限制。",
+                "batch": "批次大小（batch）；每次迭代送入显存的图片数量，受显存容量限制。",
                 "imgsz": "训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。",
             }[key]
             box, edit = self.inline_field(
@@ -188,7 +188,7 @@ class TrainPage(BasePage):
             "设备",
             str(training.get("device", "0")),
             ["0", "cpu", "0,1"],
-            help_text="选择训练设备；0 表示首张 GPU，cpu 表示使用处理器。",
+            help_text="训练设备（device）；0 表示首张 GPU，cpu 表示使用处理器，也可填写多个 GPU 编号。",
         )
         params.addWidget(self.device_box, 3, 1)
         actions = QHBoxLayout()

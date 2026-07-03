@@ -2,13 +2,16 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "Takobox"
 #define MyAppExeName "YOLOTool.exe"
+#define MyAppIdEscaped "{{AFD7B4C3-5B11-4F8D-8BA1-64D96FD3C4A1}"
+#define MyAppIdValue "{AFD7B4C3-5B11-4F8D-8BA1-64D96FD3C4A1}"
 
 [Setup]
-AppId={{AFD7B4C3-5B11-4F8D-8BA1-64D96FD3C4A1}
+AppId={#MyAppIdEscaped}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
+DisableDirPage=no
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=output
@@ -56,3 +59,25 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function PreviousInstallExists(): Boolean;
+var
+  UninstallKey: string;
+begin
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppIdValue}_is1';
+  Result :=
+    RegKeyExists(HKLM64, UninstallKey) or
+    RegKeyExists(HKLM32, UninstallKey) or
+    RegKeyExists(HKCU64, UninstallKey) or
+    RegKeyExists(HKCU32, UninstallKey);
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpSelectDir) and PreviousInstallExists() then
+  begin
+    WizardForm.DirEdit.ReadOnly := True;
+    WizardForm.DirBrowseButton.Enabled := False;
+  end;
+end;

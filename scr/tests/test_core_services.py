@@ -780,6 +780,54 @@ def test_training_command_includes_all_hsv_params_when_configured():
     assert "hsv_v=0.4" in command
 
 
+def test_read_train_metrics_uses_map5095_for_best_checkpoint(tmp_path):
+    from scr.services.training_service import read_train_metrics
+
+    run_dir = tmp_path / "result" / "train-3"
+    run_dir.mkdir(parents=True)
+    (run_dir / "results.csv").write_text(
+        "\n".join(
+            [
+                "epoch,time,metrics/mAP50(B),metrics/mAP50-95(B),val/box_loss,metrics/recall(B)",
+                "244,120,0.960,0.610,0.2100,0.880",
+                "374,180,0.950,0.640,0.1800,0.900",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    best_metrics = read_train_metrics(run_dir, "best.pt")
+    last_metrics = read_train_metrics(run_dir, "last.pt")
+
+    assert best_metrics["epochs"] == 374
+    assert best_metrics["map50"] == "95.0%"
+    assert best_metrics["map50_95"] == "64.0%"
+    assert last_metrics["epochs"] == 374
+
+
+def test_read_train_metrics_prefers_latest_epoch_when_best_score_ties(tmp_path):
+    from scr.services.training_service import read_train_metrics
+
+    run_dir = tmp_path / "result" / "train-4"
+    run_dir.mkdir(parents=True)
+    (run_dir / "results.csv").write_text(
+        "\n".join(
+            [
+                "epoch,time,metrics/mAP50(B),metrics/mAP50-95(B),val/box_loss,metrics/recall(B)",
+                "100,60,0.900,0.500,0.2500,0.800",
+                "120,72,0.910,0.500,0.2200,0.820",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    best_metrics = read_train_metrics(run_dir, "best.pt")
+
+    assert best_metrics["epochs"] == 120
+
+
 def test_training_command_ignores_dataset_yaml_in_model_field(tmp_path):
     from scr.services.training_service import build_train_command
 

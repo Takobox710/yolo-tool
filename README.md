@@ -12,7 +12,7 @@
 - 标注转换默认任务类型为 `detect`，默认划分比例为 `train=0.8 / val=0.2 / test=0.0`。
 - 支持 Labelme 转 YOLO，也支持对已存在的 YOLO `.txt` 标注直接分组并生成数据集。
 - 支持 `oriented_rectangle` 转 OBB，支持 `line` 标注按半宽扩展为旋转框。
-- 训练命令由服务层统一生成，支持优化器、HSV、MixUp、Mosaic 等常见参数。
+- 训练命令由服务层统一生成，支持优化器、HSV、MixUp、Mosaic 等常见参数，训练页 tooltip 采用“中文全称（命令参数名）；说明”的统一格式。
 - 支持扫描 `data/models/*.pt` 与 `result/**/weights/*.pt` 作为模型候选。
 - 支持图片/视频文件夹、单图片/视频、摄像头三类验证输入源。
 - 系统设置提供“训练模型显示 last”开关，默认关闭；关闭时模型验证页只显示训练产物中的 `best.pt`，开启后才额外显示 `last.pt`。
@@ -20,6 +20,7 @@
 - 最近一次使用的项目目录会记录到应用根目录 `data/runtime/app_state.json`，用于下次启动时恢复到最近项目。
 - 支持 PyInstaller `onedir` 绿色版打包，目标 Windows 机器无需安装 Python 或 pixi。
 - 支持正式版与开发快包两套 PyInstaller 打包流程，便于日常联调与最终交付分离。
+- 根目录提供 `打包程序.bat` 作为一键入口，会转调 `installer/打包程序.ps1` 完成整套打包。
 - 服务层与测试已拆分，便于后续继续扩展 GUI 而不把业务逻辑写死在界面回调中。
 
 ## 主要功能
@@ -43,8 +44,9 @@
 
 - 自动从模型名称推断 `obb` 或 `detect`。
 - 基础模型优先从 `data/models/` 读取，也允许手动输入；当前默认基础模型为 `yolov8s.pt`。
-- 默认训练参数为：优化器 `auto`、学习率 `0.001`、`Epochs=500`、`Patience=100`、`Workers=2`、`Batch=16`、`图片尺寸=640`、`设备=0`。
-- 默认增强勾选状态为：马赛克、缩放、平移、HSV、左右翻转开启；上下翻转、旋转、MixUp 关闭。
+- 默认训练参数为：优化器 `auto`、学习率 `0.001`、`训练轮数=500`、`早停轮数=100`、`线程数=2`、`批次大小=16`、`图片尺寸=640`、`设备=0`。
+- 训练页当前参数显示名为：优化器、学习率、训练轮数、早停轮数、线程数、批次大小、图片尺寸、设备。
+- 默认增强勾选状态为：随机拼图、缩放、平移、调色、左右翻转开启；上下翻转、旋转、混合关闭。
 - 支持训练前弹出命令编辑对话框，便于手动微调最终命令。
 - 后台刷新 GPU、显存、CPU、内存状态，避免阻塞页面交互。
 - 支持中途停止训练；停止后会在训练进程真正退出时自动恢复按钮状态，避免“开始训练”按钮卡灰无法再次启动。
@@ -98,17 +100,17 @@ yolo_tool/
 ├── README.md
 ├── pixi.toml
 ├── pixi.lock
+├── 打包程序.bat
 ├── docs/
 │   └── packaging-windows.md
 ├── installer/
 │   ├── yolo_tool.iss
-│   ├── YOLOTool.dev.spec
 │   ├── YOLOTool.spec
 │   ├── build_windows.ps1
-│   ├── build_windows_dev.ps1
-│   ├── pyinstaller_common.py
+│   ├── 打包程序.ps1
 │   └── hooks/
 └── scr/
+    ├── open_yolo_tool.pyw
     ├── app.py
     ├── main.py
     ├── context.py
@@ -157,6 +159,8 @@ pixi run app
 pixi run python -m scr.main
 ```
 
+也可以双击 `scr/open_yolo_tool.pyw` 启动程序。
+
 ## Windows 绿色版打包
 
 推荐使用 PyInstaller `onedir` 形式打包：
@@ -174,14 +178,10 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 或使用快捷脚本：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
+powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 ```
 
-如需把 `dist/YOLOTool/` 再封装为 Inno Setup 安装包，可执行：
-
-```powershell
-ISCC installer\yolo_tool.iss
-```
+如果希望直接双击启动整套打包流程，可使用根目录的 `打包程序.bat`。
 
 正式版打包产物位于：
 
@@ -203,9 +203,9 @@ dist/YOLOTool/
 两套打包配置当前约定如下：
 
 - `installer/yolo_tool.iss`：Inno Setup 安装包脚本。
-- `installer/YOLOTool.spec`：正式版 spec。
-- `installer/YOLOTool.dev.spec`：开发快包 spec。
-- `installer/pyinstaller_common.py`：两套 spec 共用的打包配置。
+- `installer/YOLOTool.spec`：统一的 PyInstaller spec，通过环境变量区分 `release/dev`。
+- `installer/build_windows.ps1`：仅负责 PyInstaller 打包，支持 `-Mode release` 与 `-Mode dev`。
+- `installer/打包程序.ps1`：一键完成 `PyInstaller + Inno Setup`。
 - `installer/hooks/`：自定义 PyInstaller hooks，用于减少无关依赖探测造成的误报。
 
 当前打包流程不再对 `torch`、`PySide6` 等大包执行 `collect_all(...)` 全量扫描，因为那会明显拖慢打包，并制造大量和本项目无关的 warning。

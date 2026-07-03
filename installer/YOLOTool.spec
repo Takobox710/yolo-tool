@@ -1,26 +1,76 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-import sys
+import os
 from pathlib import Path
 
 SPEC_ROOT = Path(SPECPATH).resolve()
-sys.path.insert(0, str(SPEC_ROOT))
+ROOT = SPEC_ROOT.parent
+HOOKS_DIR = ROOT / "installer" / "hooks"
+ASSETS_DIR = ROOT / "scr" / "assets"
+MODELS_DIR = ROOT / "data" / "models"
+ROOT_MODEL_FILES = [
+    ROOT / "yolo26n.pt",
+]
 
-from pyinstaller_common import ROOT, build_packaging
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
+BASE_EXCLUDES = [
+    "pytest",
+    "scr.tests",
+    "PySide6.scripts.deploy_lib",
+    "torch.utils.tensorboard",
+    "tensorboard",
+    "dask",
+    "matplotlib.tests",
+]
 
-config = build_packaging("release")
+DEV_EXCLUDES = [
+    "torchaudio",
+]
+
+mode = os.environ.get("YOLO_TOOL_BUILD_MODE", "release").strip().lower()
+is_dev = mode == "dev"
+name = "YOLOTool-dev" if is_dev else "YOLOTool"
+
+datas = [
+    (str(ASSETS_DIR), "scr/assets"),
+    *collect_data_files("ultralytics"),
+]
+if MODELS_DIR.exists():
+    for model_path in sorted(MODELS_DIR.glob("*.pt")):
+        if model_path.is_file():
+            datas.append((str(model_path), "data/models"))
+for model_path in ROOT_MODEL_FILES:
+    if model_path.exists():
+        datas.append((str(model_path), "."))
+
+binaries = []
+for package in ("torch", "cv2"):
+    binaries += collect_dynamic_libs(package)
+
+hiddenimports = collect_submodules("ultralytics")
+if not is_dev:
+    datas += collect_data_files("matplotlib", subdir="mpl-data")
+    hiddenimports += [
+        "matplotlib",
+        "matplotlib.backends.backend_agg",
+        "matplotlib.backends.backend_qtagg",
+    ]
+
+excludes = list(BASE_EXCLUDES)
+if is_dev:
+    excludes += DEV_EXCLUDES
 
 a = Analysis(
     [str(ROOT / "scr/main.py")],
     pathex=[str(ROOT)],
-    binaries=config["binaries"],
-    datas=config["datas"],
-    hiddenimports=config["hiddenimports"],
-    hookspath=config["hookspath"],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[str(HOOKS_DIR)],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=config["excludes"],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )
@@ -31,7 +81,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name=config["name"],
+    name=name,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -42,7 +92,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=config["icon"],
+    icon=str(ASSETS_DIR / "app_icon.ico"),
 )
 
 coll = COLLECT(
@@ -52,5 +102,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name=config["name"],
+    name=name,
 )

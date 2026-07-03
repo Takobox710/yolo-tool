@@ -15,10 +15,8 @@ TRAIN_VIEW = Path("scr/ui/views/training.py")
 VALIDATE_VIEW = Path("scr/ui/views/validation.py")
 SETTINGS_VIEW = Path("scr/ui/views/settings.py")
 PACKAGING_SPEC = Path("installer/YOLOTool.spec")
-PACKAGING_DEV_SPEC = Path("installer/YOLOTool.dev.spec")
-PACKAGING_COMMON = Path("installer/pyinstaller_common.py")
 PACKAGING_SCRIPT = Path("installer/build_windows.ps1")
-PACKAGING_DEV_SCRIPT = Path("installer/build_windows_dev.ps1")
+PACKAGING_ONE_CLICK_SCRIPT = Path("installer/打包程序.ps1")
 INSTALLER_ISS = Path("installer/yolo_tool.iss")
 PACKAGING_DOC = Path("docs/packaging-windows.md")
 
@@ -83,18 +81,14 @@ def test_direct_script_hidden_train_entry_has_package_context():
 
 def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_SPEC.exists()
-    assert PACKAGING_DEV_SPEC.exists()
-    assert PACKAGING_COMMON.exists()
     assert PACKAGING_SCRIPT.exists()
-    assert PACKAGING_DEV_SCRIPT.exists()
+    assert PACKAGING_ONE_CLICK_SCRIPT.exists()
     assert INSTALLER_ISS.exists()
     assert PACKAGING_DOC.exists()
 
     spec = PACKAGING_SPEC.read_text(encoding="utf-8")
-    dev_spec = PACKAGING_DEV_SPEC.read_text(encoding="utf-8")
-    common = PACKAGING_COMMON.read_text(encoding="utf-8")
     script = PACKAGING_SCRIPT.read_text(encoding="utf-8")
-    dev_script = PACKAGING_DEV_SCRIPT.read_text(encoding="utf-8")
+    one_click_script = PACKAGING_ONE_CLICK_SCRIPT.read_text(encoding="utf-8")
     iss = INSTALLER_ISS.read_text(encoding="utf-8")
     doc = PACKAGING_DOC.read_text(encoding="utf-8")
 
@@ -103,23 +97,23 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "YOLOTool-dev" in doc
     assert "data/runtime/settings.json" in doc
     assert "scr/main.py" in spec
-    assert 'build_packaging("release")' in spec
-    assert 'build_packaging("dev")' in dev_spec
-    assert "PySide6.scripts.deploy_lib" in common
-    assert "torch.utils.tensorboard" in common
+    assert 'mode = os.environ.get("YOLO_TOOL_BUILD_MODE", "release")' in spec
+    assert '"PySide6.scripts.deploy_lib"' in spec
+    assert '"torch.utils.tensorboard"' in spec
     assert "excludedimports = [\"torch.utils.tensorboard\"]" in Path("installer/hooks/hook-torch.py").read_text(encoding="utf-8")
     assert 'module_collection_mode = "pyz+py"' in Path("installer/hooks/hook-torch.py").read_text(encoding="utf-8")
     assert 'collect_submodules("torch")' in Path("installer/hooks/hook-torch.py").read_text(encoding="utf-8")
     assert "pyinstaller" in script
     assert 'ValidateSet("release", "dev")' in script
-    assert 'ROOT / "yolo26n.pt"' in common
-    assert '"data/models"' in common
-    assert 'HOOKS_DIR = ROOT / "installer" / "hooks"' in common
+    assert 'YOLO_TOOL_BUILD_MODE' in script
+    assert 'ROOT / "yolo26n.pt"' in spec
+    assert '"data/models"' in spec
+    assert 'HOOKS_DIR = ROOT / "installer" / "hooks"' in spec
     assert 'SetupIconFile=..\\scr\\assets\\app_icon.ico' in iss
     assert 'Source: "..\\dist\\YOLOTool\\{#MyAppExeName}"' in iss
     assert 'Copy-Item -LiteralPath $RootModelPath -Destination (Join-Path $AppDir "yolo26n.pt") -Force' in script
     assert 'Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $AppDir "data/models" $_.Name) -Force' in script
-    assert "build_windows.ps1" in dev_script
+    assert "build_windows.ps1" in one_click_script
 
 
 def test_qt_app_matches_reference_ui_sections():
@@ -135,7 +129,7 @@ def test_qt_app_matches_reference_ui_sections():
         "结果路径",
         "图片数量",
         "标注数量",
-        "马赛克",
+        "随机拼图",
         "图片/视频文件夹",
         "QComboBox",
         "tool_stack",
@@ -454,10 +448,12 @@ def test_pages_add_placeholders_and_help_icons(tmp_path):
     assert len(resize_labels) == 0
     assert len(validate_labels) == 0
     assert len(settings_labels) == 0
-    assert any(label.text() == "Epochs ⓘ" and label.toolTip() == "控制训练轮数（epochs）；更大通常效果更好，但训练耗时更长。" for label in train_labels)
-    assert any(label.text() == "Workers ⓘ" and label.toolTip() == "数据加载线程数（workers）；提高后通常更快，但会占用更多 CPU 和系统内存。" for label in train_labels)
+    assert any(label.text() == "训练轮数 ⓘ" and label.toolTip() == "训练轮数（epochs）；设置完整训练的总轮次，更大通常效果更好，但训练耗时更长。" for label in train_labels)
+    assert any(label.text() == "线程数 ⓘ" and label.toolTip() == "数据加载线程数（workers）；提高后通常更快，但会占用更多 CPU 和系统内存。" for label in train_labels)
     assert any(label.text() == "图片尺寸 ⓘ" and label.toolTip() == "训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。" for label in train_labels)
-    assert any(check.text() == "马赛克 ⓘ" and check.toolTip() == "随机拼图增强（mosaic）；将多张图随机拼接成一张，增强小目标和复杂场景鲁棒性。" for check in train_checks)
+    assert any(label.text() == "优化器 ⓘ" and label.toolTip() == "训练优化器（optimizer）；用于控制参数更新方式，auto 会交给 Ultralytics 自动决定。" for label in train_labels)
+    assert any(label.text() == "设备 ⓘ" and label.toolTip() == "训练设备（device）；0 表示首张 GPU，cpu 表示使用处理器，也可填写多个 GPU 编号。" for label in train_labels)
+    assert any(check.text() == "随机拼图 ⓘ" and check.toolTip() == "随机拼图增强（mosaic）；将多张图随机拼接成一张，增强小目标和复杂场景鲁棒性。" for check in train_checks)
     assert convert_page.labelme_check.text() == "Labelme 转 YOLO ⓘ"
     assert convert_page.labelme_check.toolTip() == "开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。"
     assert convert_page.class_mapping_btn.text() == "自定义类别名称"
@@ -662,21 +658,21 @@ def test_help_icon_toggle_updates_visibility(tmp_path):
     settings_page = SettingsPage(fake_app)
     fake_app.pages = [train_page, settings_page]
     before_labels = [label.text() for label in train_page.findChildren(QLabel)]
-    assert "Epochs ⓘ" in before_labels
+    assert "训练轮数 ⓘ" in before_labels
 
     settings_page.help_icon_check.setChecked(False)
 
     assert fake_app.settings["features"]["show_help_icons"] is False
     assert saved["features"]["show_help_icons"] is False
     after_labels = [label.text() for label in train_page.findChildren(QLabel)]
-    assert "Epochs ⓘ" not in after_labels
-    assert "Epochs" in after_labels
+    assert "训练轮数 ⓘ" not in after_labels
+    assert "训练轮数" in after_labels
     epoch_label = next(
-        label for label in train_page.findChildren(QLabel) if label.text() == "Epochs"
+        label for label in train_page.findChildren(QLabel) if label.text() == "训练轮数"
     )
     assert (
         epoch_label.toolTip()
-        == "控制训练轮数（epochs）；更大通常效果更好，但训练耗时更长。"
+        == "训练轮数（epochs）；设置完整训练的总轮次，更大通常效果更好，但训练耗时更长。"
     )
 
 

@@ -166,6 +166,44 @@ def _parse_row(row: dict[str, str], headers: list[str]) -> dict[str, object]:
     return metrics
 
 
+def _select_best_metrics_row(
+    rows: list[dict[str, str]], headers: list[str]
+) -> dict[str, str]:
+    fitness_col = _find_col(headers, ["fitness"])
+    if fitness_col:
+        best_row = rows[-1]
+        best_val = float("-inf")
+        for row in rows:
+            try:
+                val = float(row.get(fitness_col, float("-inf")))
+            except (ValueError, TypeError):
+                continue
+            if val >= best_val:
+                best_val = val
+                best_row = row
+        return best_row
+
+    # Ultralytics 8.4.x detect/obb best.pt follows validation fitness, which is
+    # currently aligned with mAP50-95 rather than raw mAP50.
+    for prefixes in (["metrics/mAP50-95("], ["metrics/mAP50("]):
+        metric_col = _find_col(headers, prefixes)
+        if not metric_col:
+            continue
+        best_row = rows[-1]
+        best_val = float("-inf")
+        for row in rows:
+            try:
+                val = float(row.get(metric_col, float("-inf")))
+            except (ValueError, TypeError):
+                continue
+            if val >= best_val:
+                best_val = val
+                best_row = row
+        return best_row
+
+    return rows[-1]
+
+
 def read_train_metrics(run_dir: Path, model_filename: str = "") -> dict[str, object]:
     csv_path = run_dir / "results.csv"
     if not csv_path.exists():
@@ -179,18 +217,7 @@ def read_train_metrics(run_dir: Path, model_filename: str = "") -> dict[str, obj
         headers = list(rows[0].keys())
         is_best = model_filename.lower() == "best.pt"
         if is_best:
-            map50_col = _find_col(headers, ["metrics/mAP50("])
-            best_row = rows[-1]
-            best_val = -1.0
-            for row in rows:
-                try:
-                    val = float(row.get(map50_col, -1)) if map50_col else -1.0
-                    if val > best_val:
-                        best_val = val
-                        best_row = row
-                except (ValueError, TypeError):
-                    continue
-            return _parse_row(best_row, headers)
+            return _parse_row(_select_best_metrics_row(rows, headers), headers)
         else:
             return _parse_row(rows[-1], headers)
     except Exception:

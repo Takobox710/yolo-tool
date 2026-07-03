@@ -26,15 +26,14 @@ yolo_tool/
 ├── pixi.lock
 ├── AGENTS.md
 ├── icon.svg
+├── 打包程序.bat
 ├── docs/
 │   └── packaging-windows.md
 ├── installer/
 │   ├── yolo_tool.iss
-│   ├── YOLOTool.dev.spec
 │   ├── YOLOTool.spec
 │   ├── build_windows.ps1
-│   ├── build_windows_dev.ps1
-│   ├── pyinstaller_common.py
+│   ├── 打包程序.ps1
 │   └── hooks/
 │       ├── hook-PySide6.scripts.deploy_lib.py
 │       ├── hook-torch.py
@@ -44,6 +43,7 @@ yolo_tool/
     ├── main.py
     ├── app.py
     ├── context.py
+    ├── open_yolo_tool.pyw
     ├── paths.py
     ├── theme.py
     ├── train_cli.py
@@ -109,6 +109,8 @@ pixi run test
 pixi run python -m scr.main
 ```
 
+如需双击启动，可使用 `scr/open_yolo_tool.pyw`。
+
 静态编译检查：
 
 ```powershell
@@ -130,10 +132,12 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 或：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
+powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 ```
 
-Inno Setup 安装包脚本位于 `installer/yolo_tool.iss`，与 PyInstaller 的 spec、hooks、PowerShell 打包脚本统一放在 `installer/` 目录维护。
+如需直接双击一键打包，可使用项目根目录的 `打包程序.bat`。
+
+Inno Setup 安装包脚本位于 `installer/yolo_tool.iss`，与统一的 PyInstaller spec、hooks、PowerShell 打包脚本统一放在 `installer/` 目录维护。
 
 正式版产物位于 `dist/YOLOTool/`，开发快包位于 `dist/YOLOTool-dev/`。
 
@@ -278,20 +282,21 @@ pixi run python -c "import torch; print(torch.__version__); print(torch.version.
 训练页必须按旧版整体设计重建，并遵循当前交互约定：
 
 - 左侧：基础模型（下拉框，自动读取 `data/models/*.pt`，也可手动输入）、数据集 YAML、模型 YAML（默认空白）、项目输出、数据增强选项。
-- 右侧：优化器（auto/SGD/Adam/AdamW/RMSProp 下拉框）、设备、学习率、Epochs、Patience、Workers、Batch、图片尺寸。
-- 默认基础模型为 `yolov8s.pt`，默认训练参数为：优化器 `auto`、学习率 `0.001`、`Epochs=500`、`Patience=100`、`Workers=2`、`Batch=16`、`图片尺寸=640`、`设备=0`。
-- 默认增强勾选状态与当前界面一致：马赛克、缩放、平移、HSV、左右翻转默认开启；上下翻转、旋转、MixUp 默认关闭。
+- 右侧：优化器（auto/SGD/Adam/AdamW/RMSProp 下拉框）、设备、学习率、训练轮数、早停轮数、线程数、批次大小、图片尺寸。
+- 默认基础模型为 `yolov8s.pt`，默认训练参数为：优化器 `auto`、学习率 `0.001`、`训练轮数=500`、`早停轮数=100`、`线程数=2`、`批次大小=16`、`图片尺寸=640`、`设备=0`。
+- 默认增强勾选状态与当前界面一致：随机拼图、缩放、平移、调色、左右翻转默认开启；上下翻转、旋转、混合默认关闭。
 - 中部左侧保留训练控制模块（开始训练、停止训练、查看模型报告），但不显示"训练控制"标题。
 - 中部右侧保留系统状态模块（GPU/显存/CPU/内存），但不显示"系统状态"标题。
 - 训练日志面板不显示标题和进度条，只保留日志文本框。
 - 基础模型、数据集 YAML、模型 YAML、项目输出四个输入区域应保留灰色占位提示。
-- 数据增强勾选项按从左到右、从上到下顺序排列为：马赛克、缩放、平移、HSV、左右翻转、上下翻转、旋转、MixUp。
+- 数据增强勾选项按从左到右、从上到下顺序排列为：随机拼图、缩放、平移、调色、左右翻转、上下翻转、旋转、混合。
 - 训练页解释方式同样固定为方案 B：不要再使用独立解释图标；tooltip 直接挂在字段名或勾选项文本上。
+- 训练页 tooltip 文案当前统一采用“中文全称（命令参数名）；说明”的格式，例如：`随机缩放增强（scale）；随机缩放目标与画面，提升对尺寸变化的适应能力。`
 - 训练页仅以下项目显示 `ⓘ`：
-  - `训练参数` 卡片中的全部项：优化器、学习率、Epochs、Patience、Workers、Batch、图片尺寸、设备。
-  - `数据集与增强配置` 下方 8 个增强项：马赛克、缩放、平移、HSV、左右翻转、上下翻转、旋转、MixUp。
+  - `训练参数` 卡片中的全部项：优化器、学习率、训练轮数、早停轮数、线程数、批次大小、图片尺寸、设备。
+  - `数据集与增强配置` 下方 8 个增强项：随机拼图、缩放、平移、调色、左右翻转、上下翻转、旋转、混合。
 - 基础模型、数据集 YAML、模型 YAML、项目输出这四项不要显示 `ⓘ`，但保留占位提示。
-- `Workers` 与 `图片尺寸` 的 tooltip 必须明确说明提高后会占用更多系统内存。
+- `线程数` 与 `图片尺寸` 的 tooltip 必须明确说明提高后会占用更多系统内存。
 - 8 个增强项的 tooltip 中必须写出对应训练命令参数名，便于用户在命令中查找与修改，例如 `mosaic`、`scale`、`translate`、`hsv_h / hsv_s / hsv_v`、`fliplr`、`flipud`、`degrees`、`mixup`。
 
 训练页布局结构：
@@ -500,7 +505,7 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 或：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
+powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 ```
 
 如需继续生成 Inno Setup 安装包，可在完成 `dist/YOLOTool/` 构建后使用：
@@ -508,6 +513,8 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
 ```powershell
 ISCC installer\yolo_tool.iss
 ```
+
+当前 `installer/打包程序.ps1` 不再生成 `build_log.txt`。
 
 打包后的目录结构约定：
 
@@ -529,9 +536,9 @@ dist/YOLOTool/
 当前打包体系约定：
 
 - `installer/yolo_tool.iss`：Inno Setup 安装包脚本。
-- `installer/YOLOTool.spec`：正式版 PyInstaller spec。
-- `installer/YOLOTool.dev.spec`：开发快速打包 spec。
-- `installer/pyinstaller_common.py`：两套 spec 共享的打包配置。
+- `installer/YOLOTool.spec`：统一的 PyInstaller spec，通过环境变量区分正式版与开发快包。
+- `installer/build_windows.ps1`：仅负责 PyInstaller 打包，支持 `release/dev` 两种模式。
+- `installer/打包程序.ps1`：一键串联 PyInstaller 与 Inno Setup。
 - `installer/hooks/`：用于压制无关 PyInstaller 探测噪声的自定义 hooks。
 
 当前不再使用对 `torch`、`PySide6` 等大包的 `collect_all(...)` 全量扫描；原因是它会显著拖慢打包，并制造大量与本项目无关的误报。

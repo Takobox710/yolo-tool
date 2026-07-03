@@ -16,16 +16,10 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode relea
 powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
-或：
+如需一键完成 `PyInstaller + Inno Setup`，可执行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows_dev.ps1
-```
-
-如需把 `dist/YOLOTool/` 再封装成 Inno Setup 安装包，可执行：
-
-```powershell
-ISCC installer\yolo_tool.iss
+powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 ```
 
 ## 输出目录
@@ -35,4 +29,4 @@ ISCC installer\yolo_tool.iss
 
 运行时配置使用项目内的 `data/runtime/settings.json`。
 
-Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与 PyInstaller 的 spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。
+Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与单一的 PyInstaller spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。
