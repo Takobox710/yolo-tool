@@ -69,6 +69,12 @@ class BasePage(QWidget):
         edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         edit.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         edit.setCursorWidth(0)
+        edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        edit.customContextMenuRequested.connect(
+            lambda pos, text_edit=edit: self._show_readonly_text_context_menu(
+                text_edit, pos
+            )
+        )
         copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, edit)
         copy_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         copy_shortcut.activated.connect(lambda text_edit=edit: self._copy_readonly_text(text_edit))
@@ -81,6 +87,16 @@ class BasePage(QWidget):
         if not edit.textCursor().hasSelection():
             return
         edit.copy()
+
+    def _show_readonly_text_context_menu(self, edit: QTextEdit, pos):
+        menu = edit.createStandardContextMenu()
+        for action in menu.actions():
+            text = action.text().replace("&", "")
+            if "Copy" in text:
+                action.setText("复制")
+            elif "Select All" in text:
+                action.setText("全选")
+        menu.exec(edit.mapToGlobal(pos))
 
     def help_icons_enabled(self) -> bool:
         return bool(
@@ -225,6 +241,8 @@ class BasePage(QWidget):
         browse=None,
         placeholder: str = "",
         help_text: str = "",
+        *,
+        label_width: int = 88,
     ):
         box = QWidget()
         layout = QHBoxLayout(box)
@@ -233,7 +251,7 @@ class BasePage(QWidget):
             label,
             help_text=help_text,
             object_name="inlineFieldLabel",
-            fixed_width=88,
+            fixed_width=label_width,
         )
         edit = QLineEdit(str(value))
         if placeholder:
@@ -256,6 +274,7 @@ class BasePage(QWidget):
         *,
         editable: bool = False,
         placeholder: str = "",
+        label_width: int = 88,
     ):
         box = QWidget()
         layout = QHBoxLayout(box)
@@ -264,7 +283,7 @@ class BasePage(QWidget):
             label,
             help_text=help_text,
             object_name="inlineFieldLabel",
-            fixed_width=88,
+            fixed_width=label_width,
         )
         combo = QComboBox()
         combo.setEditable(editable)

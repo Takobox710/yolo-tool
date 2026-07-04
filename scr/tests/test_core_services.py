@@ -52,7 +52,7 @@ def test_settings_service_defaults_to_project_data_runtime(tmp_path):
     assert saved["paths"]["models_dir"] == str(Path("data") / "models")
     assert saved["training"]["data"] == str(Path("data") / "data.yaml")
     assert saved["training"]["project"] == "result"
-    assert saved["validation"]["save_dir"] == str(Path("result") / "gui_predict")
+    assert saved["validation"]["save_dir"] == str(Path("result") / "gui_val")
 
 
 def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(tmp_path):
@@ -130,7 +130,7 @@ def test_settings_service_reads_relative_project_paths_as_absolute_runtime_paths
                     "pretrained": "data/models/yolov8s.pt",
                 },
                 "validation": {
-                    "save_dir": "result/gui_predict",
+                    "save_dir": "result/gui_val",
                     "source_path": "images/demo.jpg",
                 },
             },
@@ -146,7 +146,7 @@ def test_settings_service_reads_relative_project_paths_as_absolute_runtime_paths
     assert settings["paths"]["models_dir"] == str((project_root / "data" / "models").resolve())
     assert settings["training"]["data"] == str((project_root / "data" / "data.yaml").resolve())
     assert settings["training"]["pretrained"] == str((project_root / "data" / "models" / "yolov8s.pt").resolve())
-    assert settings["validation"]["save_dir"] == str((project_root / "result" / "gui_predict").resolve())
+    assert settings["validation"]["save_dir"] == str((project_root / "result" / "gui_val").resolve())
     assert settings["validation"]["source_path"] == str((project_root / "images" / "demo.jpg").resolve())
 
 
@@ -780,6 +780,51 @@ def test_training_command_includes_all_hsv_params_when_configured():
     assert "hsv_v=0.4" in command
 
 
+def test_build_val_command_uses_app_cli_val_entry(tmp_path):
+    from scr.services.training_service import build_val_command
+
+    command = build_val_command(
+        {
+            "model_path": str(tmp_path / "data" / "models" / "yolov8m-obb.pt"),
+            "data": str(tmp_path / "data.yaml"),
+            "confidence": 0.25,
+            "iou": 0.45,
+            "imgsz": 960,
+            "save_dir": str(tmp_path / "result" / "gui_val"),
+        }
+    )
+
+    assert "--yolo-val" in command
+    assert "obb" in command
+    assert "val" in command
+    assert f"data={tmp_path / 'data.yaml'}" in command
+    assert "imgsz=960" in command
+
+
+def test_repair_validation_path_if_needed_restores_val_from_train(tmp_path):
+    from scr.services.training_service import repair_validation_path_if_needed
+
+    dataset_yaml = tmp_path / "data.yaml"
+    dataset_yaml.write_text(
+        "\n".join(
+            [
+                "path: .",
+                "train: data/train/images",
+                r"val: ..\images",
+                "test: data/test/images",
+                "names: ['weld']",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    changed = repair_validation_path_if_needed(dataset_yaml)
+
+    assert changed is True
+    assert "val: data/val/images" in dataset_yaml.read_text(encoding="utf-8")
+
+
 def test_read_train_metrics_uses_map5095_for_best_checkpoint(tmp_path):
     from scr.services.training_service import read_train_metrics
 
@@ -917,6 +962,89 @@ def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
     assert collect_prediction_sources("摄像头", folder) == []
 
 
+def test_detection_source_collection_supports_dataset_yaml_scopes(tmp_path):
+    from scr.services.detection_service import collect_prediction_sources
+
+    dataset_root = tmp_path / "data"
+    train_dir = dataset_root / "train" / "images"
+    val_dir = dataset_root / "val" / "images"
+    test_dir = dataset_root / "test" / "images"
+    train_dir.mkdir(parents=True)
+    val_dir.mkdir(parents=True)
+    test_dir.mkdir(parents=True)
+    train_image = train_dir / "1.jpg"
+    val_image = val_dir / "2.jpg"
+    test_image = test_dir / "3.jpg"
+    train_image.write_bytes(b"train")
+    val_image.write_bytes(b"val")
+    test_image.write_bytes(b"test")
+    dataset_yaml = dataset_root / "data.yaml"
+    dataset_yaml.write_text(
+        "\n".join(
+            [
+                "path: .",
+                "train: train/images",
+                "val: val/images",
+                "test: test/images",
+                "names: ['weld']",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert collect_prediction_sources(
+        "图片/视频文件夹",
+        "",
+        dataset_yaml=dataset_yaml,
+        source_scope="全部图片",
+    ) == [train_image.resolve(), val_image.resolve(), test_image.resolve()]
+    assert collect_prediction_sources(
+        "图片/视频文件夹",
+        "",
+        dataset_yaml=dataset_yaml,
+        source_scope="训练图片",
+    ) == [train_image.resolve()]
+    assert collect_prediction_sources(
+        "图片/视频文件夹",
+        "",
+        dataset_yaml=dataset_yaml,
+        source_scope="验证图片",
+    ) == [val_image.resolve()]
+    assert collect_prediction_sources(
+        "图片/视频文件夹",
+        "",
+        dataset_yaml=dataset_yaml,
+        source_scope="测试图片",
+    ) == [test_image.resolve()]
+
+
+def test_detection_source_collection_prefers_custom_folder_over_dataset_yaml(tmp_path):
+    from scr.services.detection_service import collect_prediction_sources
+
+    custom_dir = tmp_path / "custom"
+    custom_dir.mkdir()
+    custom_image = custom_dir / "custom.jpg"
+    custom_image.write_bytes(b"custom")
+
+    dataset_root = tmp_path / "data"
+    train_dir = dataset_root / "train" / "images"
+    train_dir.mkdir(parents=True)
+    (train_dir / "train.jpg").write_bytes(b"train")
+    dataset_yaml = dataset_root / "data.yaml"
+    dataset_yaml.write_text(
+        "path: .\ntrain: train/images\nval: val/images\nnames: ['weld']\n",
+        encoding="utf-8",
+    )
+
+    assert collect_prediction_sources(
+        "图片/视频文件夹",
+        custom_dir,
+        dataset_yaml=dataset_yaml,
+        source_scope="训练图片",
+    ) == [custom_image]
+
+
 def test_detection_source_collection_uses_natural_numeric_sort(tmp_path):
     from scr.services.detection_service import collect_prediction_sources
 
@@ -954,6 +1082,41 @@ def test_stream_result_rendering_uses_current_frame_as_plot_background():
     assert result.received is not None
     assert np.array_equal(result.received, frame)
     assert rendered.size == (5, 4)
+
+
+def test_save_detection_label_file_writes_detect_format(tmp_path):
+    from scr.services.detection_service import normalize_detection_item, save_detection_label_file
+
+    label_dir = tmp_path / "labels"
+    label_dir.mkdir()
+    label_path = label_dir / "detect.txt"
+    item = normalize_detection_item(
+        "weld", 0.9, [(40, 30), (60, 30), (60, 70), (40, 70)]
+    )
+
+    save_detection_label_file(label_path, [item], 100, 100)
+
+    assert (
+        label_path.read_text(encoding="utf-8").strip()
+        == "0 0.500000 0.500000 0.200000 0.400000"
+    )
+
+
+def test_save_detection_label_file_writes_obb_format(tmp_path):
+    from scr.services.detection_service import normalize_detection_item, save_detection_label_file
+
+    label_dir = tmp_path / "labels"
+    label_dir.mkdir()
+    label_path = label_dir / "obb.txt"
+    item = normalize_detection_item(
+        "weld", 0.9, [(10, 20), (30, 10), (40, 30), (20, 40)]
+    )
+
+    save_detection_label_file(label_path, [item], 100, 100)
+
+    assert label_path.read_text(encoding="utf-8").strip() == (
+        "0 0.100000 0.200000 0.300000 0.100000 0.400000 0.300000 0.200000 0.400000"
+    )
 
 
 def test_ultralytics_compat_patches_missing_cv2_highgui_symbols(monkeypatch):

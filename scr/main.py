@@ -23,6 +23,10 @@ def main() -> None:
         from scr.train_cli import run_export_cli
 
         raise SystemExit(run_export_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-val":
+        from scr.train_cli import run_val_cli
+
+        raise SystemExit(run_val_cli(sys.argv[2:]))
 
     from scr.app import run_app
 

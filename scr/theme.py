@@ -19,7 +19,7 @@ QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
 #statValue { color: #0D2B49; font-size: 14px; font-weight: 700; }
 #fieldLabel { color: #627286; font-size: 12px; }
 #helpText { color: #627286; font-size: 12px; line-height: 18px; }
-#inlineFieldLabel { color: #14233A; font-size: 14px; font-weight: 600; }
+#inlineFieldLabel { color: #14233A; font-size: 14px; font-weight: 400; }
 #imageView { background: #F8FBFD; border: 1px solid #D9E3EC; border-radius: 6px; color: #627286; }
 #statCard { background: #F5F8FB; border: 1px solid #E8EDF2; border-radius: 6px; }
 #metricCard { background: #F5F8FB; border: 1px solid #E8EDF2; border-radius: 6px; }

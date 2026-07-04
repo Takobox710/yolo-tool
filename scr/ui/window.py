@@ -25,6 +25,7 @@ class WorkbenchWindow(QMainWindow):
         self.pages: dict[str, QWidget] = {}
         self.training_handle = None
         self.export_handle = None
+        self.validation_handle = None
         self.current_page_key = "home"
         self.page_order = ["home", "data", "train", "validate", "settings"]
         self.page_titles = {
@@ -197,6 +198,7 @@ class WorkbenchWindow(QMainWindow):
         self.settings_service.save(self.settings)
         stop_process(self.training_handle)
         stop_process(self.export_handle)
+        stop_process(self.validation_handle)
         super().closeEvent(event)
 
 def build_style() -> str:

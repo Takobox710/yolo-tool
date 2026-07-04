@@ -105,8 +105,60 @@ def build_train_command(config: dict) -> list[str]:
     return command
 
 
+def repair_validation_path_if_needed(dataset_yaml: str | Path | None) -> bool:
+    path_text = str(dataset_yaml or "").strip()
+    if not path_text:
+        return False
+    data_path = Path(path_text)
+    payload = _read_yaml_mapping(data_path)
+    if not isinstance(payload, dict):
+        return False
+    train_value = str(payload.get("train") or "").strip()
+    val_value = str(payload.get("val") or "").strip()
+    if not train_value or not val_value or "\\" not in val_value:
+        return False
+
+    train_path = Path(train_value.replace("\\", "/"))
+    train_parts = list(train_path.parts)
+    replaced = False
+    for index, part in enumerate(train_parts):
+        if part.lower() == "train":
+            train_parts[index] = "val"
+            replaced = True
+            break
+    if not replaced:
+        return False
+
+    repaired_val = str(Path(*train_parts)).replace("\\", "/")
+    payload["val"] = repaired_val
+    data_path.write_text(
+        yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    return True
+
+
 def build_export_command(model_path: str, export_format: str, imgsz: int | str = 640) -> list[str]:
     return app_cli_command("--yolo-export", f"model={model_path}", f"format={export_format}", f"imgsz={imgsz}")
+
+
+def build_val_command(config: dict) -> list[str]:
+    model = str(config.get("model_path") or "").strip()
+    task_mode = infer_task_mode_from_model(model)
+    command = app_cli_command("--yolo-val", task_mode, "val")
+    fields = [
+        ("model", model),
+        ("data", config.get("data")),
+        ("conf", config.get("confidence")),
+        ("iou", config.get("iou")),
+        ("imgsz", config.get("imgsz")),
+        ("project", config.get("save_dir")),
+    ]
+    for key, value in fields:
+        if value in (None, ""):
+            continue
+        command.append(f"{key}={value}")
+    return command
 
 
 def latest_result_csv(result_dir: Path) -> Path | None:

@@ -8,7 +8,7 @@ from scr.paths import ROOT
 from scr.services.environment_service import system_status, torch_cuda_summary
 from scr.services.runtime_service import spawn_logged_process, stop_process
 from scr.services.settings_service import build_default_settings
-from scr.services.training_service import build_train_command, infer_task_mode_from_model
+from scr.services.training_service import build_train_command, infer_task_mode_from_model, repair_validation_path_if_needed
 from scr.ui.dialogs import CommandDialog
 from scr.ui.helpers import _find_training_model_names, _resolve_training_model_reference
 from scr.ui.page_base import BasePage, Card
@@ -128,6 +128,7 @@ class TrainPage(BasePage):
 
         # Right side: training params
         params = QGridLayout()
+        params.setHorizontalSpacing(30)
         right.layout.addLayout(params)
 
         # Row 0: optimizer | lr
@@ -136,6 +137,7 @@ class TrainPage(BasePage):
             training.get("optimizer", "auto"),
             ["auto", "SGD", "Adam", "AdamW", "RMSProp"],
             help_text="训练优化器（optimizer）；用于控制参数更新方式，auto 会交给 Ultralytics 自动决定。",
+            label_width=80,
         )
         current_opt = training.get("optimizer", "auto")
         if current_opt in ["auto", "SGD", "Adam", "AdamW", "RMSProp"]:
@@ -147,6 +149,7 @@ class TrainPage(BasePage):
             training.get("lr", ""),
             placeholder="例如 0.001",
             help_text="优化器步长（lr0）；过大可能震荡，过小会收敛变慢。",
+            label_width=80,
         )
         self.edits["lr"] = lr_edit
         params.addWidget(lr_box, 0, 1)
@@ -176,6 +179,7 @@ class TrainPage(BasePage):
                 training.get(key, ""),
                 placeholder=placeholder,
                 help_text=help_text,
+                label_width=80,
             )
             self.edits[key] = edit
             params.addWidget(box, 1 + i // 2, i % 2)
@@ -187,6 +191,7 @@ class TrainPage(BasePage):
             help_text="训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。",
             editable=True,
             placeholder="例如 640",
+            label_width=80,
         )
         self.imgsz_combo.setMinimumContentsLength(5)
         params.addWidget(imgsz_box, 3, 0)
@@ -197,6 +202,7 @@ class TrainPage(BasePage):
             str(training.get("device", "0")),
             ["0", "cpu", "0,1"],
             help_text="训练设备（device）；0 表示首张 GPU，cpu 表示使用处理器，也可填写多个 GPU 编号。",
+            label_width=80,
         )
         params.addWidget(self.device_box, 3, 1)
         actions = QHBoxLayout()
@@ -501,6 +507,7 @@ class TrainPage(BasePage):
         if self.is_training:
             return
         config = self.collect_config()
+        repaired = repair_validation_path_if_needed(config.get("data"))
         self._save_training_settings(config)
         command = build_train_command(config)
         command = self._normalize_command_model_targets(command)
@@ -519,6 +526,8 @@ class TrainPage(BasePage):
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.log.clear()
+        if repaired:
+            self.log.append("已自动修复 data.yaml 中未还原的 val 路径。")
         self.log.append(" ".join(command))
         self.log_queue = Queue()
         self.app.training_handle = spawn_logged_process(

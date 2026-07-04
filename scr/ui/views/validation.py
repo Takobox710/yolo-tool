@@ -3,12 +3,21 @@ from __future__ import annotations
 import os
 import threading
 from pathlib import Path
+from queue import Queue
 
+import yaml
+
+from scr.paths import ROOT
 from scr.services.detection_service import collect_prediction_sources
+from scr.services.runtime_service import spawn_logged_process, stop_process
+from scr.services.training_service import build_val_command
 from scr.ui.helpers import _build_detection_log_message, _detection_counter_text, _find_models_full_paths, _is_live_source_mode, _should_store_detection_history, _simplified_model_path, _resolve_project_path
 from scr.ui.page_base import BasePage, Card, ImageView
-from scr.ui.qt import Qt, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
+from scr.ui.qt import Qt, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QListWidget, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit, QTimer, QVBoxLayout, QWidget
 from scr.ui.workers import DetectionWorker
+
+SOURCE_SCOPE_OPTIONS = ["全部图片", "训练图片", "验证图片", "测试图片"]
+
 
 class ValidatePage(BasePage):
     def __init__(self, app):
@@ -26,6 +35,14 @@ class ValidatePage(BasePage):
         self.result_by_source: dict[str, dict] = {}
         self.user_selected_result = False
         self.result_nav_buttons: list[QPushButton] = []
+        self.log_queue: Queue | None = None
+        self.stop_requested = False
+        self._yaml_restore_path: Path | None = None
+        self._yaml_restore_text: str | None = None
+        self._yaml_restore_pending = False
+        self.poll_timer = QTimer(self)
+        self.poll_timer.setInterval(150)
+        self.poll_timer.timeout.connect(self.poll_validation_queue)
         layout = self.page_layout()
         split = QHBoxLayout()
         layout.addLayout(split, 1)
@@ -35,7 +52,6 @@ class ValidatePage(BasePage):
         left_column = left_shell.layout
         validation = app.settings["validation"]
 
-        # Model config - Task 14: dropdown for models
         model_title = QLabel("模型配置")
         model_title.setObjectName("sectionTitle")
         left_column.addWidget(model_title)
@@ -76,44 +92,75 @@ class ValidatePage(BasePage):
         # Source config
         self.mode_box, self.mode_combo = self.combo_field(
             "检测模式",
-            "图片/视频文件夹",
-            ["图片/视频文件夹", "图片/视频", "摄像头"],
+            validation.get("source_mode", "图片/视频文件夹"),
+            ["图片/视频文件夹", "图片/视频", "摄像头", "数据集验证"],
         )
         left_column.addWidget(self.mode_box)
-        self.source_box, self.source_edit = self.path_field(
+        initial_source_text = validation["source_path"] or validation.get(
+            "source_scope", "全部图片"
+        )
+        self.source_box, self.source_combo = self.stacked_combo_field(
             "输入源",
-            validation["source_path"],
-            self.choose_detection_source,
-            "选择图片、视频或文件夹",
+            initial_source_text,
+            SOURCE_SCOPE_OPTIONS,
+            browse=lambda combo: self.choose_detection_source(combo),
+            placeholder="选择输入源或自定义图片文件夹",
         )
         left_column.addWidget(self.source_box)
+        self.data_box, self.data_edit = self.path_field(
+            "数据集 YAML",
+            validation.get("data", ""),
+            self.choose_dataset_yaml,
+            "选择 data.yaml",
+        )
+        left_column.addWidget(self.data_box)
+        self.source_scope_box, self.source_scope_combo = self.combo_field(
+            "选择验证源",
+            validation.get("source_scope", "全部图片"),
+            SOURCE_SCOPE_OPTIONS,
+        )
+        left_column.addWidget(self.source_scope_box)
         self.camera_box, self.camera_combo = self.combo_field(
             "摄像头",
             str(validation["camera_index"]),
             ["0", "1", "2", "3"],
         )
         left_column.addWidget(self.camera_box)
+        self.save_box, self.save_edit = self.path_field(
+            "输出文件夹",
+            validation["save_dir"],
+            self.choose_output_dir,
+            "选择结果输出目录",
+        )
+        left_column.addWidget(self.save_box)
 
         controls = QHBoxLayout()
         self.start_det_btn = QPushButton("批量检测")
         self.start_det_btn.clicked.connect(self.start_detection)
-        pause = QPushButton("暂停")
-        pause.setObjectName("softButton")
+        self.stop_det_btn = QPushButton("停止")
+        self.stop_det_btn.setObjectName("softButton")
+        self.stop_det_btn.setEnabled(False)
+        self.stop_det_btn.clicked.connect(self.stop_detection)
         controls.addWidget(self.start_det_btn)
-        controls.addWidget(pause)
+        controls.addWidget(self.stop_det_btn)
         left_column.addLayout(controls)
-
-        log_title = QLabel("检测日志")
-        log_title.setObjectName("sectionTitle")
-        left_column.addWidget(log_title)
+        self.open_val_save_btn = QPushButton("打开保存目录")
+        self.open_val_save_btn.setObjectName("softButton")
+        self.open_val_save_btn.clicked.connect(self.open_detection_save_dir)
+        self.open_val_save_btn.setVisible(False)
+        left_column.addWidget(self.open_val_save_btn)
         self.detect_log = QTextEdit()
         self.prepare_readonly_text(self.detect_log)
-        left_column.addWidget(self.detect_log, 1)
+        self.detect_log.setMinimumHeight(180)
+        left_column.addWidget(self.detect_log)
+        left_column.addStretch(1)
         split.addWidget(left_shell)
 
         # Right column
         right = QVBoxLayout()
-        toolbar = QHBoxLayout()
+        self.toolbar_widget = QWidget()
+        toolbar = QHBoxLayout(self.toolbar_widget)
+        toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.addWidget(QLabel("批量检测结果"))
         for text, slot in [
             ("上一张", self.prev_result),
@@ -132,8 +179,10 @@ class ValidatePage(BasePage):
         self.counter = QLabel("0/0")
         toolbar.addWidget(self.counter)
         toolbar.addStretch(1)
-        right.addLayout(toolbar)
-        views = QHBoxLayout()
+        right.addWidget(self.toolbar_widget)
+        self.views_widget = QWidget()
+        views = QHBoxLayout(self.views_widget)
+        views.setContentsMargins(0, 0, 0, 0)
         source_panel = Card("源")
         self.source_view = ImageView("源图")
         source_panel.layout.addWidget(self.source_view, 1)
@@ -142,8 +191,8 @@ class ValidatePage(BasePage):
         result_panel.layout.addWidget(self.result_view, 1)
         views.addWidget(source_panel)
         views.addWidget(result_panel)
-        right.addLayout(views, 2)
-        table_panel = Card("检测结果详情表")
+        right.addWidget(self.views_widget, 2)
+        self.table_panel = Card("检测结果详情表")
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
             ["类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"]
@@ -154,8 +203,14 @@ class ValidatePage(BasePage):
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
-        table_panel.layout.addWidget(self.table)
-        right.addWidget(table_panel, 1)
+        self.table_panel.layout.addWidget(self.table)
+        right.addWidget(self.table_panel, 1)
+        self.val_log_panel = Card("验证日志")
+        self.val_log = QTextEdit()
+        self.prepare_readonly_text(self.val_log)
+        self.val_log_panel.layout.addWidget(self.val_log, 1)
+        self.val_log.setMinimumHeight(220)
+        right.addWidget(self.val_log_panel, 1)
         right_widget = QWidget()
         right_widget.setLayout(right)
         split.addWidget(right_widget)
@@ -168,31 +223,76 @@ class ValidatePage(BasePage):
 
     def update_source_mode(self, value):
         camera = value == "摄像头"
-        self.source_box.setVisible(not camera)
+        single_file_mode = value == "图片/视频"
+        dataset_source_mode = value == "图片/视频文件夹"
+        val_mode = self.is_val_mode(value)
+        self.source_box.setVisible(single_file_mode or dataset_source_mode)
+        self.data_box.setVisible(val_mode)
+        self.source_scope_box.setVisible(val_mode)
         self.camera_box.setVisible(camera)
-        self.set_result_navigation_enabled(not camera)
+        self.save_box.setVisible(True)
+        self.open_val_save_btn.setVisible(val_mode)
+        self.set_result_navigation_enabled((not camera) and (not val_mode))
+        self.detect_log.setVisible(not val_mode)
+        self.toolbar_widget.setVisible(not val_mode)
+        self.views_widget.setVisible(not val_mode)
+        self.table_panel.setVisible(not val_mode)
+        self.val_log_panel.setVisible(val_mode)
         if camera:
             self.counter.setText("实时预览")
+        elif val_mode:
+            self.counter.setText("验证模式")
         elif not self.detect_results:
             self.counter.setText("0/0")
+        if dataset_source_mode:
+            self._configure_source_combo(
+                SOURCE_SCOPE_OPTIONS,
+                self.app.settings.get("validation", {}).get("source_path")
+                or self.app.settings.get("validation", {}).get("source_scope", "全部图片"),
+                "可选：选择自定义图片文件夹；也可直接选择固定来源",
+            )
+        elif single_file_mode:
+            self._configure_source_combo(
+                [],
+                self.app.settings.get("validation", {}).get("source_path", ""),
+                "选择图片或视频",
+            )
         self.update_detection_button_text()
         self.refresh_source_items()
+
+    def is_val_mode(self, value: str | None = None) -> bool:
+        return str(value or self.mode_combo.currentText()).strip() == "数据集验证"
+
+    def _configure_source_combo(
+        self, values: list[str], current_text: str, placeholder: str
+    ) -> None:
+        self.source_combo.blockSignals(True)
+        self.source_combo.clear()
+        self.source_combo.addItems(values)
+        self.source_combo.setCurrentText(str(current_text or ""))
+        line_edit = self.source_combo.lineEdit()
+        if line_edit is not None:
+            line_edit.setPlaceholderText(placeholder)
+        self.source_combo.blockSignals(False)
 
     def set_result_navigation_enabled(self, enabled: bool):
         for button in self.result_nav_buttons:
             button.setEnabled(enabled)
 
     def update_detection_button_text(self):
-        self.start_det_btn.setText(
-            "开始检测"
-            if self.mode_combo.currentText() == "图片/视频"
-            else "批量检测"
-        )
+        mode = self.mode_combo.currentText()
+        if self.is_val_mode(mode):
+            self.start_det_btn.setText("开始验证")
+            self.stop_det_btn.setText("停止")
+            return
+        self.start_det_btn.setText("开始检测" if mode == "图片/视频" else "批量检测")
+        self.stop_det_btn.setText("停止")
 
-    def choose_detection_source(self, edit: QLineEdit):
+    def choose_detection_source(self, combo: QComboBox):
+        current_text = combo.currentText().strip()
         current = (
-            self.resolve_path_text(edit)
-            if edit.text()
+            self.resolve_combo_path_text(current_text)
+            if current_text and current_text not in SOURCE_SCOPE_OPTIONS
             else str(self.project_root())
         )
         if self.mode_combo.currentText() == "图片/视频":
@@ -203,25 +303,67 @@ class ValidatePage(BasePage):
                 "图片/视频 (*.jpg *.jpeg *.png *.bmp *.mp4 *.avi *.mov *.mkv);;所有文件 (*)",
             )
             if path:
-                edit.setText(self.display_path(path))
+                combo.setCurrentText(self.display_path(path))
                 self.refresh_source_items()
             return
+        path = QFileDialog.getExistingDirectory(self, "选择图片文件夹", current)
+        if path:
+            combo.setCurrentText(self.display_path(path))
+            self.refresh_source_items()
+
+    def choose_dataset_yaml(self, edit: QLineEdit):
+        current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择数据集 YAML",
+            current,
+            "YAML 文件 (*.yaml *.yml);;所有文件 (*)",
+        )
+        if path:
+            edit.setText(self.display_path(path))
+
+    def choose_output_dir(self, edit: QLineEdit):
         self.choose_dir(edit)
-        self.refresh_source_items()
 
     def refresh_source_items(self):
-        if self.mode_combo.currentText() == "摄像头":
+        if self.mode_combo.currentText() == "摄像头" or self.is_val_mode():
             self.source_items = []
             self.source_index = -1
             return
+        source_path = self._folder_source_path_for_selection()
+        if self.mode_combo.currentText() == "图片/视频":
+            source_path = self.resolve_combo_path_text(self.source_combo.currentText())
         self.source_items = collect_prediction_sources(
-            self.mode_combo.currentText(), self.resolve_path_text(self.source_edit)
+            self.mode_combo.currentText(),
+            source_path,
         )
         if not self.source_items:
             self.source_index = -1
             return
         if self.source_index < 0 or self.source_index >= len(self.source_items):
             self.source_index = 0
+
+    def _dataset_split_dir(self, split: str) -> Path:
+        dataset_dir = Path(self.app.settings["paths"]["dataset_dir"])
+        return (dataset_dir / split / "images").resolve()
+
+    def _scope_target_path(self, scope: str) -> Path:
+        scope = str(scope or "全部图片").strip()
+        if scope == "全部图片":
+            return Path(self.app.settings["paths"]["images_dir"]).resolve()
+        if scope == "训练图片":
+            return self._dataset_split_dir("train")
+        if scope == "验证图片":
+            return self._dataset_split_dir("val")
+        if scope == "测试图片":
+            return self._dataset_split_dir("test")
+        return Path(self.app.settings["paths"]["images_dir"]).resolve()
+
+    def _folder_source_path_for_selection(self) -> str:
+        text = self.source_combo.currentText().strip()
+        if text in SOURCE_SCOPE_OPTIONS:
+            return str(self._scope_target_path(text))
+        return self.resolve_combo_path_text(text)
 
     def on_show(self):
         self.refresh_model_choices(self.app.settings["validation"].get("model_path", ""))
@@ -291,9 +433,18 @@ class ValidatePage(BasePage):
         self.mode_combo.currentTextChanged.connect(
             lambda value: self._persist_validation_value("source_mode", value)
         )
-        self.source_edit.textChanged.connect(
+        self.source_combo.currentTextChanged.connect(
+            lambda _text: self._handle_source_input_changed()
+        )
+        self.data_edit.textChanged.connect(
+            lambda _text: self._handle_data_path_changed()
+        )
+        self.source_scope_combo.currentTextChanged.connect(
+            lambda value: self._handle_source_scope_changed(value)
+        )
+        self.save_edit.textChanged.connect(
             lambda _text: self._persist_validation_value(
-                "source_path", self.resolve_path_text(self.source_edit)
+                "save_dir", self.resolve_path_text(self.save_edit)
             )
         )
         self.camera_combo.currentTextChanged.connect(
@@ -318,6 +469,28 @@ class ValidatePage(BasePage):
     def _persist_validation_value(self, key: str, value):
         self.app.settings.setdefault("validation", {})[key] = value
         self.save_settings()
+
+    def _handle_source_input_changed(self):
+        text = self.source_combo.currentText().strip()
+        if self.mode_combo.currentText() == "图片/视频文件夹":
+            if text in SOURCE_SCOPE_OPTIONS:
+                self._persist_validation_value("source_scope", text)
+                self._persist_validation_value("source_path", "")
+            else:
+                self._persist_validation_value(
+                    "source_path", self.resolve_combo_path_text(text)
+                )
+        else:
+            self._persist_validation_value("source_path", self.resolve_combo_path_text(text))
+        self.refresh_source_items()
+
+    def _handle_data_path_changed(self):
+        self._persist_validation_value("data", self.resolve_path_text(self.data_edit))
+        self.refresh_source_items()
+
+    def _handle_source_scope_changed(self, value: str):
+        self._persist_validation_value("source_scope", value)
+        self.refresh_source_items()
 
     def _persist_validation_numeric(self, key: str, text: str):
         try:
@@ -360,12 +533,16 @@ class ValidatePage(BasePage):
         return {
             "model_path": self._get_model_path(),
             "source_mode": self.mode_combo.currentText(),
-            "source_path": self.resolve_path_text(self.source_edit),
+            "source_path": self._folder_source_path_for_selection()
+            if self.mode_combo.currentText() == "图片/视频文件夹"
+            else self.resolve_combo_path_text(self.source_combo.currentText()),
+            "data": self.resolve_path_text(self.data_edit),
+            "source_scope": self.source_scope_combo.currentText(),
             "camera_index": int(self.camera_combo.currentText()),
             "confidence": float(self.conf_edit.text()),
             "iou": float(self.iou_edit.text()),
             "imgsz": int(self.imgsz_combo.currentText()),
-            "save_dir": self.app.settings["validation"]["save_dir"],
+            "save_dir": self.resolve_path_text(self.save_edit),
         }
 
     def single_file_config(self, path: Path) -> dict:
@@ -374,15 +551,80 @@ class ValidatePage(BasePage):
         config["source_path"] = str(path)
         return config
 
+    def _dataset_yaml_root(self, payload: dict, data_path: Path) -> Path:
+        root_value = payload.get("path")
+        if not root_value:
+            return data_path.parent.resolve()
+        root = Path(str(root_value))
+        if root.is_absolute():
+            return root.resolve()
+        return (data_path.parent / root).resolve()
+
+    def _val_override_value_for_scope(self, data_path: Path, scope: str) -> str:
+        target = self._scope_target_path(scope)
+        payload = yaml.safe_load(data_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return str(target)
+        dataset_root = self._dataset_yaml_root(payload, data_path)
+        if scope == "全部图片":
+            images_dir = Path(self.app.settings["paths"]["images_dir"]).resolve()
+            if target == images_dir:
+                return "images"
+        try:
+            relative = os.path.relpath(str(target), str(dataset_root))
+            return str(Path(relative))
+        except ValueError:
+            return str(target)
+
+    def _prepare_temporary_validation_yaml(self, data_path: Path, scope: str) -> None:
+        original_text = data_path.read_text(encoding="utf-8")
+        payload = yaml.safe_load(original_text)
+        if not isinstance(payload, dict):
+            return
+        payload["val"] = self._val_override_value_for_scope(data_path, scope)
+        patched_text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
+        if patched_text == original_text:
+            return
+        data_path.write_text(patched_text, encoding="utf-8")
+        self._yaml_restore_path = data_path
+        self._yaml_restore_text = original_text
+        self._yaml_restore_pending = True
+
+    def _restore_temporary_validation_yaml_if_needed(self) -> None:
+        if not self._yaml_restore_pending or self._yaml_restore_path is None:
+            return
+        if self._yaml_restore_text is not None:
+            self._yaml_restore_path.write_text(
+                self._yaml_restore_text, encoding="utf-8"
+            )
+        self._yaml_restore_pending = False
+        self._yaml_restore_path = None
+        self._yaml_restore_text = None
+
+    def clear_active_log(self):
+        self.detect_log.clear()
+        self.val_log.clear()
+
+    def append_active_log(self, text: str):
+        if self.is_val_mode():
+            self.val_log.append(text)
+            return
+        self.detect_log.append(text)
+
     # Task 9: Only allow one detection at a time
     def start_detection(self):
         if self.is_detecting:
+            return
+        if self.is_val_mode():
+            self.start_dataset_validation()
             return
         self.refresh_source_items()
         if self.mode_combo.currentText() == "图片/视频":
             if not self.source_items:
                 QMessageBox.information(
-                    self, "输入源为空", "请选择一张图片或一段视频。"
+                    self,
+                    "输入源为空",
+                    "请先选择有效的输入源，或确认 data.yaml 中所选来源下存在图片/视频。",
                 )
                 return
             self.source_index = max(
@@ -392,6 +634,7 @@ class ValidatePage(BasePage):
             return
         self.is_detecting = True
         self.start_det_btn.setEnabled(False)
+        self.stop_det_btn.setEnabled(True)
         self.detect_log.clear()
         self.detect_stop.clear()
         self.detect_results.clear()
@@ -401,6 +644,7 @@ class ValidatePage(BasePage):
             self.mode_combo.currentText()
         )
         self.detect_index = -1
+        self.clear_active_log()
         self.counter.setText(
             "实时预览"
             if _is_live_source_mode(self.mode_combo.currentText())
@@ -413,6 +657,34 @@ class ValidatePage(BasePage):
         self.detect_worker.finished_with_results.connect(self.apply_detect_done)
         self.detect_worker.failed.connect(self.apply_detect_error)
         self.detect_worker.start()
+
+    def start_dataset_validation(self):
+        config = self.config()
+        if not config["model_path"]:
+            QMessageBox.information(self, "模型为空", "请选择一个用于验证的模型。")
+            return
+        if not config["data"] or not Path(config["data"]).exists():
+            QMessageBox.information(self, "数据集 YAML 为空", "请选择有效的 data.yaml。")
+            return
+        self._prepare_temporary_validation_yaml(
+            Path(config["data"]), config["source_scope"]
+        )
+        self.is_detecting = True
+        self.is_batch_detection = False
+        self.stop_requested = False
+        self.start_det_btn.setEnabled(False)
+        self.stop_det_btn.setEnabled(True)
+        self.clear_active_log()
+        command = build_val_command(config)
+        self.append_active_log(" ".join(command))
+        self.log_queue = Queue()
+        self.app.validation_handle = spawn_logged_process(
+            command, str(ROOT), self.log_queue
+        )
+        self.poll_timer.start()
+        self.table.setRowCount(0)
+        self.counter.setText("验证中")
+        self.app.status.setText("验证中")
 
     def start_current_source_detection(self):
         if not self.source_items:
@@ -439,6 +711,7 @@ class ValidatePage(BasePage):
         self.is_detecting = True
         self.is_batch_detection = False
         self.start_det_btn.setEnabled(False)
+        self.stop_det_btn.setEnabled(True)
         self.detect_stop.clear()
         self.app.status.setText("检测中")
         self.detect_worker = DetectionWorker(
@@ -450,18 +723,76 @@ class ValidatePage(BasePage):
         self.detect_worker.start()
 
     def apply_detect_done(self, results):
-        self.detect_log.append("检测任务结束。")
+        self.append_active_log("检测任务结束。")
         self.app.status.setText("检测结束")
         self.detect_worker = None
         self.is_detecting = False
         self.start_det_btn.setEnabled(True)
+        self.stop_det_btn.setEnabled(False)
 
     def apply_detect_error(self, message):
-        self.detect_log.append(message)
+        self.append_active_log(message)
         self.app.status.setText("检测异常")
         self.detect_worker = None
         self.is_detecting = False
         self.start_det_btn.setEnabled(True)
+        self.stop_det_btn.setEnabled(False)
+
+    def stop_detection(self):
+        if not self.is_detecting:
+            return
+        if self.is_val_mode():
+            self.stop_requested = True
+            self.stop_det_btn.setEnabled(False)
+            self.app.status.setText("停止验证中")
+            stop_process(getattr(self.app, "validation_handle", None))
+            self.append_active_log("已请求停止验证。")
+            return
+        self.detect_stop.set()
+        self.stop_det_btn.setEnabled(False)
+        self.append_active_log("已请求停止检测。")
+        self.app.status.setText("停止检测中")
+
+    def poll_validation_queue(self):
+        if self.log_queue is None:
+            self._recover_validation_state_if_process_exited()
+            return
+        while not self.log_queue.empty():
+            event, payload = self.log_queue.get()
+            if event == "log":
+                if self.stop_requested:
+                    continue
+                self.append_active_log(payload)
+            elif event == "exit":
+                self._finish_dataset_validation(payload)
+                return
+        self._recover_validation_state_if_process_exited()
+
+    def _recover_validation_state_if_process_exited(self):
+        handle = getattr(self.app, "validation_handle", None)
+        if not self.is_detecting or handle is None or not self.is_val_mode():
+            return
+        exit_code = handle.process.poll()
+        if exit_code is None:
+            return
+        self._finish_dataset_validation(exit_code)
+
+    def _finish_dataset_validation(self, exit_code: int):
+        self._restore_temporary_validation_yaml_if_needed()
+        if self.stop_requested:
+            self.append_active_log("验证已停止。")
+            self.app.status.setText("验证已停止")
+        else:
+            self.append_active_log(f"验证进程结束，退出码：{exit_code}")
+            self.app.status.setText("验证结束" if exit_code == 0 else "验证异常结束")
+        self.poll_timer.stop()
+        self.is_detecting = False
+        self.stop_requested = False
+        self.start_det_btn.setEnabled(True)
+        self.stop_det_btn.setEnabled(False)
+        self.log_queue = None
+        self.app.validation_handle = None
+        self.counter.setText("验证模式")
 
     def handle_result(self, payload):
         if _is_live_source_mode(self.mode_combo.currentText()):
@@ -490,7 +821,7 @@ class ValidatePage(BasePage):
                     len(self.detect_results),
                 )
             )
-            self.detect_log.append(_build_detection_log_message(payload))
+            self.append_active_log(_build_detection_log_message(payload))
 
     def show_detection_payload(self, payload):
         self.source_view.set_pil_image(payload["source_image"])
@@ -513,7 +844,7 @@ class ValidatePage(BasePage):
                 len(self.detect_results),
             )
         )
-        self.detect_log.append(_build_detection_log_message(payload))
+        self.append_active_log(_build_detection_log_message(payload))
 
     def first_result(self):
         if not self.detect_results:
@@ -622,7 +953,7 @@ class ValidatePage(BasePage):
         dialog.exec()
 
     def open_detection_save_dir(self):
-        save_dir = Path(self.app.settings["validation"]["save_dir"])
+        save_dir = Path(self.resolve_path_text(self.save_edit))
         save_dir.mkdir(parents=True, exist_ok=True)
         os.startfile(save_dir)
 

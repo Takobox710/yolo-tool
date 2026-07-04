@@ -79,6 +79,20 @@ def test_direct_script_hidden_train_entry_has_package_context():
     assert "attempted relative import" not in result.stderr
 
 
+def test_direct_script_hidden_val_entry_has_package_context():
+    result = subprocess.run(
+        [sys.executable, "scr/main.py", "--yolo-val"],
+        cwd=Path.cwd(),
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "Usage: --yolo-val" in result.stderr
+    assert "attempted relative import" not in result.stderr
+
+
 def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_SPEC.exists()
     assert PACKAGING_SCRIPT.exists()
@@ -139,13 +153,12 @@ def test_qt_app_matches_reference_ui_sections():
         "标注预览",
         "批量重命名",
         "图片压缩",
-        "批量检测结果",
-        "show_result_list",
-        "open_detection_save_dir",
-        "模型配置",
-        "检测日志",
-        "源",
-        "检测结果",
+            "批量检测结果",
+            "show_result_list",
+            "open_detection_save_dir",
+            "模型配置",
+            "源",
+            "检测结果",
         "检测结果详情表",
         "status_cards",
         "QStackedWidget",
@@ -165,6 +178,7 @@ def test_qt_app_matches_reference_ui_sections():
     assert "sidebar.setFixedWidth(180)" in src
     assert 'title = QLabel("模型训练")' not in src
     assert 'title = QLabel("模型验证")' not in src
+    assert 'QLabel("模型配置")' in VALIDATE_VIEW.read_text(encoding="utf-8")
     assert "最近活动" not in src
     assert '"自动任务类型"' not in src
     assert '"导出格式"' not in src
@@ -424,12 +438,12 @@ def test_pages_add_placeholders_and_help_icons(tmp_path):
     assert train_page.edits["epochs"].placeholderText() == "例如 300"
     assert convert_page.images_edit.placeholderText() == "选择待转换的图片目录"
     assert preview_page.image_edit.placeholderText() == "选择待预览的图片目录"
-    assert rename_page.prefix_edit.placeholderText() == "例如 weld"
+    assert rename_page.prefix_edit.placeholderText() == "例如 A"
     assert resize_page.canvas_edit.placeholderText() == "例如 960"
     assert validate_page.conf_edit.placeholderText() == "例如 0.25"
     assert int(convert_page.log.focusPolicy()) == int(convert_page.log.focusPolicy().NoFocus)
     assert int(resize_page.log.focusPolicy()) == int(resize_page.log.focusPolicy().NoFocus)
-    assert int(validate_page.detect_log.focusPolicy()) == int(validate_page.detect_log.focusPolicy().NoFocus)
+    assert int(validate_page.val_log.focusPolicy()) == int(validate_page.val_log.focusPolicy().NoFocus)
     assert int(settings_page.log.focusPolicy()) == int(settings_page.log.focusPolicy().NoFocus)
     assert int(train_page.log.focusPolicy()) == int(train_page.log.focusPolicy().NoFocus)
     train_labels = [label for label in train_page.findChildren(QLabel) if "ⓘ" in label.text()]
@@ -1166,3 +1180,235 @@ def test_validation_page_uses_best_when_last_is_selected_and_flag_turns_off(tmp_
     page.refresh_model_choices()
 
     assert page.model_combo.currentText() == "train-8\\best.pt"
+
+
+def test_validation_page_supports_dataset_val_mode(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.mode_combo.setCurrentText("数据集验证")
+
+    assert page.start_det_btn.text() == "开始验证"
+    assert not page.data_box.isHidden()
+    assert not page.source_scope_box.isHidden()
+    assert not page.save_box.isHidden()
+    assert not page.open_val_save_btn.isHidden()
+    assert page.source_box.isHidden()
+    assert not page.val_log_panel.isHidden()
+    assert page.toolbar_widget.isHidden()
+    assert page.views_widget.isHidden()
+    assert page.table_panel.isHidden()
+    assert page.counter.text() == "验证模式"
+    assert page.save_edit.text() == str(Path("result") / "gui_val")
+
+
+def test_validation_page_uses_dataset_scope_combo_for_folder_mode(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["validation"]["source_mode"] = "图片/视频文件夹"
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.mode_combo.setCurrentText("图片/视频文件夹")
+
+    assert not page.source_box.isHidden()
+    assert page.data_box.isHidden()
+    assert page.source_scope_box.isHidden()
+    assert page.source_combo.currentText() == "全部图片"
+    assert page.open_val_save_btn.isHidden()
+    assert (
+        page.source_combo.lineEdit().placeholderText()
+        == "可选：选择自定义图片文件夹；也可直接选择固定来源"
+    )
+
+
+def test_validation_page_uses_project_root_cwd_for_dataset_val(monkeypatch, tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.paths import ROOT
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    model_path = tmp_path / "result" / "train-1" / "weights" / "best.pt"
+    data_path = tmp_path / "data" / "data.yaml"
+    model_path.parent.mkdir(parents=True)
+    data_path.parent.mkdir(parents=True)
+    model_path.write_text("weights", encoding="utf-8")
+    data_path.write_text("path: data\nval: val/images\nnames: ['weld']\n", encoding="utf-8")
+    settings["validation"]["model_path"] = str(model_path)
+    settings["validation"]["data"] = str(data_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+    captured = {}
+
+    class _FakeProcess:
+        def poll(self):
+            return None
+
+    fake_handle = SimpleNamespace(process=_FakeProcess())
+
+    def fake_spawn(command, cwd, queue):
+        captured["command"] = command
+        captured["cwd"] = cwd
+        captured["queue"] = queue
+        return fake_handle
+
+    monkeypatch.setattr("scr.ui.views.validation.spawn_logged_process", fake_spawn)
+
+    page = ValidatePage(fake_app)
+    page.on_show()
+    page.model_combo.setCurrentText(str(model_path))
+    page.mode_combo.setCurrentText("数据集验证")
+    page.start_detection()
+
+    assert captured["cwd"] == str(ROOT)
+    page._finish_dataset_validation(0)
+
+
+def test_validation_page_temporarily_rewrites_val_split_for_dataset_val(monkeypatch, tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    model_path = tmp_path / "result" / "train-1" / "weights" / "best.pt"
+    data_dir = tmp_path / "data"
+    data_path = data_dir / "data.yaml"
+    model_path.parent.mkdir(parents=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    model_path.write_text("weights", encoding="utf-8")
+    original_yaml = "\n".join(
+        [
+            "path: .",
+            "train: train/images",
+            "val: val/images",
+            "test: test/images",
+            "names: ['weld']",
+        ]
+    ) + "\n"
+    data_path.write_text(original_yaml, encoding="utf-8")
+    settings["validation"]["model_path"] = str(model_path)
+    settings["validation"]["data"] = str(data_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    class _FakeProcess:
+        def poll(self):
+            return None
+
+    fake_handle = SimpleNamespace(process=_FakeProcess())
+
+    def fake_spawn(command, cwd, queue):
+        return fake_handle
+
+    monkeypatch.setattr("scr.ui.views.validation.spawn_logged_process", fake_spawn)
+
+    page = ValidatePage(fake_app)
+    page.on_show()
+    page.mode_combo.setCurrentText("数据集验证")
+    page.model_combo.setCurrentText(str(model_path))
+    page.source_scope_combo.setCurrentText("全部图片")
+    page.start_detection()
+
+    rewritten = data_path.read_text(encoding="utf-8")
+    assert "val: images" in rewritten
+    assert "val: val/images" not in rewritten
+
+    page._restore_temporary_validation_yaml_if_needed()
+
+    assert data_path.read_text(encoding="utf-8") == original_yaml
+
+
+def test_validation_page_folder_mode_uses_batch_worker_not_single_start(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["validation"]["source_mode"] = "图片/视频文件夹"
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.source_items = [tmp_path / "a.jpg", tmp_path / "b.jpg"]
+    called = {"single": False, "worker": False}
+
+    monkeypatch.setattr(page, "refresh_source_items", lambda: None)
+    monkeypatch.setattr(
+        page,
+        "start_current_source_detection",
+        lambda: called.__setitem__("single", True),
+    )
+
+    class _FakeWorker:
+        def __init__(self, config, stop_event):
+            called["worker"] = True
+            self.result_payload = SimpleNamespace(connect=lambda _fn: None)
+            self.finished_with_results = SimpleNamespace(connect=lambda _fn: None)
+            self.failed = SimpleNamespace(connect=lambda _fn: None)
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr("scr.ui.views.validation.DetectionWorker", _FakeWorker)
+
+    page.mode_combo.setCurrentText("图片/视频文件夹")
+    page.start_detection()
+
+    assert called["single"] is False
+    assert called["worker"] is True

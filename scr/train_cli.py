@@ -73,3 +73,29 @@ def run_export_cli(argv: list[str]) -> int:
     model = YOLO(str(model_path))
     model.export(**options)
     return 0
+
+
+def run_val_cli(argv: list[str]) -> int:
+    if len(argv) < 2:
+        raise SystemExit("Usage: --yolo-val <detect|obb> val key=value ...")
+    task_mode, command, *items = argv
+    if command != "val":
+        raise SystemExit(f"Unsupported validation command: {command}")
+
+    from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
+
+    ensure_cv2_highgui_compat()
+    from ultralytics import YOLO
+
+    options = _parse_key_values(items)
+    model_path = options.pop("model", None)
+    if not model_path:
+        raise SystemExit("Missing model=... for validation")
+    data_path = options.get("data")
+    if not data_path:
+        raise SystemExit("Missing data=... for validation")
+    if task_mode != "obb" and infer_task_mode_from_config({"model": model_path}) == "obb":
+        task_mode = "obb"
+    model = YOLO(str(model_path))
+    model.val(task=task_mode, **options)
+    return 0

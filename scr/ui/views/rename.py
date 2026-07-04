@@ -37,7 +37,7 @@ class RenameTab(BasePage):
         self.prefix_box, self.prefix_edit = self.field(
             "命名前缀",
             str(app.settings.get("rename", {}).get("prefix", "A")),
-            placeholder="例如 weld",
+            placeholder="例如 A",
         )
         self.start_box, self.start_edit = self.field(
             "起始编号",

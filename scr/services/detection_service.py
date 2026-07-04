@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+import yaml
+
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
@@ -85,7 +87,44 @@ def extract_detection_items(result: Any) -> list[DetectionItem]:
 def build_save_dir(base_dir: Path) -> Path:
     target = Path(base_dir) / time.strftime("%Y%m%d_%H%M%S")
     target.mkdir(parents=True, exist_ok=True)
+    (target / "labels").mkdir(parents=True, exist_ok=True)
     return target
+
+
+def _normalize_point(value: float, size: int) -> float:
+    return 0.0 if size <= 0 else value / float(size)
+
+
+def save_detection_label_file(
+    label_path: Path,
+    items: list[DetectionItem],
+    image_width: int,
+    image_height: int,
+) -> None:
+    lines: list[str] = []
+    for item in items:
+        is_obb = len(item.points) >= 4 and abs(item.angle) > 1e-6
+        if is_obb:
+            coords: list[str] = []
+            for x, y in item.points[:4]:
+                coords.append(f"{_normalize_point(x, image_width):.6f}")
+                coords.append(f"{_normalize_point(y, image_height):.6f}")
+            lines.append("0 " + " ".join(coords))
+            continue
+        lines.append(
+            "0 "
+            + " ".join(
+                [
+                    f"{_normalize_point(item.center_x, image_width):.6f}",
+                    f"{_normalize_point(item.center_y, image_height):.6f}",
+                    f"{_normalize_point(item.width, image_width):.6f}",
+                    f"{_normalize_point(item.height, image_height):.6f}",
+                ]
+            )
+        )
+    label_path.write_text(
+        ("\n".join(lines) + ("\n" if lines else "")), encoding="utf-8"
+    )
 
 
 def render_result_image_from_frame(result: Any, frame) -> Any:
@@ -96,16 +135,123 @@ def render_result_image_from_frame(result: Any, frame) -> Any:
     return Image.fromarray(cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB))
 
 
-def collect_prediction_sources(source_mode: str, source_path: str | Path) -> list[Path]:
-    source = Path(source_path)
-    if source_mode in {"图片文件夹", "图片/视频文件夹"}:
-        if not source.exists() or not source.is_dir():
-            return []
+def _dataset_sort_key(path: Path) -> tuple[str, list[object]]:
+    return (str(path.parent).lower(), _natural_sort_key(path))
+
+
+def _resolve_dataset_entry_path(
+    raw_path: str | Path,
+    yaml_path: Path,
+    dataset_root: Path,
+) -> Path:
+    path = Path(str(raw_path))
+    if path.is_absolute():
+        return path
+    candidate = dataset_root / path
+    if candidate.exists():
+        return candidate
+    return (yaml_path.parent / path).resolve()
+
+
+def _collect_media_from_dataset_entry(
+    entry: Any,
+    yaml_path: Path,
+    dataset_root: Path,
+) -> list[Path]:
+    if isinstance(entry, list):
+        items: list[Path] = []
+        for value in entry:
+            items.extend(_collect_media_from_dataset_entry(value, yaml_path, dataset_root))
+        return items
+    if not isinstance(entry, str) or not entry.strip():
+        return []
+    target = _resolve_dataset_entry_path(entry.strip(), yaml_path, dataset_root)
+    if not target.exists():
+        return []
+    if target.is_dir():
         return sorted(
-            (path for path in source.iterdir() if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES),
-            key=_natural_sort_key,
+            (
+                path
+                for path in target.rglob("*")
+                if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES
+            ),
+            key=_dataset_sort_key,
         )
-    if source_mode == "图片/视频":
+    if target.suffix.lower() == ".txt":
+        lines = target.read_text(encoding="utf-8").splitlines()
+        items: list[Path] = []
+        for line in lines:
+            resolved = _resolve_dataset_entry_path(line.strip(), target, dataset_root)
+            if resolved.is_file() and resolved.suffix.lower() in SOURCE_SUFFIXES:
+                items.append(resolved)
+        return sorted(items, key=_dataset_sort_key)
+    if target.is_file() and target.suffix.lower() in SOURCE_SUFFIXES:
+        return [target]
+    return []
+
+
+def collect_dataset_prediction_sources(
+    dataset_yaml: str | Path,
+    source_scope: str = "全部图片",
+) -> list[Path]:
+    yaml_path = Path(dataset_yaml)
+    if not yaml_path.exists() or yaml_path.suffix.lower() not in {".yaml", ".yml"}:
+        return []
+    try:
+        payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(payload, dict):
+        return []
+
+    dataset_root_value = payload.get("path")
+    if dataset_root_value:
+        dataset_root = _resolve_dataset_entry_path(dataset_root_value, yaml_path, yaml_path.parent)
+    else:
+        dataset_root = yaml_path.parent.resolve()
+
+    scope_map = {
+        "训练图片": ["train"],
+        "验证图片": ["val"],
+        "测试图片": ["test"],
+        "全部图片": ["train", "val", "test"],
+    }
+    selected_splits = scope_map.get(str(source_scope).strip(), ["train", "val", "test"])
+    results: list[Path] = []
+    seen: set[str] = set()
+    for split in selected_splits:
+        for path in _collect_media_from_dataset_entry(payload.get(split), yaml_path, dataset_root):
+            resolved = str(path.resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            results.append(path.resolve())
+    return results
+
+
+def collect_prediction_sources(
+    source_mode: str,
+    source_path: str | Path,
+    *,
+    dataset_yaml: str | Path | None = None,
+    source_scope: str = "全部图片",
+) -> list[Path]:
+    source_text = str(source_path or "").strip()
+    source = Path(source_text) if source_text else None
+    if source_mode in {"图片文件夹", "图片/视频文件夹"}:
+        if source is not None and source.exists() and source.is_dir():
+            return sorted(
+                (
+                    path
+                    for path in source.iterdir()
+                    if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES
+                ),
+                key=_natural_sort_key,
+            )
+        if dataset_yaml:
+            return collect_dataset_prediction_sources(dataset_yaml, source_scope)
+        return []
+    if source_mode == "图片/视频" and source is not None:
         return [source] if source.is_file() and source.suffix.lower() in SOURCE_SUFFIXES else []
     return []
 
@@ -135,11 +281,18 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
         plotted = result.plot()
         cv2.imwrite(str(save_dir / image_path.name), plotted)
         original = Image.open(image_path).convert("RGB")
+        items = extract_detection_items(result)
+        save_detection_label_file(
+            save_dir / "labels" / f"{image_path.stem}.txt",
+            items,
+            original.width,
+            original.height,
+        )
         callback(
             {
                 "source_image": original,
                 "result_image": Image.fromarray(cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)),
-                "items": extract_detection_items(result),
+                "items": items,
                 "status": f"{index}/{total} {image_path.name}",
                 "source_name": image_path.name,
                 "source_path": str(image_path),
@@ -184,7 +337,12 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
             cap.release()
 
     if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
-        paths = collect_prediction_sources(mode, config["source_path"])
+        paths = collect_prediction_sources(
+            mode,
+            config.get("source_path", ""),
+            dataset_yaml=config.get("data"),
+            source_scope=str(config.get("source_scope", "全部图片")),
+        )
         total = len(paths)
         for index, image_path in enumerate(paths, start=1):
             if stop_event.is_set():
