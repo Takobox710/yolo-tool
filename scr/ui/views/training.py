@@ -157,7 +157,6 @@ class TrainPage(BasePage):
             ("patience", "早停轮数"),
             ("workers", "线程数"),
             ("batch", "批次大小"),
-            ("imgsz", "图片尺寸"),
         ]
         for i, (key, label) in enumerate(param_order):
             placeholder = {
@@ -165,14 +164,12 @@ class TrainPage(BasePage):
                 "patience": "例如 100",
                 "workers": "例如 4",
                 "batch": "例如 16",
-                "imgsz": "例如 640",
             }[key]
             help_text = {
                 "epochs": "训练轮数（epochs）；设置完整训练的总轮次，更大通常效果更好，但训练耗时更长。",
                 "patience": "早停轮数（patience）；连续多轮无提升时自动停止训练，避免无效等待。",
                 "workers": "数据加载线程数（workers）；提高后通常更快，但会占用更多 CPU 和系统内存。",
                 "batch": "批次大小（batch）；每次迭代送入显存的图片数量，受显存容量限制。",
-                "imgsz": "训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。",
             }[key]
             box, edit = self.inline_field(
                 label,
@@ -182,6 +179,17 @@ class TrainPage(BasePage):
             )
             self.edits[key] = edit
             params.addWidget(box, 1 + i // 2, i % 2)
+
+        imgsz_box, self.imgsz_combo = self.inline_combo_field(
+            "图片尺寸",
+            str(training.get("imgsz", 640)),
+            ["640", "960", "1280"],
+            help_text="训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。",
+            editable=True,
+            placeholder="例如 640",
+        )
+        self.imgsz_combo.setMinimumContentsLength(5)
+        params.addWidget(imgsz_box, 3, 0)
 
         # Device at row 3 col 1, next to 图片尺寸
         self.device_box, self.device_combo = self.inline_combo_field(
@@ -284,9 +292,7 @@ class TrainPage(BasePage):
         config["batch"] = (
             self.edits["batch"].text() if self.edits.get("batch") else "16"
         )
-        config["imgsz"] = (
-            self.edits["imgsz"].text() if self.edits.get("imgsz") else "640"
-        )
+        config["imgsz"] = self.imgsz_combo.currentText() if hasattr(self, "imgsz_combo") else "640"
         config["device"] = self.device_combo.currentText()
         selected_model = self._resolve_model_reference(
             self.pretrained_combo.currentText()
@@ -389,7 +395,6 @@ class TrainPage(BasePage):
             ("patience", self.edits["patience"]),
             ("workers", self.edits["workers"]),
             ("batch", self.edits["batch"]),
-            ("imgsz", self.edits["imgsz"]),
         )
         for key, edit in watched_edits:
             edit.textChanged.connect(
@@ -398,6 +403,9 @@ class TrainPage(BasePage):
         self.pretrained_combo.currentTextChanged.connect(self._persist_model_selection)
         self.optimizer_combo.currentTextChanged.connect(
             lambda value: self._persist_training_value("optimizer", value)
+        )
+        self.imgsz_combo.currentTextChanged.connect(
+            lambda value: self._persist_training_value("imgsz", int(value))
         )
         self.device_combo.currentTextChanged.connect(
             lambda value: self._persist_training_value("device", value)

@@ -60,8 +60,17 @@ class ValidatePage(BasePage):
             str(validation["iou"]),
             placeholder="例如 0.45",
         )
+        self.imgsz_box, self.imgsz_combo = self.combo_field(
+            "图片尺寸",
+            str(validation.get("imgsz", 640)),
+            ["640", "960", "1280"],
+            editable=True,
+            placeholder="例如 640",
+        )
+        self.imgsz_combo.setMinimumContentsLength(5)
         conf_row.addWidget(self.conf_box)
         conf_row.addWidget(self.iou_box)
+        conf_row.addWidget(self.imgsz_box)
         left_column.addLayout(conf_row)
 
         # Source config
@@ -85,21 +94,13 @@ class ValidatePage(BasePage):
         )
         left_column.addWidget(self.camera_box)
 
-        # Control
-        control_title = QLabel("检测控制")
-        control_title.setObjectName("sectionTitle")
-        left_column.addWidget(control_title)
         controls = QHBoxLayout()
         self.start_det_btn = QPushButton("批量检测")
         self.start_det_btn.clicked.connect(self.start_detection)
         pause = QPushButton("暂停")
         pause.setObjectName("softButton")
-        self.stop_det_btn = QPushButton("停止")
-        self.stop_det_btn.setObjectName("softButton")
-        self.stop_det_btn.clicked.connect(self.stop_detection)
         controls.addWidget(self.start_det_btn)
         controls.addWidget(pause)
-        controls.addWidget(self.stop_det_btn)
         left_column.addLayout(controls)
 
         log_title = QLabel("检测日志")
@@ -158,8 +159,8 @@ class ValidatePage(BasePage):
         right_widget = QWidget()
         right_widget.setLayout(right)
         split.addWidget(right_widget)
-        split.setStretch(0, 2)
-        split.setStretch(1, 7)
+        split.setStretch(0, 1)
+        split.setStretch(1, 3)
 
         self.mode_combo.currentTextChanged.connect(self.update_source_mode)
         self.update_source_mode(self.mode_combo.currentText())
@@ -304,6 +305,9 @@ class ValidatePage(BasePage):
         self.iou_edit.textChanged.connect(
             lambda text: self._persist_validation_numeric("iou", text)
         )
+        self.imgsz_combo.currentTextChanged.connect(
+            lambda text: self._persist_validation_integer("imgsz", text)
+        )
 
     def _persist_validation_model(self, _text: str):
         self.app.settings.setdefault("validation", {})["model_path"] = (
@@ -318,6 +322,13 @@ class ValidatePage(BasePage):
     def _persist_validation_numeric(self, key: str, text: str):
         try:
             value = float(text)
+        except ValueError:
+            value = text
+        self._persist_validation_value(key, value)
+
+    def _persist_validation_integer(self, key: str, text: str):
+        try:
+            value = int(text)
         except ValueError:
             value = text
         self._persist_validation_value(key, value)
@@ -353,6 +364,7 @@ class ValidatePage(BasePage):
             "camera_index": int(self.camera_combo.currentText()),
             "confidence": float(self.conf_edit.text()),
             "iou": float(self.iou_edit.text()),
+            "imgsz": int(self.imgsz_combo.currentText()),
             "save_dir": self.app.settings["validation"]["save_dir"],
         }
 
@@ -450,10 +462,6 @@ class ValidatePage(BasePage):
         self.detect_worker = None
         self.is_detecting = False
         self.start_det_btn.setEnabled(True)
-
-    def stop_detection(self):
-        self.detect_stop.set()
-        self.detect_log.append("已请求停止检测。")
 
     def handle_result(self, payload):
         if _is_live_source_mode(self.mode_combo.currentText()):

@@ -124,7 +124,13 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
 
     def predict_image(image_path: Path, index: int, total: int) -> None:
         start = time.perf_counter()
-        result = model.predict(source=str(image_path), conf=config.get("confidence", 0.25), iou=config.get("iou", 0.45), verbose=False)[0]
+        result = model.predict(
+            source=str(image_path),
+            conf=config.get("confidence", 0.25),
+            iou=config.get("iou", 0.45),
+            imgsz=config.get("imgsz", 640),
+            verbose=False,
+        )[0]
         elapsed = time.perf_counter() - start
         plotted = result.plot()
         cv2.imwrite(str(save_dir / image_path.name), plotted)
@@ -152,7 +158,13 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
                     break
                 frame_index += 1
                 start = time.perf_counter()
-                result = model.predict(source=frame, conf=config.get("confidence", 0.25), iou=config.get("iou", 0.45), verbose=False)[0]
+                result = model.predict(
+                    source=frame,
+                    conf=config.get("confidence", 0.25),
+                    iou=config.get("iou", 0.45),
+                    imgsz=config.get("imgsz", 640),
+                    verbose=False,
+                )[0]
                 elapsed = time.perf_counter() - start
                 display_name = f"{source_name} #{frame_index}" if source_name else (f"摄像头 #{frame_index}" if stream_mode else f"frame {frame_index}")
                 callback(

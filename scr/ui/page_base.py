@@ -191,7 +191,16 @@ class BasePage(QWidget):
             help_text=help_text,
         )
 
-    def combo_field(self, label: str, value: str, values: list[str], help_text: str = ""):
+    def combo_field(
+        self,
+        label: str,
+        value: str,
+        values: list[str],
+        help_text: str = "",
+        *,
+        editable: bool = False,
+        placeholder: str = "",
+    ):
         box = QWidget()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -199,9 +208,12 @@ class BasePage(QWidget):
             label, help_text=help_text, object_name="fieldLabel"
         )
         combo = QComboBox()
+        combo.setEditable(editable)
         combo.addItems(values)
-        if value in values:
-            combo.setCurrentText(value)
+        if editable:
+            self._configure_editable_combo(combo, placeholder)
+        if str(value):
+            combo.setCurrentText(str(value))
         layout.addWidget(caption_box)
         layout.addWidget(combo)
         return box, combo
@@ -236,7 +248,14 @@ class BasePage(QWidget):
         return box, edit
 
     def inline_combo_field(
-        self, label: str, value: str, values: list[str], help_text: str = ""
+        self,
+        label: str,
+        value: str,
+        values: list[str],
+        help_text: str = "",
+        *,
+        editable: bool = False,
+        placeholder: str = "",
     ):
         box = QWidget()
         layout = QHBoxLayout(box)
@@ -248,9 +267,12 @@ class BasePage(QWidget):
             fixed_width=88,
         )
         combo = QComboBox()
+        combo.setEditable(editable)
         combo.addItems(values)
-        if value in values:
-            combo.setCurrentText(value)
+        if editable:
+            self._configure_editable_combo(combo, placeholder)
+        if str(value):
+            combo.setCurrentText(str(value))
         layout.addWidget(caption_box)
         layout.addWidget(combo, 1)
         return box, combo
@@ -323,10 +345,9 @@ class BasePage(QWidget):
         combo = QComboBox()
         combo.setEditable(True)
         combo.addItems(values)
-        if placeholder and combo.lineEdit():
-            combo.lineEdit().setPlaceholderText(placeholder)
-        if value in values:
-            combo.setCurrentText(value)
+        self._configure_editable_combo(combo, placeholder)
+        if str(value):
+            combo.setCurrentText(str(value))
         row.addWidget(combo, 1)
         if browse:
             btn = QPushButton("选择")
@@ -335,6 +356,21 @@ class BasePage(QWidget):
             row.addWidget(btn)
         outer.addLayout(row)
         return box, combo
+
+    def _configure_editable_combo(
+        self, combo: QComboBox, placeholder: str = ""
+    ) -> None:
+        line_edit = combo.lineEdit()
+        if line_edit is None:
+            return
+        line_edit.setFrame(False)
+        line_edit.setContentsMargins(0, 0, 0, 0)
+        line_edit.setTextMargins(0, 0, 0, 0)
+        line_edit.setStyleSheet(
+            "QLineEdit { background: transparent; border: 0; padding: 0; margin: 0; }"
+        )
+        if placeholder:
+            line_edit.setPlaceholderText(placeholder)
 
     def choose_dir(self, edit: QLineEdit):
         current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())

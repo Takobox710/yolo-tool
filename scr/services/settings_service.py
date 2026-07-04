@@ -123,6 +123,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "camera_index": 0,
             "confidence": 0.25,
             "iou": 0.45,
+            "imgsz": 640,
             "save_dir": str(project_root / "result" / "gui_predict"),
         },
         "conversion": {
