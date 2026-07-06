@@ -221,12 +221,49 @@ def test_page_base_reexports_shared_widgets():
     assert ImageView is WidgetImageView
 
 
+def test_base_page_status_text_uses_qmainwindow_status_bar(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.page_base import BasePage
+    from scr.ui.qt import QApplication, QMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = QMainWindow()
+    window.settings = build_default_settings(tmp_path)
+    window.settings_service = SimpleNamespace(save=lambda _data: None)
+
+    page = BasePage(window)
+    page.set_status_text("检测中")
+
+    assert window.statusBar().currentMessage() == "检测中"
+
+
 def test_home_page_can_be_constructed_and_refreshed(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
 
     from scr.services.settings_service import build_default_settings
     from scr.ui.qt import QApplication, QSizePolicy
     from scr.ui.views.home import HomePage
+
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "labels"
+    images_dir.mkdir()
+    labels_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    Image.new("RGB", (32, 32), "white").save(images_dir / "2.jpg")
+    (images_dir / "1.json").write_text(
+        json.dumps({"shapes": [{"label": "weld"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (images_dir / "2.json").write_text(
+        json.dumps({"shapes": []}, ensure_ascii=False), encoding="utf-8"
+    )
+    (labels_dir / "1.txt").write_text("0 0.5 0.5 0.2 0.2\n0 0.4 0.4 0.1 0.1\n", encoding="utf-8")
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
@@ -240,6 +277,8 @@ def test_home_page_can_be_constructed_and_refreshed(tmp_path):
     margins = page.layout().contentsMargins()
 
     assert page.overview_stats["project"].toolTip() == str(tmp_path)
+    assert page.overview_stats["image_count"].toolTip() == "2"
+    assert page.overview_stats["label_count"].toolTip() == "1"
     assert page.minimumHeight() == 650
     assert margins.left() == 16
     assert margins.top() == 16
@@ -642,6 +681,405 @@ def test_convert_page_keeps_yolo_path_editable_when_labelme_mode_changes(tmp_pat
     assert page.line_edit.isEnabled() is False
 
 
+def test_annotation_page_uses_picture_list_header_and_count(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication, QLabel
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    Image.new("RGB", (32, 32), "white").save(images_dir / "2.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    labels = [label.text() for label in page.findChildren(QLabel)]
+
+    assert "图片列表：" in labels
+    assert page.file_count_label.text() == "1/2"
+
+
+def test_annotation_page_picture_list_marks_annotated_images(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "images"
+    images_dir.mkdir(exist_ok=True)
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    Image.new("RGB", (32, 32), "white").save(images_dir / "2.jpg")
+    (labels_dir / "1.json").write_text(
+        json.dumps(
+            {
+                "imagePath": "1.jpg",
+                "imageWidth": 32,
+                "imageHeight": 32,
+                "shapes": [
+                    {
+                        "label": "weld",
+                        "points": [[1, 1], [10, 10]],
+                        "shape_type": "rectangle",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    items = [page.file_list.item(i).text() for i in range(page.file_list.count())]
+
+    assert items[0].startswith("☑︎ ")
+    assert items[1].startswith("☐ ")
+
+
+def test_ai_prelabel_dialog_uses_expected_range_count(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AiPrelabelDialog, AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    Image.new("RGB", (32, 32), "white").save(images_dir / "2.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AiPrelabelDialog(page)
+
+    assert dialog.range_count_label.text() == "已选择 1 张图片"
+    dialog.range_combo.setCurrentText("全部图片")
+    assert dialog.range_count_label.text() == "已选择 2 张图片"
+
+
+def test_ai_prelabel_dialog_supports_following_and_custom_ranges(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AiPrelabelDialog, AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    Image.new("RGB", (32, 32), "white").save(images_dir / "2.jpg")
+    Image.new("RGB", (32, 32), "white").save(images_dir / "3.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    page.change_current_index(1)
+    dialog = AiPrelabelDialog(page)
+
+    dialog.range_combo.setCurrentText("当前及以后图片")
+    assert dialog.range_count_label.text() == "已选择 2 张图片"
+
+    dialog.custom_selected_images = [page.image_items[0], page.image_items[2]]
+    dialog.range_combo.setCurrentText("自定义图片")
+    assert dialog.range_count_label.isHidden() is True
+    assert dialog.range_list_btn.isHidden() is False
+    assert dialog.range_list_btn.text() == "列表"
+
+
+def test_custom_ai_image_selection_dialog_bulk_actions_work(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import QApplication, QEvent, Qt
+    from scr.ui.views.annotation import CustomAiImageSelectionDialog
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QMouseEvent
+
+    app = QApplication.instance() or QApplication([])
+    image_items = [tmp_path / f"{index}.jpg" for index in range(1, 4)]
+    dialog = CustomAiImageSelectionDialog(image_items, [image_items[0]])
+
+    assert dialog.selected_image_paths() == [image_items[0]]
+    assert dialog.selected_count_label.text() == "已选择 1 张图片"
+
+    dialog.select_all_visible()
+    assert dialog.selected_image_paths() == image_items
+    assert dialog.selected_count_label.text() == "已选择 3 张图片"
+
+    dialog.invert_visible_selection()
+    assert dialog.selected_image_paths() == []
+
+    dialog.select_all_visible()
+    dialog.clear_visible_selection()
+    assert dialog.selected_image_paths() == []
+
+
+def test_custom_ai_image_selection_dialog_supports_drag_select(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import QApplication, QEvent, Qt
+    from scr.ui.views.annotation import CustomAiImageSelectionDialog
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QMouseEvent
+
+    app = QApplication.instance() or QApplication([])
+    image_items = [tmp_path / f"{index}.jpg" for index in range(1, 5)]
+    dialog = CustomAiImageSelectionDialog(image_items, [])
+    dialog.show()
+    app.processEvents()
+
+    first_item = dialog.listing.item(0)
+    third_item = dialog.listing.item(2)
+    first_rect = dialog.listing.visualItemRect(first_item)
+    third_rect = dialog.listing.visualItemRect(third_item)
+    press_pos = first_rect.center()
+    move_pos = third_rect.center()
+
+    press_event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        press_pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    move_event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        move_pos,
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    release_event = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        move_pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    QApplication.sendEvent(dialog.listing.viewport(), press_event)
+    QApplication.sendEvent(dialog.listing.viewport(), move_event)
+    QApplication.sendEvent(dialog.listing.viewport(), release_event)
+
+    assert dialog.selected_image_paths() == image_items[:3]
+    assert dialog.selected_count_label.text() == "已选择 3 张图片"
+
+
+def test_custom_ai_image_selection_dialog_auto_scrolls_near_bottom_edge(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import QApplication, QEvent, Qt
+    from scr.ui.views.annotation import CustomAiImageSelectionDialog
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QMouseEvent
+
+    app = QApplication.instance() or QApplication([])
+    image_items = [tmp_path / f"{index:02d}.jpg" for index in range(1, 41)]
+    dialog = CustomAiImageSelectionDialog(image_items, [])
+    dialog.resize(320, 260)
+    dialog.show()
+    app.processEvents()
+
+    first_item = dialog.listing.item(0)
+    press_pos = dialog.listing.visualItemRect(first_item).center()
+    edge_pos = QPoint(
+        dialog.listing.viewport().width() // 2,
+        dialog.listing.viewport().height() + 12,
+    )
+
+    press_event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        press_pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    move_event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        edge_pos,
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    release_event = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        edge_pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    scrollbar = dialog.listing.verticalScrollBar()
+    start_value = scrollbar.value()
+
+    QApplication.sendEvent(dialog.listing.viewport(), press_event)
+    QApplication.sendEvent(dialog.listing.viewport(), move_event)
+    assert dialog._auto_scroll_timer.isActive() is True
+    dialog._perform_auto_scroll_step()
+    dialog._perform_auto_scroll_step()
+    QApplication.sendEvent(dialog.listing.viewport(), release_event)
+
+    assert scrollbar.value() > start_value
+    assert dialog._auto_scroll_timer.isActive() is False
+
+
+def test_ai_prelabel_dialog_populates_mapping_from_project_classes(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AiPrelabelDialog, AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["dataset"]["class_names"] = ["weld", "scratch"]
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AiPrelabelDialog(page)
+    dialog.apply_model_labels(["weld", "person"])
+
+    assert dialog.mapping_table.rowCount() == 2
+    first_combo = dialog.mapping_table.cellWidget(0, 2)
+    second_combo = dialog.mapping_table.cellWidget(1, 2)
+    assert first_combo.currentText() == "weld"
+    assert second_combo.currentText() == "-- 跳过 --"
+
+
+def test_ai_prelabel_dialog_lists_trained_best_models_before_base_models(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AiPrelabelDialog, AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    models_dir = tmp_path / "data" / "models"
+    models_dir.mkdir(parents=True)
+    (models_dir / "yolov8s.pt").write_text("base", encoding="utf-8")
+    run_dir = tmp_path / "result" / "train-2" / "weights"
+    run_dir.mkdir(parents=True)
+    (run_dir / "best.pt").write_text("best", encoding="utf-8")
+    (run_dir / "last.pt").write_text("last", encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AiPrelabelDialog(page)
+    items = [dialog.model_combo.itemText(i) for i in range(dialog.model_combo.count())]
+
+    assert items[0] == "train-2\\best.pt"
+    assert "yolov8s.pt" in items
+    assert items.index("train-2\\best.pt") < items.index("yolov8s.pt")
+
+
+def test_ai_prelabel_dialog_persists_preferences_on_close(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AiPrelabelDialog, AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    Image.new("RGB", (32, 32), "white").save(images_dir / "2.jpg")
+    model_path = tmp_path / "data" / "models" / "custom.pt"
+    model_path.parent.mkdir(parents=True)
+    model_path.write_text("model", encoding="utf-8")
+
+    saved_settings = {}
+
+    def save_settings(data):
+        saved_settings.clear()
+        saved_settings.update(data)
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=save_settings),
+    )
+
+    page = AnnotationPage(fake_app)
+    first_dialog = AiPrelabelDialog(page)
+    first_dialog.model_combo.setCurrentText(str(model_path))
+    first_dialog.conf_spin.setValue(0.65)
+    first_dialog.iou_spin.setValue(0.35)
+    first_dialog.range_combo.setCurrentText("自定义图片")
+    first_dialog.replace_radio.setChecked(True)
+    first_dialog.custom_selected_images = [page.image_items[1]]
+    first_dialog.accept()
+
+    assert saved_settings["annotation"]["ai_prelabel"]["confidence"] == 0.65
+    assert saved_settings["annotation"]["ai_prelabel"]["iou"] == 0.35
+    assert saved_settings["annotation"]["ai_prelabel"]["range_mode"] == "自定义图片"
+    assert saved_settings["annotation"]["ai_prelabel"]["process_mode"] == "替换"
+    assert saved_settings["annotation"]["ai_prelabel"]["custom_selected_images"] == ["images\\2.jpg"]
+
+    second_dialog = AiPrelabelDialog(page)
+    assert second_dialog.conf_spin.value() == 0.65
+    assert second_dialog.iou_spin.value() == 0.35
+    assert second_dialog.current_range_mode() == "自定义图片"
+    assert second_dialog.current_process_mode() == "替换"
+    assert second_dialog.custom_selected_images == [page.image_items[1].resolve()]
+
 def test_help_icon_toggle_updates_visibility(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -762,7 +1200,7 @@ def test_workbench_window_uses_new_default_size():
     window = WorkbenchWindow()
 
     assert window.width() == 1100
-    assert window.height() == 770
+    assert window.height() == 740
 
 
 def test_train_page_resolves_model_file_from_data_models(tmp_path):
@@ -1115,7 +1553,7 @@ def test_train_page_recovers_if_process_exits_without_queue_exit_event(tmp_path,
     assert fake_status.text == "训练异常结束"
 
 
-def test_validation_page_lists_only_training_output_models(tmp_path):
+def test_validation_page_lists_base_models_before_training_output_models(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from scr.services.settings_service import build_default_settings
@@ -1144,7 +1582,8 @@ def test_validation_page_lists_only_training_output_models(tmp_path):
 
     items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
 
-    assert items == ["train\\best.pt"]
+    assert items == ["data\\models\\alpha.pt", "train\\best.pt"]
+    assert page._get_model_path() == str((models_dir / "alpha.pt").resolve())
 
 
 def test_validation_page_uses_best_when_last_is_selected_and_flag_turns_off(tmp_path):
@@ -1227,6 +1666,9 @@ def test_validation_page_uses_dataset_scope_combo_for_folder_mode(tmp_path):
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
     settings["validation"]["source_mode"] = "图片/视频文件夹"
+    model_path = tmp_path / "data" / "models" / "alpha.pt"
+    model_path.parent.mkdir(parents=True)
+    model_path.write_text("model", encoding="utf-8")
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),
@@ -1375,6 +1817,9 @@ def test_validation_page_folder_mode_uses_batch_worker_not_single_start(tmp_path
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
     settings["validation"]["source_mode"] = "图片/视频文件夹"
+    model_path = tmp_path / "data" / "models" / "alpha.pt"
+    model_path.parent.mkdir(parents=True)
+    model_path.write_text("model", encoding="utf-8")
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),
@@ -1385,6 +1830,7 @@ def test_validation_page_folder_mode_uses_batch_worker_not_single_start(tmp_path
     )
 
     page = ValidatePage(fake_app)
+    page.model_combo.setCurrentText(str(model_path))
     page.source_items = [tmp_path / "a.jpg", tmp_path / "b.jpg"]
     called = {"single": False, "worker": False}
 
@@ -1398,6 +1844,7 @@ def test_validation_page_folder_mode_uses_batch_worker_not_single_start(tmp_path
     class _FakeWorker:
         def __init__(self, config, stop_event):
             called["worker"] = True
+            self.progress = SimpleNamespace(connect=lambda _fn: None)
             self.result_payload = SimpleNamespace(connect=lambda _fn: None)
             self.finished_with_results = SimpleNamespace(connect=lambda _fn: None)
             self.failed = SimpleNamespace(connect=lambda _fn: None)

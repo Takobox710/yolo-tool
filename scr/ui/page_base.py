@@ -40,6 +40,15 @@ class BasePage(QWidget):
     def save_settings(self):
         self.app.settings_service.save(self.app.settings)
 
+    def set_status_text(self, text: str) -> None:
+        status = getattr(self.app, "status", None)
+        if status is not None and hasattr(status, "setText"):
+            status.setText(text)
+            return
+        status_bar = getattr(self.app, "statusBar", None)
+        if callable(status_bar):
+            status_bar().showMessage(text)
+
     def update_setting(self, *keys: str, value: Any):
         if not keys:
             return

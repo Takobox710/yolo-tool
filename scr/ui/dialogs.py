@@ -75,24 +75,26 @@ class ClassMappingDialog(QDialog):
             str(name).strip() for name in detected_labelme_names if str(name).strip()
         ]
         self.setWindowTitle("自定义类别名称")
-        self.resize(400, 420)
-        self.setMinimumSize(300, 280)
+        self.resize(560, 360)
+        self.setMinimumSize(430, 300)
         layout = QVBoxLayout(self)
-
-        tip = QLabel(
-            "左侧填写 YOLO 类别名称，右侧填写 Labelme 类别名称。多个 Labelme 类别可用英文逗号分隔映射到同一个 YOLO 类别。"
-        )
-        tip.setWordWrap(True)
-        layout.addWidget(tip)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
         tools = QHBoxLayout()
+        tools.setContentsMargins(0, 0, 0, 0)
+        hint = QLabel(f"已识别 {len(self._detected_labelme_names)} 个 Labelme 类别")
+        hint.setToolTip(
+            "左侧填写 YOLO 类别名称，右侧填写 Labelme 类别名称。多个 Labelme 类别可用英文逗号分隔映射到同一个 YOLO 类别。"
+        )
+        tools.addWidget(hint)
+        tools.addStretch(1)
         self.add_btn = QPushButton("新增一行")
         self.add_btn.clicked.connect(lambda: self._append_row(ClassMappingRow("", "")))
         tools.addWidget(self.add_btn)
         self.remove_btn = QPushButton("删除选中")
         self.remove_btn.clicked.connect(self._remove_selected_rows)
         tools.addWidget(self.remove_btn)
-        tools.addStretch(1)
         layout.addLayout(tools)
 
         self.table = _PlainEditTable(0, 2)

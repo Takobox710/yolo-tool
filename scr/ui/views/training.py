@@ -534,7 +534,7 @@ class TrainPage(BasePage):
             command, str(ROOT), self.log_queue
         )
         self.poll_timer.start(150)
-        self.app.status.setText("训练中")
+        self.set_status_text("训练中")
 
     def poll_training_queue(self):
         if self.log_queue is None:
@@ -556,7 +556,7 @@ class TrainPage(BasePage):
             return
         self.stop_requested = True
         self.stop_btn.setEnabled(False)
-        self.app.status.setText("停止训练中")
+        self.set_status_text("停止训练中")
         stop_process(self.app.training_handle)
         self.log.append("已请求停止训练。")
 
@@ -572,10 +572,10 @@ class TrainPage(BasePage):
     def _finish_training(self, exit_code: int):
         if self.stop_requested:
             self.log.append("训练已停止。")
-            self.app.status.setText("训练已停止")
+            self.set_status_text("训练已停止")
         else:
             self.log.append(f"训练进程结束，退出码：{exit_code}")
-            self.app.status.setText("训练结束" if exit_code == 0 else "训练异常结束")
+            self.set_status_text("训练结束" if exit_code == 0 else "训练异常结束")
         self.poll_timer.stop()
         self.is_training = False
         self.stop_requested = False

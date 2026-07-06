@@ -81,14 +81,23 @@ def training_model_dirs(project_root: Path, app_root: Path | None = None) -> lis
     return model_dirs
 
 
-def find_training_model_names(project_root: Path, app_root: Path | None = None) -> list[str]:
-    names: list[str] = []
+def find_training_model_paths(project_root: Path, app_root: Path | None = None) -> list[Path]:
+    paths: list[Path] = []
+    names: set[str] = set()
     for models_dir in training_model_dirs(project_root, app_root):
         if not models_dir.exists():
             continue
         for path in sorted(models_dir.glob("*.pt")):
             if path.is_file() and path.name not in names:
-                names.append(path.name)
+                paths.append(path.resolve())
+                names.add(path.name)
+    return paths
+
+
+def find_training_model_names(project_root: Path, app_root: Path | None = None) -> list[str]:
+    names: list[str] = []
+    for path in find_training_model_paths(project_root, app_root):
+        names.append(path.name)
     return names
 
 
@@ -202,6 +211,7 @@ _find_models_in_dir = find_models_in_dir
 _find_models_full_paths = find_models_full_paths
 _find_model_yaml_files = find_model_yaml_files
 _find_pt_files_in_data_models = find_pt_files_in_data_models
+_find_training_model_paths = find_training_model_paths
 _find_training_model_names = find_training_model_names
 _resolve_training_model_reference = resolve_training_model_reference
 _home_column_widths = home_column_widths

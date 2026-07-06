@@ -133,6 +133,20 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "backup_yolo_files": False,
             "class_name_mappings": {},
         },
+        "annotation": {
+            "auto_save": True,
+            "auto_convert_yolo": False,
+            "line_expand_enabled": False,
+            "line_expand_pixels": 10,
+            "ai_prelabel": {
+                "model_path": "",
+                "confidence": 0.50,
+                "iou": 0.45,
+                "range_mode": "当前图片",
+                "process_mode": "追加",
+                "custom_selected_images": [],
+            },
+        },
         "rename": {
             "prefix": "A",
             "start_index": 1,

@@ -10,8 +10,20 @@ QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
 #sideTitle { color: white; font-size: 18px; font-weight: 700; padding: 8px; }
 #dataNavButton { color: white; background: transparent; border: 0; padding: 10px 14px; text-align: left; }
 #dataNavButton:checked, #dataNavButton:hover { background: #344D66; border-radius: 6px; }
+#annotationSidebar { background: #26394D; border-radius: 8px; }
+#annotationIcon { color: white; font-size: 30px; font-weight: 700; }
+#annotationTitle { color: white; font-size: 24px; font-weight: 700; padding: 4px 0 10px 0; }
+#annotationDivider { color: #536779; background: #536779; max-height: 1px; }
+#annotationToolButton { color: white; background: transparent; border: 0; padding: 10px 8px; text-align: left; font-size: 16px; }
+#annotationToolButton[compactArrowButton="true"] { padding-left: 6px; }
+#annotationToolButton:hover { background: #344D66; border-radius: 5px; }
+#annotationToolButton:disabled { color: #92A0AF; background: transparent; }
+#annotationCanvas { background: #F3F6FA; border: 1px solid #D9E3EC; border-radius: 3px; }
+#annotationRightPanel { background: transparent; }
+#annotationPathLabel { color: #14233A; font-size: 16px; }
+#annotationPrimaryButton { background: #26394D; color: white; border: 0; border-radius: 4px; padding: 9px 10px; }
+#annotationPrimaryButton:hover { background: #344D66; }
 #stack { background: #EEF2F6; }
-#status { background: #F7FAFC; color: #627286; }
 #card { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }
 #pageTitle { color: #1A3857; font-size: 28px; font-weight: 700; }
 #sectionTitle { color: #18344F; font-size: 18px; font-weight: 700; }

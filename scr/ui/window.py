@@ -6,6 +6,7 @@ from scr.theme import STYLE
 from scr.services.runtime_service import stop_process
 from scr.services.settings_service import SettingsService
 from scr.ui.qt import QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QTimer, QVBoxLayout, QWidget, QIcon
+from scr.ui.views.annotation import AnnotationPage
 from scr.ui.views.data import DataPage
 from scr.ui.views.home import HomePage
 from scr.ui.views.settings import SettingsPage
@@ -27,9 +28,10 @@ class WorkbenchWindow(QMainWindow):
         self.export_handle = None
         self.validation_handle = None
         self.current_page_key = "home"
-        self.page_order = ["home", "data", "train", "validate", "settings"]
+        self.page_order = ["home", "annotation", "data", "train", "validate", "settings"]
         self.page_titles = {
             "home": "主页",
+            "annotation": "数据标注",
             "data": "数据处理",
             "train": "模型训练",
             "validate": "模型验证",
@@ -40,7 +42,7 @@ class WorkbenchWindow(QMainWindow):
             app_icon = QIcon(str(icon_path))
             self.setWindowIcon(app_icon)
         self.setWindowTitle("YOLO 本地训练工作台")
-        self.resize(1100, 770)
+        self.resize(1100, 740)
         self.setMinimumSize(800, 600)
         self._build()
 
@@ -83,11 +85,6 @@ class WorkbenchWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setObjectName("stack")
         root_layout.addWidget(self.stack, 1)
-
-        self.status = QLabel("就绪")
-        self.status.setObjectName("status")
-        self.status.setContentsMargins(14, 5, 14, 5)
-        root_layout.addWidget(self.status)
         self.setCentralWidget(root)
         self._preload_pages()
         self.show_page("home")
@@ -127,7 +124,6 @@ class WorkbenchWindow(QMainWindow):
         for name, button in self.nav_buttons.items():
             button.setChecked(name == key)
         self.settings["ui"]["last_page"] = key
-        self.status.setText(f"当前页面：{self.page_titles[key]}")
         active_page = getattr(self.pages[key], "inner_page", self.pages[key])
         hook = getattr(active_page, "on_show", None)
         if hook:
@@ -136,6 +132,8 @@ class WorkbenchWindow(QMainWindow):
     def create_page(self, key: str):
         if key == "home":
             return scroll_page(HomePage(self))
+        if key == "annotation":
+            return AnnotationPage(self)
         if key == "data":
             return scroll_page(DataPage(self))
         if key == "train":
@@ -153,7 +151,6 @@ class WorkbenchWindow(QMainWindow):
 
     def handle_background(self, kind: str, payload):
         if isinstance(payload, dict) and payload.get("error"):
-            self.status.setText("后台任务异常")
             QMessageBox.warning(self, "后台任务异常", payload["error"])
             return
         current = self.stack.currentWidget()
@@ -188,13 +185,12 @@ class WorkbenchWindow(QMainWindow):
         self.settings = self.settings_service.reset_to_defaults()
         self._apply_settings_defaults()
         self.reload_pages(target_page)
-        self.status.setText("已恢复默认设置")
         QMessageBox.information(self, "恢复默认设置", "当前项目设置已恢复为默认值。")
         return self.settings
 
     def closeEvent(self, event):
         self.settings["ui"]["window_width"] = 1100
-        self.settings["ui"]["window_height"] = 770
+        self.settings["ui"]["window_height"] = 740
         self.settings_service.save(self.settings)
         stop_process(self.training_handle)
         stop_process(self.export_handle)

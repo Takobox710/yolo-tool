@@ -164,13 +164,14 @@ class HomePage(BasePage):
         paths = self.app.settings["paths"]
         project_root = self.app.settings["project"]["root"]
         images = Path(paths["images_dir"])
-        labels = Path(paths["labels_dir"])
         image_count = (
             len([p for p in images.glob("*") if p.suffix.lower() in _IMAGE_SUFFIXES])
             if images.exists()
             else 0
         )
-        label_count = self._count_label_entries(labels)
+        label_count = self._count_annotation_files(
+            Path(paths["annotations_dir"]), Path(paths["labels_dir"])
+        )
 
         # Task 3: relative paths (except project folder)
         def set_overview_stat(key: str, text: str):
@@ -269,16 +270,39 @@ class HomePage(BasePage):
                 continue
         return present_ids
 
-    def _count_label_entries(self, labels_dir: Path) -> int:
+    def _count_annotation_files(self, annotations_dir: Path, labels_dir: Path) -> int:
+        json_count = self._count_labelme_annotation_files(annotations_dir)
+        if json_count:
+            return json_count
+        return self._count_yolo_annotation_files(labels_dir)
+
+    def _count_labelme_annotation_files(self, annotations_dir: Path) -> int:
+        if not annotations_dir.exists():
+            return 0
+        total = 0
+        for label_path in annotations_dir.glob("*.json"):
+            try:
+                payload = json.loads(label_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if payload.get("shapes"):
+                total += 1
+        return total
+
+    def _count_yolo_annotation_files(self, labels_dir: Path) -> int:
         if not labels_dir.exists():
             return 0
         total = 0
         for label_path in labels_dir.glob("*.txt"):
-            total += sum(
-                1
-                for line in label_path.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            )
+            try:
+                has_label = any(
+                    line.strip()
+                    for line in label_path.read_text(encoding="utf-8").splitlines()
+                )
+            except OSError:
+                continue
+            if has_label:
+                total += 1
         return total
 
     def refresh_history(self):

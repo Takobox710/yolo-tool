@@ -256,19 +256,47 @@ def collect_prediction_sources(
     return []
 
 
-def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -> None:
+def run_prediction(
+    config: dict,
+    stop_event,
+    callback: Callable[[dict], None],
+    progress_callback: Callable[[str], None] | None = None,
+) -> None:
     from PIL import Image
     import cv2
     from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
 
+    def progress(message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(message)
+
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
-    model = YOLO(config["model_path"])
     mode = config.get("source_mode", "图片文件夹")
+    model_path = str(config.get("model_path") or "").strip()
+    if not model_path:
+        raise ValueError("请选择一个用于检测的模型。")
+    if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
+        paths = collect_prediction_sources(
+            mode,
+            config.get("source_path", ""),
+            dataset_yaml=config.get("data"),
+            source_scope=str(config.get("source_scope", "全部图片")),
+        )
+        if not paths:
+            raise ValueError("未找到可检测的图片或视频，请检查输入源。")
+        progress(f"已找到 {len(paths)} 个待检测文件。")
+    else:
+        paths = []
+        progress(f"正在打开摄像头 {config.get('camera_index', 0)}。")
+    progress(f"正在加载模型：{Path(model_path).name}")
+    model = YOLO(model_path)
     save_dir = build_save_dir(Path(config.get("save_dir", "result/gui_predict")))
+    progress(f"检测结果将保存到：{save_dir}")
 
     def predict_image(image_path: Path, index: int, total: int) -> None:
+        progress(f"正在检测 {index}/{total}：{image_path.name}")
         start = time.perf_counter()
         result = model.predict(
             source=str(image_path),
@@ -302,6 +330,8 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
 
     def predict_video(video_source: int | str, source_name: str) -> None:
         cap = cv2.VideoCapture(video_source)
+        if not cap.isOpened():
+            raise ValueError(f"无法打开检测源：{source_name or video_source}")
         frame_index = 0
         stream_mode = isinstance(video_source, int)
         try:
@@ -337,12 +367,6 @@ def run_prediction(config: dict, stop_event, callback: Callable[[dict], None]) -
             cap.release()
 
     if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
-        paths = collect_prediction_sources(
-            mode,
-            config.get("source_path", ""),
-            dataset_yaml=config.get("data"),
-            source_scope=str(config.get("source_scope", "全部图片")),
-        )
         total = len(paths)
         for index, image_path in enumerate(paths, start=1):
             if stop_event.is_set():

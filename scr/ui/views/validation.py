@@ -11,9 +11,9 @@ from scr.paths import ROOT
 from scr.services.detection_service import collect_prediction_sources
 from scr.services.runtime_service import spawn_logged_process, stop_process
 from scr.services.training_service import build_val_command
-from scr.ui.helpers import _build_detection_log_message, _detection_counter_text, _find_models_full_paths, _is_live_source_mode, _should_store_detection_history, _simplified_model_path, _resolve_project_path
+from scr.ui.helpers import _build_detection_log_message, _detection_counter_text, _find_models_full_paths, _find_training_model_paths, _is_live_source_mode, _should_store_detection_history, _simplified_model_path, _resolve_project_path
 from scr.ui.page_base import BasePage, Card, ImageView
-from scr.ui.qt import Qt, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QListWidget, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit, QTimer, QVBoxLayout, QWidget
+from scr.ui.qt import Qt, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit, QTimer, QVBoxLayout, QWidget
 from scr.ui.workers import DetectionWorker
 
 SOURCE_SCOPE_OPTIONS = ["全部图片", "训练图片", "验证图片", "测试图片"]
@@ -389,6 +389,15 @@ class ValidatePage(BasePage):
         self._all_model_paths = []
         self._model_display_paths = {}
         seen: set[str] = set()
+        for path in _find_training_model_paths(project_root, project_root):
+            resolved_path = path.resolve()
+            resolved = str(resolved_path)
+            if resolved in seen:
+                continue
+            self._all_model_paths.append(resolved_path)
+            display_name = _simplified_model_path(str(resolved_path), project_root)
+            self._model_display_paths[display_name] = resolved_path
+            seen.add(resolved)
         for path in _find_models_full_paths(
             result_dir, show_last_training_models=show_last
         ):
@@ -419,6 +428,8 @@ class ValidatePage(BasePage):
                         selected_display = best_display
                 elif current_path.exists():
                     selected_display = _simplified_model_path(str(current_path), project_root)
+        if not selected_display and display_names:
+            selected_display = display_names[0]
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
         self.model_combo.addItems(display_names)
@@ -530,8 +541,21 @@ class ValidatePage(BasePage):
         return _resolve_project_path(text, self.project_root())
 
     def config(self):
+        model_path = self._get_model_path()
+        try:
+            confidence = float(self.conf_edit.text())
+        except ValueError as exc:
+            raise ValueError("置信度必须是数字。") from exc
+        try:
+            iou = float(self.iou_edit.text())
+        except ValueError as exc:
+            raise ValueError("IoU 必须是数字。") from exc
+        try:
+            imgsz = int(self.imgsz_combo.currentText())
+        except ValueError as exc:
+            raise ValueError("图片尺寸必须是整数。") from exc
         return {
-            "model_path": self._get_model_path(),
+            "model_path": model_path,
             "source_mode": self.mode_combo.currentText(),
             "source_path": self._folder_source_path_for_selection()
             if self.mode_combo.currentText() == "图片/视频文件夹"
@@ -539,14 +563,31 @@ class ValidatePage(BasePage):
             "data": self.resolve_path_text(self.data_edit),
             "source_scope": self.source_scope_combo.currentText(),
             "camera_index": int(self.camera_combo.currentText()),
-            "confidence": float(self.conf_edit.text()),
-            "iou": float(self.iou_edit.text()),
-            "imgsz": int(self.imgsz_combo.currentText()),
+            "confidence": confidence,
+            "iou": iou,
+            "imgsz": imgsz,
             "save_dir": self.resolve_path_text(self.save_edit),
         }
 
-    def single_file_config(self, path: Path) -> dict:
-        config = self.config()
+    def detection_config_or_warn(self) -> dict | None:
+        try:
+            config = self.config()
+        except ValueError as exc:
+            QMessageBox.information(self, "参数无效", str(exc))
+            return None
+        if not str(config.get("model_path") or "").strip():
+            QMessageBox.information(self, "模型为空", "请选择一个用于检测的模型。")
+            return None
+        if (
+            config.get("source_mode") != "摄像头"
+            and not str(config.get("source_path") or "").strip()
+        ):
+            QMessageBox.information(self, "输入源为空", "请先选择有效的输入源。")
+            return None
+        return config
+
+    def single_file_config(self, path: Path, base_config: dict | None = None) -> dict:
+        config = dict(base_config or self.config())
         config["source_mode"] = "图片/视频"
         config["source_path"] = str(path)
         return config
@@ -618,7 +659,17 @@ class ValidatePage(BasePage):
         if self.is_val_mode():
             self.start_dataset_validation()
             return
+        config = self.detection_config_or_warn()
+        if config is None:
+            return
         self.refresh_source_items()
+        if self.mode_combo.currentText() != "摄像头" and not self.source_items:
+            QMessageBox.information(
+                self,
+                "输入源为空",
+                "请先选择有效的输入源，或确认所选来源下存在图片/视频。",
+            )
+            return
         if self.mode_combo.currentText() == "图片/视频":
             if not self.source_items:
                 QMessageBox.information(
@@ -645,14 +696,18 @@ class ValidatePage(BasePage):
         )
         self.detect_index = -1
         self.clear_active_log()
+        self.append_active_log(
+            f"开始检测：模型 {Path(config['model_path']).name}，输入源 {config['source_mode']}。"
+        )
         self.counter.setText(
             "实时预览"
             if _is_live_source_mode(self.mode_combo.currentText())
             else "0/0"
         )
         self.table.setRowCount(0)
-        self.app.status.setText("检测中")
-        self.detect_worker = DetectionWorker(self.config(), self.detect_stop)
+        self.set_status_text("检测中")
+        self.detect_worker = DetectionWorker(config, self.detect_stop)
+        self.detect_worker.progress.connect(self.append_active_log)
         self.detect_worker.result_payload.connect(self.handle_result)
         self.detect_worker.finished_with_results.connect(self.apply_detect_done)
         self.detect_worker.failed.connect(self.apply_detect_error)
@@ -684,7 +739,7 @@ class ValidatePage(BasePage):
         self.poll_timer.start()
         self.table.setRowCount(0)
         self.counter.setText("验证中")
-        self.app.status.setText("验证中")
+        self.set_status_text("验证中")
 
     def start_current_source_detection(self):
         if not self.source_items:
@@ -698,6 +753,9 @@ class ValidatePage(BasePage):
         if self.is_detecting:
             return
         self.refresh_source_items()
+        config = self.detection_config_or_warn()
+        if config is None:
+            return
         source_key = str(Path(path).resolve())
         cached = self.result_by_source.get(source_key)
         if cached:
@@ -713,10 +771,14 @@ class ValidatePage(BasePage):
         self.start_det_btn.setEnabled(False)
         self.stop_det_btn.setEnabled(True)
         self.detect_stop.clear()
-        self.app.status.setText("检测中")
-        self.detect_worker = DetectionWorker(
-            self.single_file_config(path), self.detect_stop
+        self.set_status_text("检测中")
+        self.append_active_log(
+            f"开始检测：模型 {Path(config['model_path']).name}，输入源 {path.name}。"
         )
+        self.detect_worker = DetectionWorker(
+            self.single_file_config(path, config), self.detect_stop
+        )
+        self.detect_worker.progress.connect(self.append_active_log)
         self.detect_worker.result_payload.connect(self.handle_result)
         self.detect_worker.finished_with_results.connect(self.apply_detect_done)
         self.detect_worker.failed.connect(self.apply_detect_error)
@@ -724,7 +786,7 @@ class ValidatePage(BasePage):
 
     def apply_detect_done(self, results):
         self.append_active_log("检测任务结束。")
-        self.app.status.setText("检测结束")
+        self.set_status_text("检测结束")
         self.detect_worker = None
         self.is_detecting = False
         self.start_det_btn.setEnabled(True)
@@ -732,7 +794,7 @@ class ValidatePage(BasePage):
 
     def apply_detect_error(self, message):
         self.append_active_log(message)
-        self.app.status.setText("检测异常")
+        self.set_status_text("检测异常")
         self.detect_worker = None
         self.is_detecting = False
         self.start_det_btn.setEnabled(True)
@@ -744,14 +806,14 @@ class ValidatePage(BasePage):
         if self.is_val_mode():
             self.stop_requested = True
             self.stop_det_btn.setEnabled(False)
-            self.app.status.setText("停止验证中")
+            self.set_status_text("停止验证中")
             stop_process(getattr(self.app, "validation_handle", None))
             self.append_active_log("已请求停止验证。")
             return
         self.detect_stop.set()
         self.stop_det_btn.setEnabled(False)
         self.append_active_log("已请求停止检测。")
-        self.app.status.setText("停止检测中")
+        self.set_status_text("停止检测中")
 
     def poll_validation_queue(self):
         if self.log_queue is None:
@@ -781,10 +843,10 @@ class ValidatePage(BasePage):
         self._restore_temporary_validation_yaml_if_needed()
         if self.stop_requested:
             self.append_active_log("验证已停止。")
-            self.app.status.setText("验证已停止")
+            self.set_status_text("验证已停止")
         else:
             self.append_active_log(f"验证进程结束，退出码：{exit_code}")
-            self.app.status.setText("验证结束" if exit_code == 0 else "验证异常结束")
+            self.set_status_text("验证结束" if exit_code == 0 else "验证异常结束")
         self.poll_timer.stop()
         self.is_detecting = False
         self.stop_requested = False
