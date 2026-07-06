@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -24,6 +25,7 @@ class ProcessHandle:
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+STRUCTURED_OUTPUT_PREFIX = "__YOLO_JSON__:"
 
 
 def sanitize_terminal_line(raw: str) -> str:
@@ -53,6 +55,44 @@ def spawn_logged_process(command: list[str], cwd: str, queue: Queue) -> ProcessH
                 cleaned = sanitize_terminal_line(line)
                 if cleaned:
                     queue.put(("log", cleaned))
+        finally:
+            queue.put(("exit", process.wait()))
+
+    thread = threading.Thread(target=forward, daemon=True)
+    thread.start()
+    return ProcessHandle(process=process, thread=thread)
+
+
+def spawn_structured_process(command: list[str], cwd: str, queue: Queue) -> ProcessHandle:
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        **hidden_subprocess_kwargs(),
+    )
+
+    def forward() -> None:
+        assert process.stdout is not None
+        try:
+            for line in process.stdout:
+                cleaned = sanitize_terminal_line(line)
+                if not cleaned:
+                    continue
+                if cleaned.startswith(STRUCTURED_OUTPUT_PREFIX):
+                    raw_payload = cleaned[len(STRUCTURED_OUTPUT_PREFIX) :]
+                    try:
+                        payload = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        queue.put(("log", cleaned))
+                        continue
+                    queue.put(("structured", payload))
+                    continue
+                queue.put(("log", cleaned))
         finally:
             queue.put(("exit", process.wait()))
 

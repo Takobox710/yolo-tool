@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import math
 import re
 import time
@@ -13,6 +14,25 @@ import yaml
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
 SOURCE_SUFFIXES = IMAGE_SUFFIXES | VIDEO_SUFFIXES
+
+
+def release_inference_runtime() -> None:
+    torch = None
+    try:
+        import torch as _torch
+
+        torch = _torch
+    except Exception:
+        torch = None
+    gc.collect()
+    if torch is None:
+        return
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+    except Exception:
+        pass
 
 
 def _natural_sort_key(path: Path) -> list[object]:
@@ -43,6 +63,49 @@ def scan_candidate_models(result_dir: Path) -> list[Path]:
             if model.exists():
                 candidates.append(model)
     return candidates
+
+
+def find_result_model_paths(
+    result_dir: Path, *, show_last_training_models: bool = True
+) -> list[Path]:
+    models = scan_candidate_models(result_dir)
+    if show_last_training_models:
+        return models
+    return [path for path in models if path.name.lower() != "last.pt"]
+
+
+def is_live_source_mode(source_mode: str) -> bool:
+    return str(source_mode).strip() == "摄像头"
+
+
+def should_store_detection_history(source_mode: str) -> bool:
+    return not is_live_source_mode(source_mode)
+
+
+def detection_counter_text(
+    source_mode: str, detect_index: int, result_count: int
+) -> str:
+    if is_live_source_mode(source_mode):
+        return "实时预览"
+    if result_count <= 0 or detect_index < 0:
+        return "0/0"
+    return f"{detect_index + 1}/{result_count}"
+
+
+def build_detection_log_message(payload: dict) -> str:
+    elapsed = float(payload.get("elapsed") or 0.0)
+    fps = payload.get("fps")
+    if fps is None:
+        fps = (1 / elapsed) if elapsed else 0.0
+    fps_text = (
+        f"实时帧率 FPS: {fps:.1f}"
+        if payload.get("stream_mode")
+        else f"FPS: {fps:.1f}"
+    )
+    return (
+        f"{payload.get('status')} | 单张耗时: {elapsed * 1000:.1f}ms | "
+        f"{fps_text} | 结果: {len(payload.get('items') or [])} 个"
+    )
 
 
 def normalize_detection_item(label: str, confidence: float, points: list[tuple[float, float]]) -> DetectionItem:
@@ -307,7 +370,8 @@ def run_prediction(
         )[0]
         elapsed = time.perf_counter() - start
         plotted = result.plot()
-        cv2.imwrite(str(save_dir / image_path.name), plotted)
+        result_path = save_dir / image_path.name
+        cv2.imwrite(str(result_path), plotted)
         original = Image.open(image_path).convert("RGB")
         items = extract_detection_items(result)
         save_detection_label_file(
@@ -324,6 +388,7 @@ def run_prediction(
                 "status": f"{index}/{total} {image_path.name}",
                 "source_name": image_path.name,
                 "source_path": str(image_path),
+                "result_path": str(result_path),
                 "elapsed": elapsed,
             }
         )
@@ -366,15 +431,19 @@ def run_prediction(
         finally:
             cap.release()
 
-    if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
-        total = len(paths)
-        for index, image_path in enumerate(paths, start=1):
-            if stop_event.is_set():
-                break
-            if image_path.suffix.lower() in IMAGE_SUFFIXES:
-                predict_image(image_path, index, total)
-            else:
-                predict_video(str(image_path), image_path.name)
-    else:
-        source = int(config.get("camera_index", 0)) if mode == "摄像头" else config.get("source_path")
-        predict_video(source, "")
+    try:
+        if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
+            total = len(paths)
+            for index, image_path in enumerate(paths, start=1):
+                if stop_event.is_set():
+                    break
+                if image_path.suffix.lower() in IMAGE_SUFFIXES:
+                    predict_image(image_path, index, total)
+                else:
+                    predict_video(str(image_path), image_path.name)
+        else:
+            source = int(config.get("camera_index", 0)) if mode == "摄像头" else config.get("source_path")
+            predict_video(source, "")
+    finally:
+        del model
+        release_inference_runtime()

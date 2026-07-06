@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+from scr.ui.page_base import Card, ImageView
+from scr.ui.qt import (
+    Qt,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+from scr.ui.views.validation_sources import SOURCE_SCOPE_OPTIONS
+
+
+def build_validation_layout(page, app) -> None:
+    layout = page.page_layout()
+    split = QHBoxLayout()
+    layout.addLayout(split, 1)
+
+    left_shell = Card()
+    left_column = left_shell.layout
+    validation = app.settings["validation"]
+
+    model_title = QLabel("模型配置")
+    model_title.setObjectName("sectionTitle")
+    left_column.addWidget(model_title)
+    model_box, page.model_combo = page.stacked_combo_field(
+        "选择模型",
+        "",
+        [],
+        browse=lambda combo: page._choose_pt_for_combo(combo),
+        placeholder="选择或输入模型路径",
+    )
+    page.model_combo.setMinimumWidth(140)
+    left_column.addWidget(model_box)
+
+    conf_row = QHBoxLayout()
+    page.conf_box, page.conf_edit = page.field(
+        "置信度",
+        str(validation["confidence"]),
+        placeholder="例如 0.25",
+    )
+    page.iou_box, page.iou_edit = page.field(
+        "IoU",
+        str(validation["iou"]),
+        placeholder="例如 0.45",
+    )
+    page.imgsz_box, page.imgsz_combo = page.combo_field(
+        "图片尺寸",
+        str(validation.get("imgsz", 640)),
+        ["640", "960", "1280"],
+        editable=True,
+        placeholder="例如 640",
+    )
+    page.imgsz_combo.setMinimumContentsLength(5)
+    conf_row.addWidget(page.conf_box)
+    conf_row.addWidget(page.iou_box)
+    conf_row.addWidget(page.imgsz_box)
+    left_column.addLayout(conf_row)
+
+    page.mode_box, page.mode_combo = page.combo_field(
+        "检测模式",
+        validation.get("source_mode", "图片/视频文件夹"),
+        ["图片/视频文件夹", "图片/视频", "摄像头", "数据集验证"],
+    )
+    left_column.addWidget(page.mode_box)
+    initial_source_text = validation["source_path"] or validation.get(
+        "source_scope", "全部图片"
+    )
+    page.source_box, page.source_combo = page.stacked_combo_field(
+        "输入源",
+        initial_source_text,
+        SOURCE_SCOPE_OPTIONS,
+        browse=lambda combo: page.choose_detection_source(combo),
+        placeholder="选择输入源或自定义图片文件夹",
+    )
+    left_column.addWidget(page.source_box)
+    page.data_box, page.data_edit = page.path_field(
+        "数据集 YAML",
+        validation.get("data", ""),
+        page.choose_dataset_yaml,
+        "选择 data.yaml",
+    )
+    left_column.addWidget(page.data_box)
+    page.source_scope_box, page.source_scope_combo = page.combo_field(
+        "选择验证源",
+        validation.get("source_scope", "全部图片"),
+        SOURCE_SCOPE_OPTIONS,
+    )
+    left_column.addWidget(page.source_scope_box)
+    page.camera_box, page.camera_combo = page.combo_field(
+        "摄像头",
+        str(validation["camera_index"]),
+        ["0", "1", "2", "3"],
+    )
+    left_column.addWidget(page.camera_box)
+    page.save_box, page.save_edit = page.path_field(
+        "输出文件夹",
+        validation["save_dir"],
+        page.choose_output_dir,
+        "选择结果输出目录",
+    )
+    left_column.addWidget(page.save_box)
+
+    controls = QHBoxLayout()
+    page.start_det_btn = QPushButton("批量检测")
+    page.start_det_btn.clicked.connect(page.start_detection)
+    page.stop_det_btn = QPushButton("停止")
+    page.stop_det_btn.setObjectName("softButton")
+    page.stop_det_btn.setEnabled(False)
+    page.stop_det_btn.clicked.connect(page.stop_detection)
+    controls.addWidget(page.start_det_btn)
+    controls.addWidget(page.stop_det_btn)
+    left_column.addLayout(controls)
+    page.open_val_save_btn = QPushButton("打开保存目录")
+    page.open_val_save_btn.setObjectName("softButton")
+    page.open_val_save_btn.clicked.connect(page.open_detection_save_dir)
+    page.open_val_save_btn.setVisible(False)
+    left_column.addWidget(page.open_val_save_btn)
+    page.detect_log = QTextEdit()
+    page.prepare_readonly_text(page.detect_log)
+    page.detect_log.setMinimumHeight(180)
+    left_column.addWidget(page.detect_log)
+    left_column.addStretch(1)
+    split.addWidget(left_shell)
+
+    right = QVBoxLayout()
+    page.toolbar_widget = QWidget()
+    toolbar = QHBoxLayout(page.toolbar_widget)
+    toolbar.setContentsMargins(0, 0, 0, 0)
+    toolbar.addWidget(QLabel("批量检测结果"))
+    for text, slot in [
+        ("上一张", page.prev_result),
+        ("下一张", page.next_result),
+        ("第一张", page.first_result),
+        ("最后一张", page.last_result),
+        ("列表", page.show_result_list),
+        ("打开保存文件夹", page.open_detection_save_dir),
+    ]:
+        button = QPushButton(text)
+        button.setObjectName("softButton")
+        button.clicked.connect(slot)
+        toolbar.addWidget(button)
+        if text != "打开保存文件夹":
+            page.result_nav_buttons.append(button)
+    page.counter = QLabel("0/0")
+    toolbar.addWidget(page.counter)
+    toolbar.addStretch(1)
+    right.addWidget(page.toolbar_widget)
+    page.views_widget = QWidget()
+    views = QHBoxLayout(page.views_widget)
+    views.setContentsMargins(0, 0, 0, 0)
+    source_panel = Card("源")
+    page.source_view = ImageView("源图")
+    source_panel.layout.addWidget(page.source_view, 1)
+    result_panel = Card("检测结果")
+    page.result_view = ImageView("检测结果图")
+    result_panel.layout.addWidget(page.result_view, 1)
+    views.addWidget(source_panel)
+    views.addWidget(result_panel)
+    right.addWidget(page.views_widget, 2)
+    page.table_panel = Card("检测结果详情表")
+    page.table = QTableWidget(0, 5)
+    page.table.setHorizontalHeaderLabels(
+        ["类别", "置信度", "坐标(x,y)", "尺寸(w×h)", "角度"]
+    )
+    page.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    page.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    page.table_panel.layout.addWidget(page.table)
+    right.addWidget(page.table_panel, 1)
+    page.val_log_panel = Card("验证日志")
+    page.val_log = QTextEdit()
+    page.prepare_readonly_text(page.val_log)
+    page.val_log_panel.layout.addWidget(page.val_log, 1)
+    page.val_log.setMinimumHeight(220)
+    right.addWidget(page.val_log_panel, 1)
+    right_widget = QWidget()
+    right_widget.setLayout(right)
+    split.addWidget(right_widget)
+    split.setStretch(0, 1)
+    split.setStretch(1, 3)

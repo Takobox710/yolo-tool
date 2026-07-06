@@ -6,8 +6,14 @@ from pathlib import Path
 
 from scr.services.detection_service import scan_candidate_models
 from scr.services.training_service import read_results_csv_for_curves, read_train_metrics
-from scr.ui.helpers import _history_model_sort_key, _home_column_widths, _history_time_sort_key, _relative_path
-from scr.ui.page_base import BasePage, Card, _IMAGE_SUFFIXES, _SortItem, _history_number_sort_key
+from scr.ui.helpers import (
+    _history_model_sort_key,
+    _history_number_sort_key,
+    _history_time_sort_key,
+    _home_column_widths,
+    _relative_path,
+)
+from scr.ui.page_base import BasePage, Card, _IMAGE_SUFFIXES, _SortItem
 from scr.ui.qt import Qt, QFileDialog, QGridLayout, QHeaderView, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QTableWidget, QTimer, QVBoxLayout
 from scr.ui.widgets.charts import DatasetDistributionWidget, TrainingCurveWidget
 

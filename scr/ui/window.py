@@ -118,16 +118,16 @@ class WorkbenchWindow(QMainWindow):
     def show_page(self, key: str):
         if key not in self.page_titles:
             key = "home"
+        previous_page = self.pages.get(self.current_page_key)
+        if previous_page is not None and self.current_page_key != key:
+            self._invoke_page_hook(previous_page, "on_hide")
         self.current_page_key = key
         self.dismiss_help_bubbles()
         self.stack.setCurrentWidget(self.pages[key])
         for name, button in self.nav_buttons.items():
             button.setChecked(name == key)
         self.settings["ui"]["last_page"] = key
-        active_page = getattr(self.pages[key], "inner_page", self.pages[key])
-        hook = getattr(active_page, "on_show", None)
-        if hook:
-            QTimer.singleShot(0, hook)
+        QTimer.singleShot(0, lambda: self._invoke_page_hook(self.pages[key], "on_show"))
 
     def create_page(self, key: str):
         if key == "home":
@@ -196,6 +196,12 @@ class WorkbenchWindow(QMainWindow):
         stop_process(self.export_handle)
         stop_process(self.validation_handle)
         super().closeEvent(event)
+
+    def _invoke_page_hook(self, page: QWidget, hook_name: str):
+        target = getattr(page, "inner_page", page)
+        hook = getattr(target, hook_name, None)
+        if hook:
+            hook()
 
 def build_style() -> str:
     return STYLE

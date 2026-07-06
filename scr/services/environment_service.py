@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import importlib.util
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -34,11 +36,25 @@ def pixi_available() -> bool:
     return shutil.which("pixi") is not None
 
 
-def torch_cuda_summary() -> dict[str, str]:
-    return cached_call("torch_cuda_summary", 60.0, _load_torch_cuda_summary)
+def torch_cuda_summary(*, use_subprocess: bool = False) -> dict[str, str]:
+    cache_key = (
+        "torch_cuda_summary_subprocess"
+        if use_subprocess
+        else "torch_cuda_summary_in_process"
+    )
+    loader = (
+        _load_torch_cuda_summary_subprocess
+        if use_subprocess
+        else _load_torch_cuda_summary_in_process
+    )
+    return cached_call(cache_key, 60.0, loader)
 
 
-def _load_torch_cuda_summary() -> dict[str, str]:
+def preload_torch_runtime() -> dict[str, str]:
+    return torch_cuda_summary(use_subprocess=False)
+
+
+def _load_torch_cuda_summary_in_process() -> dict[str, str]:
     try:
         import torch
 
@@ -49,6 +65,36 @@ def _load_torch_cuda_summary() -> dict[str, str]:
         }
     except Exception:
         return {"torch": "未安装", "cuda": "未知", "gpu": "不可用"}
+
+
+def _torch_summary_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--torch-summary"]
+    return [sys.executable, "-m", "scr.main", "--torch-summary"]
+
+
+def _load_torch_cuda_summary_subprocess() -> dict[str, str]:
+    try:
+        result = subprocess.run(
+            _torch_summary_command(),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            **hidden_subprocess_kwargs(),
+        )
+    except Exception:
+        return {"torch": "未安装", "cuda": "未知", "gpu": "不可用"}
+    if result.returncode != 0:
+        return {"torch": "未安装", "cuda": "未知", "gpu": "不可用"}
+    try:
+        payload = json.loads(result.stdout.strip() or "{}")
+    except json.JSONDecodeError:
+        return {"torch": "未安装", "cuda": "未知", "gpu": "不可用"}
+    return {
+        "torch": str(payload.get("torch", "未知")),
+        "cuda": str(payload.get("cuda", "未知")),
+        "gpu": str(payload.get("gpu", "不可用")),
+    }
 
 
 def system_status() -> dict[str, str]:

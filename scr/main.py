@@ -9,6 +9,7 @@ if __package__ in (None, ""):
 
 def main() -> None:
     from multiprocessing import freeze_support
+    import json
     import sys
 
     # PyInstaller on Windows re-enters the same executable for multiprocessing
@@ -27,6 +28,25 @@ def main() -> None:
         from scr.train_cli import run_val_cli
 
         raise SystemExit(run_val_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-predict":
+        from scr.train_cli import run_predict_cli
+
+        raise SystemExit(run_predict_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-ai-label":
+        from scr.train_cli import run_ai_label_cli
+
+        raise SystemExit(run_ai_label_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-model-labels":
+        from scr.train_cli import run_model_labels_cli
+
+        raise SystemExit(run_model_labels_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--torch-summary":
+        from scr.services.environment_service import preload_torch_runtime
+
+        sys.stdout.write(
+            json.dumps(preload_torch_runtime(), ensure_ascii=False)
+        )
+        raise SystemExit(0)
 
     from scr.app import run_app
 

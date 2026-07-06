@@ -108,10 +108,9 @@ class SettingsPage(BasePage):
             )
         )
 
-        # Task 13: Auto-refresh timer every 0.5s
         self._auto_refresh_timer = QTimer(self)
         self._auto_refresh_timer.timeout.connect(self._auto_refresh)
-        self._auto_refresh_timer.start(500)
+        self._auto_refresh_timer.setInterval(500)
 
     def _toggle_custom_cmd(self, state):
         self.app.settings.setdefault("features", {})["custom_command_dialog"] = (
@@ -201,29 +200,31 @@ class SettingsPage(BasePage):
         self._refresh_count += 1
         self.app.run_background(
             "env_auto",
-            lambda: {
-                "pixi": pixi_available(),
-                "modules": detect_modules(),
-                "cuda": torch_cuda_summary(),
-                "status": system_status(),
-                "settings": self.app.settings,
-            },
+            lambda: self._load_env_payload(),
         )
 
     def on_show(self):
+        if not self._auto_refresh_timer.isActive():
+            self._auto_refresh_timer.start()
         for label in self.status_cards:
             self.set_status_card(label, "检测中...")
         self.log.setPlainText("正在后台检测环境...")
         self.app.run_background(
             "env",
-            lambda: {
-                "pixi": pixi_available(),
-                "modules": detect_modules(),
-                "cuda": torch_cuda_summary(),
-                "status": system_status(),
-                "settings": self.app.settings,
-            },
+            lambda: self._load_env_payload(),
         )
+
+    def on_hide(self):
+        self._auto_refresh_timer.stop()
+
+    def _load_env_payload(self):
+        return {
+            "pixi": pixi_available(),
+            "modules": detect_modules(),
+            "cuda": torch_cuda_summary(use_subprocess=True),
+            "status": system_status(),
+            "settings": self.app.settings,
+        }
 
     def set_status_card(self, label: str, value: str):
         self.status_cards[label].setText(value)

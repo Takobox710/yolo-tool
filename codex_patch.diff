@@ -1,0 +1,103 @@
+*** Begin Patch
+*** Update File: scr/ui/views/annotation.py
+@@
+ from scr.services.annotation_ai_service import (
+     available_ai_models,
+     collect_ai_target_images,
+     resolve_ai_model_path,
+ )
++from scr.ui.helpers import _find_models_full_paths, _simplified_model_path
+ from scr.ui.page_base import BasePage, _IMAGE_SUFFIXES
+@@
+ class AiPrelabelDialog(QDialog):
+     def __init__(self, page: "AnnotationPage", parent=None):
+         super().__init__(parent or page)
+         self.page = page
+         self.stop_event = threading.Event()
+         self.ai_worker: AnnotationAiWorker | None = None
+         self.labels_worker: ModelLabelsWorker | None = None
++        self._model_display_paths: dict[str, Path] = {}
+         self.model_labels: list[str] = []
+         self.mapping_combos: list[QComboBox] = []
+         self.backups: dict[Path, tuple[str | None, str | None]] = {}
+         self.original_class_names = list(page.class_names())
+@@
+         model_label = QLabel("模型文件:")
+         model_label.setObjectName("annotationPathLabel")
+         model_row.addWidget(model_label)
+         self.model_combo = QComboBox()
+         self.model_combo.setEditable(True)
+-        self.model_combo.addItems(available_ai_models(self.page.project_root()))
+         preferred_model = Path(
+             self.page.app.settings.get("training", {}).get("pretrained", "")
+             or self.page.app.settings.get("training", {}).get("base_model", "")
+-        ).name
+-        if preferred_model:
+-            self.model_combo.setCurrentText(preferred_model)
++        )
++        self.refresh_model_choices(str(preferred_model) if preferred_model else "")
+         model_row.addWidget(self.model_combo, 1)
+         browse_btn = QPushButton("浏览")
+         browse_btn.clicked.connect(self.choose_model)
+         model_row.addWidget(browse_btn)
+         model_layout.addLayout(model_row)
+@@
+         if path:
+             self.model_combo.setCurrentText(self.page.display_path(path))
++
++    def refresh_model_choices(self, preferred_model: str = "") -> None:
++        project_root = self.page.project_root()
++        result_dir = Path(self.page.app.settings["paths"]["result_dir"])
++        self._model_display_paths = {}
++        display_names: list[str] = []
++        seen: set[str] = set()
++
++        for path in _find_models_full_paths(
++            result_dir, show_last_training_models=False
++        ):
++            resolved_path = path.resolve()
++            resolved_text = str(resolved_path)
++            if resolved_text in seen:
++                continue
++            display_name = _simplified_model_path(str(resolved_path), project_root)
++            self._model_display_paths[display_name] = resolved_path
++            display_names.append(display_name)
++            seen.add(resolved_text)
++
++        for model_name in available_ai_models(project_root):
++            resolved_text = resolve_ai_model_path(model_name, project_root)
++            if resolved_text in seen:
++                continue
++            display_names.append(model_name)
++            if resolved_text:
++                self._model_display_paths[model_name] = Path(resolved_text)
++                seen.add(resolved_text)
++
++        selected_text = ""
++        preferred_text = str(preferred_model or "").strip()
++        if preferred_text:
++            preferred_path = Path(
++                resolve_ai_model_path(preferred_text, project_root)
++            )
++            for display_name, resolved_path in self._model_display_paths.items():
++                if resolved_path == preferred_path:
++                    selected_text = display_name
++                    break
++            else:
++                selected_text = preferred_path.name if preferred_path.name else preferred_text
++
++        self.model_combo.blockSignals(True)
++        self.model_combo.clear()
++        self.model_combo.addItems(display_names)
++        if selected_text:
++            self.model_combo.setCurrentText(selected_text)
++        self.model_combo.blockSignals(False)
+@@
+     def resolved_model_path(self) -> str:
+-        return resolve_ai_model_path(self.model_combo.currentText(), self.page.project_root())
++        text = self.model_combo.currentText().strip()
++        mapped = self._model_display_paths.get(text)
++        if mapped is not None:
++            return str(mapped)
++        return resolve_ai_model_path(text, self.page.project_root())
+*** End Patch

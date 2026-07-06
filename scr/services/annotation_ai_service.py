@@ -8,12 +8,16 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from scr.services.detection_service import extract_detection_items
+from scr.services.detection_service import extract_detection_items, release_inference_runtime
+from scr.services.editable_annotation_service import (
+    EditableAnnotation,
+    load_labelme_annotations,
+)
+from scr.services.training_service import (
+    find_training_model_names,
+    resolve_training_model_reference,
+)
 from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
-from scr.ui.helpers import find_training_model_names, resolve_training_model_reference
-
-if TYPE_CHECKING:
-    from scr.ui.views.annotation import EditableAnnotation
 
 
 @dataclass
@@ -42,12 +46,16 @@ def load_model_labels(model_path: str) -> list[str]:
     from ultralytics import YOLO
 
     model = YOLO(model_path)
-    names = getattr(model, "names", {})
-    if isinstance(names, dict):
-        return [str(names[key]).strip() for key in sorted(names) if str(names[key]).strip()]
-    if isinstance(names, (list, tuple)):
-        return [str(name).strip() for name in names if str(name).strip()]
-    return []
+    try:
+        names = getattr(model, "names", {})
+        if isinstance(names, dict):
+            return [str(names[key]).strip() for key in sorted(names) if str(names[key]).strip()]
+        if isinstance(names, (list, tuple)):
+            return [str(name).strip() for name in names if str(name).strip()]
+        return []
+    finally:
+        del model
+        release_inference_runtime()
 
 
 def annotation_exists(json_path: Path, yolo_path: Path) -> bool:
@@ -124,7 +132,6 @@ def predict_annotations_for_image(
     class_mapping: dict[str, str],
     class_names: list[str],
 ) -> tuple[list[EditableAnnotation], list[str], list[str]]:
-    from scr.ui.views.annotation import EditableAnnotation
     result = model.predict(
         source=str(image_path),
         conf=confidence,
@@ -185,7 +192,6 @@ def apply_ai_labeling(
     progress_callback,
     stop_event: threading.Event,
 ) -> AiLabelResult:
-    from scr.ui.views.annotation import load_labelme_annotations
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
@@ -199,65 +205,69 @@ def apply_ai_labeling(
         selected_images=selected_images,
     )
     model = YOLO(model_path)
-    updated_images: list[Path] = []
-    skipped_images: list[Path] = []
-    names = list(class_names)
-    total = len(targets)
+    try:
+        updated_images: list[Path] = []
+        skipped_images: list[Path] = []
+        names = list(class_names)
+        total = len(targets)
 
-    for index, image_path in enumerate(targets, start=1):
-        if stop_event.is_set():
-            break
-        json_path = annotations_dir / f"{image_path.stem}.json"
-        yolo_path = labels_dir / f"{image_path.stem}.txt"
-        try:
-            with Image.open(image_path) as image:
-                image_size = image.size
-        except OSError:
-            skipped_images.append(image_path)
+        for index, image_path in enumerate(targets, start=1):
+            if stop_event.is_set():
+                break
+            json_path = annotations_dir / f"{image_path.stem}.json"
+            yolo_path = labels_dir / f"{image_path.stem}.txt"
+            try:
+                with Image.open(image_path) as image:
+                    image_size = image.size
+            except OSError:
+                skipped_images.append(image_path)
+                progress_callback(
+                    {
+                        "type": "log",
+                        "message": f"跳过：无法打开图片 {image_path.name}",
+                        "index": index,
+                        "total": total,
+                    }
+                )
+                continue
+            current_annotations, names = load_labelme_annotations(
+                image_size,
+                json_path,
+                names,
+                line_expand_pixels,
+            )
+            detected, names, model_labels = predict_annotations_for_image(
+                image_path,
+                model,
+                confidence,
+                iou,
+                imgsz,
+                class_mapping,
+                names,
+            )
+            merged = merge_ai_annotations(current_annotations, detected, process_mode)
+            save_json_fn(image_size, json_path, image_path, merged, names)
+            if auto_convert_yolo:
+                save_yolo_fn(image_size, yolo_path, merged, output_mode)
+            updated_images.append(image_path)
             progress_callback(
                 {
-                    "type": "log",
-                    "message": f"跳过：无法打开图片 {image_path.name}",
+                    "type": "progress",
                     "index": index,
                     "total": total,
+                    "image_name": image_path.name,
+                    "result_count": len(detected),
+                    "model_labels": model_labels,
+                    "class_names": names,
                 }
             )
-            continue
-        current_annotations, names = load_labelme_annotations(
-            image_size,
-            json_path,
-            names,
-            line_expand_pixels,
-        )
-        detected, names, model_labels = predict_annotations_for_image(
-            image_path,
-            model,
-            confidence,
-            iou,
-            imgsz,
-            class_mapping,
-            names,
-        )
-        merged = merge_ai_annotations(current_annotations, detected, process_mode)
-        save_json_fn(image_size, json_path, image_path, merged, names)
-        if auto_convert_yolo:
-            save_yolo_fn(image_size, yolo_path, merged, output_mode)
-        updated_images.append(image_path)
-        progress_callback(
-            {
-                "type": "progress",
-                "index": index,
-                "total": total,
-                "image_name": image_path.name,
-                "result_count": len(detected),
-                "model_labels": model_labels,
-                "class_names": names,
-            }
-        )
 
-    return AiLabelResult(
-        processed=len(updated_images),
-        total=total,
-        updated_images=updated_images,
-        skipped_images=skipped_images,
-    )
+        return AiLabelResult(
+            processed=len(updated_images),
+            total=total,
+            updated_images=updated_images,
+            skipped_images=skipped_images,
+        )
+    finally:
+        del model
+        release_inference_runtime()
