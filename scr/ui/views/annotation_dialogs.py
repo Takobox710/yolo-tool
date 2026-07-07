@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from scr.ui.forms import FormPageMixin
 from scr.ui.qt import (
     QCheckBox,
     QComboBox,
@@ -19,13 +20,14 @@ from scr.ui.qt import (
 )
 
 
-class AnnotationSettingsDialog(QDialog):
+class AnnotationSettingsDialog(FormPageMixin, QDialog):
     def __init__(
         self,
         enabled: bool,
         pixels: int,
         auto_save: bool,
         auto_convert_yolo: bool,
+        show_yolo_save_in_context_menu: bool,
         continuous_draw: bool,
         quick_draw: bool,
         yolo_dir: str,
@@ -41,12 +43,24 @@ class AnnotationSettingsDialog(QDialog):
         self.auto_convert_check = QCheckBox("自动转换为 YOLO 格式")
         self.auto_convert_check.setChecked(bool(auto_convert_yolo))
         layout.addWidget(self.auto_convert_check)
-        self.continuous_draw_check = QCheckBox("开启连续标注")
-        self.continuous_draw_check.setChecked(bool(continuous_draw))
-        layout.addWidget(self.continuous_draw_check)
-        self.quick_draw_check = QCheckBox("开启快捷标注")
-        self.quick_draw_check.setChecked(bool(quick_draw))
-        layout.addWidget(self.quick_draw_check)
+        show_yolo_box, self.show_yolo_context_check = self.checkbox_with_help(
+            "右键显示保存YOLO标注",
+            bool(show_yolo_save_in_context_menu),
+            help_text="开启后主界面右键菜单按需分别显示“保存Labelme标注”和“保存YOLO标注”；关闭后只显示“保存”，默认保存 Labelme 标注。",
+        )
+        layout.addWidget(show_yolo_box)
+        continuous_box, self.continuous_draw_check = self.checkbox_with_help(
+            "开启连续标注",
+            bool(continuous_draw),
+            help_text="开启后完成一个标注会继续保持当前绘制类型；关闭后每次完成标注都会自动回到选择模式。",
+        )
+        layout.addWidget(continuous_box)
+        quick_box, self.quick_draw_check = self.checkbox_with_help(
+            "开启快捷标注",
+            bool(quick_draw),
+            help_text="开启后矩形框、圆形、直线扩展支持拖动后松开直接完成；关闭后改为通过多次点击确认。",
+        )
+        layout.addWidget(quick_box)
         layout.addWidget(QLabel("YOLO 标注文件夹"))
         yolo_row = QHBoxLayout()
         self.yolo_dir_edit = QLineEdit(yolo_dir)
@@ -58,12 +72,20 @@ class AnnotationSettingsDialog(QDialog):
         self.enable_combo = QComboBox()
         self.enable_combo.addItems(["关闭直线标注", "开启直线标注"])
         self.enable_combo.setCurrentIndex(1 if enabled else 0)
-        layout.addWidget(QLabel("直线标注"))
+        line_label_box, self.line_expand_label, _icon = self._caption_widget(
+            "直线标注",
+            help_text="开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。",
+        )
+        layout.addWidget(line_label_box)
         layout.addWidget(self.enable_combo)
         self.pixel_spin = QSpinBox()
         self.pixel_spin.setRange(1, 200)
         self.pixel_spin.setValue(max(1, int(pixels)))
-        layout.addWidget(QLabel("直线扩展像素"))
+        pixel_label_box, self.line_expand_pixels_label, _icon = self._caption_widget(
+            "直线扩展像素",
+            help_text="设置直线扩展生成旋转矩形时，沿线段两侧扩展的像素宽度。",
+        )
+        layout.addWidget(pixel_label_box)
         layout.addWidget(self.pixel_spin)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -72,6 +94,18 @@ class AnnotationSettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def help_icons_enabled(self) -> bool:
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "help_icons_enabled"):
+            return bool(parent.help_icons_enabled())
+        return True
+
+    def refresh_help_icon_visibility(self) -> None:
+        for label in self.findChildren(QLabel):
+            self._refresh_help_target(label)
+        for check in self.findChildren(QCheckBox):
+            self._refresh_help_target(check)
+
     def choose_yolo_dir(self) -> None:
         directory = QFileDialog.getExistingDirectory(
             self, "选择 YOLO 标注文件夹", self.yolo_dir_edit.text().strip()
@@ -79,12 +113,13 @@ class AnnotationSettingsDialog(QDialog):
         if directory:
             self.yolo_dir_edit.setText(directory)
 
-    def values(self) -> tuple[bool, int, bool, bool, bool, bool, str]:
+    def values(self) -> tuple[bool, int, bool, bool, bool, bool, bool, str]:
         return (
             self.enable_combo.currentIndex() == 1,
             int(self.pixel_spin.value()),
             self.auto_save_check.isChecked(),
             self.auto_convert_check.isChecked(),
+            self.show_yolo_context_check.isChecked(),
             self.continuous_draw_check.isChecked(),
             self.quick_draw_check.isChecked(),
             self.yolo_dir_edit.text().strip(),

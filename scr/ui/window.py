@@ -203,6 +203,9 @@ class WorkbenchWindow(QMainWindow):
         return self.settings
 
     def closeEvent(self, event):
+        if not self._confirm_close_if_needed():
+            event.ignore()
+            return
         self.settings["ui"]["window_width"] = 1100
         self.settings["ui"]["window_height"] = 740
         self.settings_service.save(self.settings)
@@ -210,6 +213,45 @@ class WorkbenchWindow(QMainWindow):
         stop_process(self.export_handle)
         stop_process(self.validation_handle)
         super().closeEvent(event)
+
+    def _confirm_close_if_needed(self) -> bool:
+        warnings = self._collect_close_warnings()
+        if not warnings:
+            return True
+        details = "\n".join(f"- {item}" for item in warnings)
+        result = QMessageBox.question(
+            self,
+            "确认关闭程序",
+            f"当前还有以下内容未处理：\n{details}\n\n确认继续关闭程序吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return result == QMessageBox.StandardButton.Yes
+
+    def _collect_close_warnings(self) -> list[str]:
+        warnings: list[str] = []
+        annotation_page = self.pages.get("annotation")
+        annotation_target = getattr(annotation_page, "inner_page", annotation_page)
+        has_unsaved_annotations = getattr(annotation_target, "has_unsaved_annotations", None)
+        if callable(has_unsaved_annotations) and has_unsaved_annotations():
+            warnings.append("当前有未保存的标注")
+        if self._is_training_active():
+            warnings.append("模型训练尚未结束")
+        return warnings
+
+    def _is_training_active(self) -> bool:
+        train_page = self.pages.get("train")
+        train_target = getattr(train_page, "inner_page", train_page)
+        if bool(getattr(train_target, "is_training", False)):
+            return True
+        handle = getattr(self, "training_handle", None)
+        if handle is None:
+            return False
+        process = getattr(handle, "process", None)
+        poll = getattr(process, "poll", None)
+        if callable(poll):
+            return poll() is None
+        return True
 
     def _invoke_page_hook(self, page: QWidget, hook_name: str):
         target = getattr(page, "inner_page", page)

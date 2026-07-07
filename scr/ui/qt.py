@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QMenu,
     QPlainTextEdit,
     QPushButton,
     QProgressBar,
@@ -38,4 +39,5 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )

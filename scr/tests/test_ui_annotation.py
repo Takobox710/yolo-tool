@@ -69,7 +69,7 @@ def test_annotation_page_picture_list_marks_annotated_images(tmp_path):
     import json
 
     from scr.services.settings_service import build_default_settings
-    from scr.ui.qt import QApplication, QCheckBox
+    from scr.ui.qt import QApplication
     from scr.ui.views.annotation import AnnotationPage
 
     images_dir = tmp_path / "images"
@@ -109,8 +109,8 @@ def test_annotation_page_picture_list_marks_annotated_images(tmp_path):
     first_widget = page.file_list.itemWidget(page.file_list.item(0))
     second_widget = page.file_list.itemWidget(page.file_list.item(1))
 
-    assert isinstance(first_widget, QCheckBox)
-    assert isinstance(second_widget, QCheckBox)
+    assert first_widget.__class__.__name__ == "AnnotationFileListItemWidget"
+    assert second_widget.__class__.__name__ == "AnnotationFileListItemWidget"
     assert first_widget.text() == "1.jpg"
     assert second_widget.text() == "2.jpg"
     assert first_widget.isChecked() is True
@@ -123,7 +123,7 @@ def test_annotation_page_delete_selected_updates_current_checkbox_without_full_r
     import json
 
     from scr.services.settings_service import build_default_settings
-    from scr.ui.qt import QApplication, QCheckBox
+    from scr.ui.qt import QApplication
     from scr.ui.views.annotation import AnnotationPage
 
     images_dir = tmp_path / "images"
@@ -161,7 +161,7 @@ def test_annotation_page_delete_selected_updates_current_checkbox_without_full_r
     first_item = page.file_list.item(0)
     first_widget = page.file_list.itemWidget(first_item)
 
-    assert isinstance(first_widget, QCheckBox)
+    assert first_widget.__class__.__name__ == "AnnotationFileListItemWidget"
     assert first_widget.isChecked() is True
     assert len(page.canvas.annotations) == 1
 
@@ -174,6 +174,265 @@ def test_annotation_page_delete_selected_updates_current_checkbox_without_full_r
 
     assert len(page.canvas.annotations) == 0
     assert first_widget.isChecked() is False
+
+
+def test_annotation_canvas_cancel_action_only_shows_while_drawing():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    assert canvas._can_show_cancel_drawing_action() is False
+
+    canvas.set_draw_shape("rect")
+    assert canvas._can_show_cancel_drawing_action() is True
+
+    canvas.set_draw_shape("select")
+    assert canvas._can_show_cancel_drawing_action() is False
+
+    canvas.drag_start = (10.0, 10.0)
+    assert canvas._can_show_cancel_drawing_action() is True
+
+
+def test_annotation_canvas_delete_action_only_available_when_annotation_selected():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.editable_annotation_service import EditableAnnotation
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    assert canvas._has_selected_annotation() is False
+
+    canvas.annotations = [
+        EditableAnnotation(0, "rect", [(1.0, 1.0), (10.0, 1.0), (10.0, 10.0), (1.0, 10.0)])
+    ]
+    assert canvas._has_selected_annotation() is False
+
+    canvas.selected_index = 0
+    assert canvas._has_selected_annotation() is True
+
+
+def test_annotation_page_canvas_context_save_flags_follow_auto_save_settings(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["annotation"]["auto_save"] = False
+    settings["annotation"]["auto_convert_yolo"] = False
+    settings["annotation"]["show_yolo_save_in_context_menu"] = True
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    assert page.canvas.can_save_default is False
+    assert page.canvas.can_save_labelme is True
+    assert page.canvas.can_save_yolo is True
+    assert page.canvas.can_undo is False
+
+    settings["annotation"]["auto_save"] = True
+    page._refresh_manual_action_buttons()
+    assert page.canvas.can_save_labelme is False
+    assert page.canvas.can_save_yolo is True
+
+    settings["annotation"]["auto_convert_yolo"] = True
+    page._refresh_manual_action_buttons()
+    assert page.canvas.can_save_labelme is False
+    assert page.canvas.can_save_yolo is False
+
+
+def test_annotation_page_canvas_context_uses_single_save_when_yolo_menu_disabled(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["annotation"]["auto_save"] = False
+    settings["annotation"]["auto_convert_yolo"] = False
+    settings["annotation"]["show_yolo_save_in_context_menu"] = False
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    assert page.canvas.can_save_default is True
+    assert page.canvas.can_save_labelme is True
+    assert page.canvas.can_save_yolo is False
+
+
+def test_annotation_page_canvas_context_undo_flag_tracks_dirty_state(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["annotation"]["auto_save"] = False
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    assert page.canvas.can_undo is False
+
+    page.dirty = True
+    page._refresh_manual_action_buttons()
+
+    assert page.canvas.can_undo is True
+
+
+def test_annotation_page_marks_current_image_unsaved_when_labelme_auto_save_disabled(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["annotation"]["auto_save"] = False
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    widget = page.file_list.itemWidget(page.file_list.item(0))
+    assert widget.isUnsaved() is False
+
+    page.dirty = True
+    page._update_current_file_list_item()
+
+    assert widget.isUnsaved() is True
+
+
+def test_annotation_page_context_delete_annotations_removes_label_files(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    image_path = images_dir / "1.jpg"
+    Image.new("RGB", (32, 32), "white").save(image_path)
+    (images_dir / "1.json").write_text(
+        json.dumps(
+            {
+                "imagePath": "1.jpg",
+                "imageWidth": 32,
+                "imageHeight": 32,
+                "shapes": [{"label": "weld", "points": [[1, 1], [10, 10]], "shape_type": "rectangle"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    labels_dir = tmp_path / "labels"
+    labels_dir.mkdir()
+    (labels_dir / "1.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["paths"]["labels_dir"] = str(labels_dir)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    page.clear_annotations_for_image(image_path)
+
+    assert (images_dir / "1.json").exists() is False
+    assert (labels_dir / "1.txt").exists() is False
+
+
+def test_annotation_page_context_delete_image_removes_image_and_labels(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    image_path = images_dir / "1.jpg"
+    Image.new("RGB", (32, 32), "white").save(image_path)
+    (images_dir / "1.json").write_text(
+        json.dumps(
+            {
+                "imagePath": "1.jpg",
+                "imageWidth": 32,
+                "imageHeight": 32,
+                "shapes": [{"label": "weld", "points": [[1, 1], [10, 10]], "shape_type": "rectangle"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    labels_dir = tmp_path / "labels"
+    labels_dir.mkdir()
+    (labels_dir / "1.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["paths"]["labels_dir"] = str(labels_dir)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    page.delete_image_and_annotations(image_path)
+
+    assert image_path.exists() is False
+    assert (images_dir / "1.json").exists() is False
+    assert (labels_dir / "1.txt").exists() is False
 
 
 def test_ai_prelabel_dialog_uses_expected_range_count(tmp_path):
@@ -223,6 +482,170 @@ def test_annotation_canvas_two_click_rectangle_respects_quick_draw_setting():
     assert canvas.annotations[0].shape == "rect"
     assert canvas.draw_shape == "select"
     assert canvas.drag_start is None
+
+
+def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+    from scr.ui.views.annotation_dialogs import AnnotationSettingsDialog
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AnnotationSettingsDialog(
+        enabled=True,
+        pixels=10,
+        auto_save=True,
+        auto_convert_yolo=False,
+        show_yolo_save_in_context_menu=False,
+        continuous_draw=False,
+        quick_draw=True,
+        yolo_dir=str(tmp_path / "labels"),
+        parent=page,
+    )
+
+    assert dialog.continuous_draw_check.text() == "开启连续标注 ⓘ"
+    assert dialog.continuous_draw_check.toolTip() == "开启后完成一个标注会继续保持当前绘制类型；关闭后每次完成标注都会自动回到选择模式。"
+    assert dialog.quick_draw_check.text() == "开启快捷标注 ⓘ"
+    assert dialog.quick_draw_check.toolTip() == "开启后矩形框、圆形、直线扩展支持拖动后松开直接完成；关闭后改为通过多次点击确认。"
+    assert dialog.show_yolo_context_check.text() == "右键显示保存YOLO标注 ⓘ"
+    assert dialog.show_yolo_context_check.toolTip() == "开启后主界面右键菜单按需分别显示“保存Labelme标注”和“保存YOLO标注”；关闭后只显示“保存”，默认保存 Labelme 标注。"
+    assert dialog.line_expand_label.text() == "直线标注 ⓘ"
+    assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
+    assert dialog.line_expand_pixels_label.text() == "直线扩展像素 ⓘ"
+    assert dialog.line_expand_pixels_label.toolTip() == "设置直线扩展生成旋转矩形时，沿线段两侧扩展的像素宽度。"
+
+
+def test_annotation_settings_dialog_hides_symbol_but_keeps_tooltip_when_disabled(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+    from scr.ui.views.annotation_dialogs import AnnotationSettingsDialog
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["show_help_icons"] = False
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AnnotationSettingsDialog(
+        enabled=True,
+        pixels=10,
+        auto_save=True,
+        auto_convert_yolo=False,
+        show_yolo_save_in_context_menu=False,
+        continuous_draw=False,
+        quick_draw=True,
+        yolo_dir=str(tmp_path / "labels"),
+        parent=page,
+    )
+
+    assert dialog.continuous_draw_check.text() == "开启连续标注"
+    assert dialog.continuous_draw_check.toolTip() == "开启后完成一个标注会继续保持当前绘制类型；关闭后每次完成标注都会自动回到选择模式。"
+    assert dialog.show_yolo_context_check.text() == "右键显示保存YOLO标注"
+    assert dialog.line_expand_label.text() == "直线标注"
+    assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
+
+
+def test_annotation_page_can_change_annotation_class_from_context_target(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AnnotationPage
+    from scr.services.editable_annotation_service import EditableAnnotation
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["annotation"]["auto_save"] = False
+    settings["dataset"]["class_names"] = ["weld", "scratch"]
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    page.canvas.annotations = [
+        EditableAnnotation(0, "rect", [(1, 1), (10, 1), (10, 10), (1, 10)])
+    ]
+    page.canvas.selected_index = 0
+    page.refresh_annotation_list()
+
+    page.set_selected_annotation_class(1)
+
+    assert page.canvas.annotations[0].class_id == 1
+    assert page.annotation_list.item(0).text().startswith("1.scratch-")
+
+
+def test_annotation_page_annotation_list_context_delete_action_has_no_del_hint(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication, QLabel, QMenu
+    from scr.ui.views.annotation import AnnotationPage
+    from scr.services.editable_annotation_service import EditableAnnotation
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["dataset"]["class_names"] = ["weld", "scratch"]
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    menu = QMenu(page)
+
+    action = page._add_danger_menu_action(menu, "删除标注")
+    widget = action.defaultWidget()
+    labels = [label.text() for label in widget.findChildren(QLabel)]
+
+    assert "删除标注" in labels
+    assert "Del" not in labels
+
+
+def test_annotation_canvas_delete_action_uses_native_shortcut():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import QApplication, QMenu, Qt
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    menu = QMenu(canvas)
+
+    action = menu.addAction("删除")
+    action.setShortcut(Qt.Key.Key_Delete)
+    action.setShortcutVisibleInContextMenu(True)
+
+    assert action.text() == "删除"
+    assert action.shortcut().toString() == "Del"
+    assert action.isShortcutVisibleInContextMenu() is True
 
 
 def test_annotation_canvas_continuous_draw_keeps_shape_after_finish():

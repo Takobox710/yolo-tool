@@ -5,10 +5,10 @@ from pathlib import Path
 from PIL import Image
 from PySide6.QtCore import QPointF, QRectF, QTimer
 from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QMenu, QWidgetAction
 
 from scr.services.editable_annotation_service import EditableAnnotation, _detect_points_to_rect
-from scr.ui.qt import QSizePolicy, Qt, QWidget
+from scr.ui.qt import QHBoxLayout, QLabel, QSizePolicy, Qt, QWidget
 
 
 def _class_color(class_id: int) -> QColor:
@@ -68,6 +68,15 @@ class AnnotationCanvas(QWidget):
         self.flash_index = -1
         self.changed_callback = None
         self.selection_callback = None
+        self.save_labelme_callback = None
+        self.save_yolo_callback = None
+        self.undo_callback = None
+        self.save_default_callback = None
+        self.can_save_labelme = False
+        self.can_save_yolo = False
+        self.can_undo = False
+        self.can_save_default = False
+        self.show_separate_yolo_save = False
         self._flash_timer = QTimer(self)
         self._flash_timer.setSingleShot(True)
         self._flash_timer.timeout.connect(self._clear_flash)
@@ -753,6 +762,17 @@ class AnnotationCanvas(QWidget):
             return True
         return False
 
+    def _can_show_cancel_drawing_action(self) -> bool:
+        return (
+            self.draw_shape != "select"
+            or self.drag_start is not None
+            or self.obb_first is not None
+            or bool(self.polygon_points)
+        )
+
+    def _has_selected_annotation(self) -> bool:
+        return 0 <= self.selected_index < len(self.annotations)
+
     def _reset_transient_draw_state(self) -> None:
         self.drag_start = None
         self.drag_current = None
@@ -898,33 +918,70 @@ class AnnotationCanvas(QWidget):
                 action.setChecked(self.annotations[self.selected_index].class_id == index)
                 class_menu.addAction(action)
                 class_actions[action] = index
-        separator_bottom = QAction(menu)
-        separator_bottom.setSeparator(True)
-        menu.addAction(separator_bottom)
-        delete_action = QAction("删除选中框", menu)
-        delete_action.setEnabled(0 <= self.selected_index < len(self.annotations))
-        delete_action.setShortcut(QKeySequence(Qt.Key.Key_Delete))
-        delete_action.setShortcutVisibleInContextMenu(True)
-        menu.addAction(delete_action)
-        cancel_action = QAction("取消当前绘制", menu)
-        cancel_action.setEnabled(
-            self.drag_start is not None
-            or self.obb_first is not None
-            or bool(self.polygon_points)
-            or self.active_handle is not None
-            or self.move_anchor is not None
-        )
-        cancel_action.setShortcut(QKeySequence(Qt.Key.Key_Escape))
-        cancel_action.setShortcutVisibleInContextMenu(True)
-        menu.addAction(cancel_action)
+        save_default_action = None
+        save_labelme_action = None
+        save_yolo_action = None
+        undo_action = None
+        if self.can_save_default:
+            save_default_action = QAction("保存", menu)
+            save_default_action.setShortcut(QKeySequence.StandardKey.Save)
+            save_default_action.setShortcutVisibleInContextMenu(True)
+            menu.addAction(save_default_action)
+        elif self.can_save_labelme:
+            save_labelme_action = QAction("保存Labelme标注", menu)
+            save_labelme_action.setShortcut(QKeySequence.StandardKey.Save)
+            save_labelme_action.setShortcutVisibleInContextMenu(True)
+            menu.addAction(save_labelme_action)
+        if self.show_separate_yolo_save and self.can_save_yolo:
+            save_yolo_action = QAction("保存YOLO标注", menu)
+            menu.addAction(save_yolo_action)
+        has_selected_annotation = self._has_selected_annotation()
+        if (
+            save_default_action is not None
+            or save_labelme_action is not None
+            or save_yolo_action is not None
+            or has_selected_annotation
+        ):
+            separator_bottom = QAction(menu)
+            separator_bottom.setSeparator(True)
+            menu.addAction(separator_bottom)
+        delete_action = None
+        if has_selected_annotation:
+            delete_action = QAction("删除", menu)
+            delete_action.setShortcut(QKeySequence(Qt.Key.Key_Delete))
+            delete_action.setShortcutVisibleInContextMenu(True)
+            menu.addAction(delete_action)
+        if self.can_undo:
+            undo_action = QAction("撤销", menu)
+            undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+            undo_action.setShortcutVisibleInContextMenu(True)
+            menu.addAction(undo_action)
+        cancel_action = None
+        if self._can_show_cancel_drawing_action():
+            cancel_action = QAction("取消当前绘制", menu)
+            cancel_action.setShortcut(QKeySequence(Qt.Key.Key_Escape))
+            cancel_action.setShortcutVisibleInContextMenu(True)
+            menu.addAction(cancel_action)
         selected = menu.exec(global_pos)
         if selected is None:
             return
         if selected == select_action:
             self.set_draw_shape("select")
-        elif selected == delete_action:
+        elif delete_action is not None and selected == delete_action:
             self.delete_selected()
-        elif selected == cancel_action:
+        elif save_default_action is not None and selected == save_default_action:
+            if self.save_default_callback is not None:
+                self.save_default_callback()
+        elif save_labelme_action is not None and selected == save_labelme_action:
+            if self.save_labelme_callback is not None:
+                self.save_labelme_callback()
+        elif save_yolo_action is not None and selected == save_yolo_action:
+            if self.save_yolo_callback is not None:
+                self.save_yolo_callback()
+        elif undo_action is not None and selected == undo_action:
+            if self.undo_callback is not None:
+                self.undo_callback()
+        elif cancel_action is not None and selected == cancel_action:
             self._reset_transient_draw_state()
             self.update()
         elif selected in class_actions and 0 <= self.selected_index < len(self.annotations):
@@ -933,3 +990,36 @@ class AnnotationCanvas(QWidget):
             self.update()
         elif selected in shape_actions:
             self.set_draw_shape(shape_actions[selected])
+
+    def _add_menu_button_action(
+        self,
+        menu: QMenu,
+        text: str,
+        *,
+        color: str = "#14233A",
+        hover_background: str = "#F5F8FB",
+        trailing_text: str = "",
+    ) -> QWidgetAction:
+        action = QWidgetAction(menu)
+        container = QWidget(menu)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(36, 6, 14, 6)
+        layout.setSpacing(0)
+        label = QLabel(text, container)
+        label.setStyleSheet(f"color: {color};")
+        layout.addWidget(label)
+        layout.addStretch(1)
+        if trailing_text:
+            trailing_label = QLabel(trailing_text, container)
+            trailing_label.setStyleSheet("color: #14233A;")
+            trailing_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            trailing_label.setFixedWidth(34)
+            layout.addWidget(trailing_label)
+        container.setStyleSheet(
+            f"QWidget {{ background: transparent; }}"
+            f"QWidget:hover {{ background: {hover_background}; }}"
+        )
+        container.mousePressEvent = lambda _event: action.trigger()
+        action.setDefaultWidget(container)
+        menu.addAction(action)
+        return action

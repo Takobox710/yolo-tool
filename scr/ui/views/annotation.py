@@ -25,12 +25,15 @@ from scr.ui.qt import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPushButton,
     QShortcut,
     QStyle,
     Qt,
     QVBoxLayout,
+    QWidget,
+    QWidgetAction,
 )
 from scr.ui.views.annotation_ai_dialog import AiPrelabelDialog, CustomAiImageSelectionDialog
 from scr.ui.views.annotation_canvas import AnnotationCanvas
@@ -50,6 +53,44 @@ _SHAPE_LABELS = {
     "polygon": "多边形",
     "line_expand": "直线拓展",
 }
+
+
+class AnnotationFileListItemWidget(QWidget):
+    def __init__(self, file_name: str, *, checked: bool, unsaved: bool, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.checkbox = QCheckBox()
+        self.checkbox.setChecked(bool(checked))
+        self.checkbox.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        layout.addWidget(self.checkbox)
+        self.name_label = QLabel(file_name)
+        self.name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout.addWidget(self.name_label)
+        self.unsaved_label = QLabel("（未保存）")
+        self.unsaved_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.unsaved_label.setStyleSheet("color: #C62828;")
+        self.unsaved_label.setVisible(bool(unsaved))
+        layout.addWidget(self.unsaved_label)
+        layout.addStretch(1)
+
+    def text(self) -> str:
+        return self.name_label.text()
+
+    def isChecked(self) -> bool:
+        return self.checkbox.isChecked()
+
+    def setChecked(self, checked: bool) -> None:
+        self.checkbox.setChecked(bool(checked))
+
+    def isUnsaved(self) -> bool:
+        return not self.unsaved_label.isHidden()
+
+    def setUnsaved(self, unsaved: bool) -> None:
+        self.unsaved_label.setVisible(bool(unsaved))
 
 
 class AnnotationPage(BasePage):
@@ -77,6 +118,14 @@ class AnnotationPage(BasePage):
         delete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         delete_shortcut.activated.connect(self.delete_selected)
         self._delete_shortcut = delete_shortcut
+        save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
+        save_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        save_shortcut.activated.connect(self.save_current_default)
+        self._save_shortcut = save_shortcut
+        save_yolo_shortcut = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
+        save_yolo_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        save_yolo_shortcut.activated.connect(self.save_current_yolo)
+        self._save_yolo_shortcut = save_yolo_shortcut
         self.scan_images(select_first=True)
 
     def _build_toolbar(self) -> QFrame:
@@ -167,6 +216,8 @@ class AnnotationPage(BasePage):
         layout.addWidget(manage_btn)
         self.annotation_list = QListWidget()
         self.annotation_list.currentRowChanged.connect(self.select_annotation)
+        self.annotation_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.annotation_list.customContextMenuRequested.connect(self.open_annotation_list_context_menu)
         layout.addWidget(self.annotation_list, 2)
         delete_btn = QPushButton("🗑 删除选中框(Del)")
         delete_btn.setObjectName("annotationPrimaryButton")
@@ -185,6 +236,8 @@ class AnnotationPage(BasePage):
         layout.addLayout(file_header)
         self.file_list = QListWidget()
         self.file_list.currentRowChanged.connect(self.jump_to_file)
+        self.file_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.file_list.customContextMenuRequested.connect(self.open_file_list_context_menu)
         layout.addWidget(self.file_list, 3)
         return panel
 
@@ -215,6 +268,18 @@ class AnnotationPage(BasePage):
     def path_from_setting(self, key: str) -> Path:
         return Path(self.app.settings["paths"][key])
 
+    def annotation_settings(self) -> dict:
+        return self.app.settings.get("annotation", {})
+
+    def labelme_auto_save_enabled(self) -> bool:
+        return bool(self.annotation_settings().get("auto_save", True))
+
+    def yolo_auto_save_enabled(self) -> bool:
+        return bool(self.annotation_settings().get("auto_convert_yolo", False))
+
+    def show_yolo_save_in_context_menu(self) -> bool:
+        return bool(self.annotation_settings().get("show_yolo_save_in_context_menu", False))
+
     def scan_images(self, *, select_first: bool) -> None:
         image_dir = self.path_from_setting("images_dir")
         self.image_items = (
@@ -240,6 +305,7 @@ class AnnotationPage(BasePage):
         else:
             self._update_file_count_label()
             self.canvas.set_image(None, [], self.class_names())
+        self._refresh_manual_action_buttons()
 
     def prev_image(self) -> None:
         if not self.image_items:
@@ -300,15 +366,28 @@ class AnnotationPage(BasePage):
         self.dirty = False
         self.refresh_annotation_list()
         self._update_current_file_list_item()
+        self._refresh_manual_action_buttons()
 
-    def save_current(self, *, force: bool = False, save_json: bool = True) -> None:
-        if not self.dirty and not force:
-            return
+    def save_current(
+        self,
+        *,
+        force: bool = False,
+        save_json: bool = True,
+        save_yolo: bool | None = None,
+    ) -> bool:
+        should_save_yolo = (
+            bool(save_yolo)
+            if save_yolo is not None
+            else (self.annotation_settings().get("auto_convert_yolo", False) or force)
+        )
+        if not self.dirty and not force and not should_save_yolo:
+            return False
         if self.current_json_path is None or self.current_image_path is None:
-            return
+            return False
         if self.canvas.image_size == (0, 0):
-            return
-        annotation_settings = self.app.settings.get("annotation", {})
+            return False
+        annotation_settings = self.annotation_settings()
+        saved_any = False
         if save_json:
             save_labelme_annotations(
                 self.canvas.image_size,
@@ -317,26 +396,32 @@ class AnnotationPage(BasePage):
                 self.canvas.annotations,
                 self.class_names(),
             )
-        if (
-            annotation_settings.get("auto_convert_yolo", False) or force
-        ) and self.current_yolo_path is not None:
+            saved_any = True
+        if should_save_yolo and self.current_yolo_path is not None:
             save_editable_annotations(
                 self.canvas.image_size,
                 self.current_yolo_path,
                 self.canvas.annotations,
                 self.output_mode,
             )
+            saved_any = True
         if save_json:
             self.dirty = False
+        self._update_current_file_list_item()
+        self._refresh_manual_action_buttons()
+        return saved_any
 
     def mark_dirty_and_save(self) -> None:
         self.dirty = True
         self.refresh_annotation_list()
-        annotation_settings = self.app.settings.get("annotation", {})
-        if annotation_settings.get("auto_save", True) or annotation_settings.get(
-            "auto_convert_yolo", False
-        ):
-            self.save_current(save_json=annotation_settings.get("auto_save", True))
+        annotation_settings = self.annotation_settings()
+        self._update_current_file_list_item()
+        self._refresh_manual_action_buttons()
+        if annotation_settings.get("auto_save", True) or annotation_settings.get("auto_convert_yolo", False):
+            self.save_current(
+                save_json=annotation_settings.get("auto_save", True),
+                save_yolo=annotation_settings.get("auto_convert_yolo", False),
+            )
 
     def class_names(self) -> list[str]:
         names = [
@@ -413,6 +498,7 @@ class AnnotationPage(BasePage):
             current.get("line_expand_pixels", 10),
             current.get("auto_save", True),
             current.get("auto_convert_yolo", False),
+            current.get("show_yolo_save_in_context_menu", False),
             current.get("continuous_draw", False),
             current.get("quick_draw", True),
             str(self.path_from_setting("labels_dir")),
@@ -425,6 +511,7 @@ class AnnotationPage(BasePage):
             pixels,
             auto_save,
             auto_convert_yolo,
+            show_yolo_save_in_context_menu,
             continuous_draw,
             quick_draw,
             yolo_dir,
@@ -433,6 +520,9 @@ class AnnotationPage(BasePage):
         self.app.settings["annotation"]["line_expand_pixels"] = pixels
         self.app.settings["annotation"]["auto_save"] = auto_save
         self.app.settings["annotation"]["auto_convert_yolo"] = auto_convert_yolo
+        self.app.settings["annotation"]["show_yolo_save_in_context_menu"] = (
+            show_yolo_save_in_context_menu
+        )
         self.app.settings["annotation"]["continuous_draw"] = continuous_draw
         self.app.settings["annotation"]["quick_draw"] = quick_draw
         if yolo_dir:
@@ -440,8 +530,13 @@ class AnnotationPage(BasePage):
             Path(yolo_dir).mkdir(parents=True, exist_ok=True)
         self.save_settings()
         self._refresh_class_state()
+        self._refresh_manual_action_buttons()
         if auto_save or auto_convert_yolo:
-            self.save_current(force=True)
+            self.save_current(
+                force=True,
+                save_json=auto_save,
+                save_yolo=auto_convert_yolo,
+            )
 
     def manage_classes(self) -> None:
         dialog = ClassManagerDialog(self.class_names(), self)
@@ -512,6 +607,13 @@ class AnnotationPage(BasePage):
     def _current_image_has_annotations(self) -> bool:
         return bool(self.canvas.annotations)
 
+    def _current_image_has_unsaved_changes(self) -> bool:
+        return (
+            self.current_image_path is not None
+            and not self.labelme_auto_save_enabled()
+            and self.dirty
+        )
+
     def _update_current_file_list_item(self) -> None:
         if not hasattr(self, "file_list"):
             return
@@ -521,8 +623,9 @@ class AnnotationPage(BasePage):
         if item is None:
             return
         widget = self.file_list.itemWidget(item)
-        if isinstance(widget, QCheckBox):
+        if isinstance(widget, AnnotationFileListItemWidget):
             widget.setChecked(self._current_image_has_annotations())
+            widget.setUnsaved(self._current_image_has_unsaved_changes())
 
     def refresh_file_list(self) -> None:
         if not hasattr(self, "file_list"):
@@ -531,22 +634,254 @@ class AnnotationPage(BasePage):
         self.file_list.clear()
         for path in self.image_items:
             item = QListWidgetItem()
-            checkbox = QCheckBox(path.name)
-            checkbox.setChecked(self._has_annotation_for_image(path))
-            checkbox.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-            checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            item.setSizeHint(checkbox.sizeHint())
+            widget = AnnotationFileListItemWidget(
+                path.name,
+                checked=self._has_annotation_for_image(path),
+                unsaved=path == self.current_image_path and self._current_image_has_unsaved_changes(),
+                parent=self.file_list,
+            )
+            item.setSizeHint(widget.sizeHint())
             self.file_list.addItem(item)
-            self.file_list.setItemWidget(item, checkbox)
+            self.file_list.setItemWidget(item, widget)
         self.file_list.blockSignals(False)
         if 0 <= self.current_index < len(self.image_items):
             self.file_list.blockSignals(True)
             self.file_list.setCurrentRow(self.current_index)
             self.file_list.blockSignals(False)
         self._update_file_count_label()
+        self._refresh_manual_action_buttons()
 
     def delete_selected(self) -> None:
         self.canvas.delete_selected()
+
+    def save_current_labelme(self) -> None:
+        self.save_current(force=True, save_json=True, save_yolo=False)
+
+    def save_current_yolo(self) -> None:
+        if self.yolo_auto_save_enabled() or self.current_image_path is None:
+            return
+        self.save_current(force=True, save_json=False, save_yolo=True)
+
+    def save_current_default(self) -> None:
+        if self.labelme_auto_save_enabled() or self.current_image_path is None:
+            return
+        self.save_current_labelme()
+
+    def undo_unsaved_changes(self) -> None:
+        if not self.dirty:
+            return
+        self.load_current()
+
+    def _refresh_manual_action_buttons(self) -> None:
+        has_current = self.current_image_path is not None and self.canvas.image_size != (0, 0)
+        use_separate_save_actions = self.show_yolo_save_in_context_menu()
+        can_save_labelme = has_current and not self.labelme_auto_save_enabled()
+        can_save_yolo = (
+            has_current
+            and use_separate_save_actions
+            and not self.yolo_auto_save_enabled()
+        )
+        self.canvas.save_labelme_callback = self.save_current_labelme
+        self.canvas.save_yolo_callback = self.save_current_yolo
+        self.canvas.save_default_callback = self.save_current_default
+        self.canvas.undo_callback = self.undo_unsaved_changes
+        self.canvas.can_save_default = has_current and not use_separate_save_actions and not self.labelme_auto_save_enabled()
+        self.canvas.can_save_labelme = can_save_labelme
+        self.canvas.can_save_yolo = can_save_yolo
+        self.canvas.can_undo = has_current and self.dirty
+        self.canvas.show_separate_yolo_save = use_separate_save_actions
+
+    def _annotation_file_paths(self, image_path: Path) -> tuple[Path, Path]:
+        return (
+            self.path_from_setting("annotations_dir") / f"{image_path.stem}.json",
+            self.path_from_setting("labels_dir") / f"{image_path.stem}.txt",
+        )
+
+    def _remove_annotation_files(self, image_path: Path) -> None:
+        json_path, yolo_path = self._annotation_file_paths(image_path)
+        if json_path.exists():
+            json_path.unlink()
+        if yolo_path.exists():
+            yolo_path.unlink()
+
+    def _confirm_file_action(self, title: str, message: str) -> bool:
+        return (
+            QMessageBox.question(self, title, message)
+            == QMessageBox.StandardButton.Yes
+        )
+
+    def clear_annotations_for_image(self, image_path: Path) -> None:
+        self._remove_annotation_files(image_path)
+        if self.current_image_path == image_path:
+            self.canvas.annotations = []
+            self.canvas.selected_index = -1
+            self.dirty = False
+            self.refresh_annotation_list()
+            self.canvas.update()
+        self.refresh_file_list()
+        if self.current_image_path == image_path and self.current_index >= 0:
+            self.load_current()
+
+    def delete_image_and_annotations(self, image_path: Path) -> None:
+        self._remove_annotation_files(image_path)
+        if image_path.exists():
+            image_path.unlink()
+        if self.current_image_path == image_path:
+            self.dirty = False
+            self.current_image_path = None
+            self.current_json_path = None
+            self.current_yolo_path = None
+        try:
+            removed_index = self.image_items.index(image_path)
+        except ValueError:
+            removed_index = -1
+        if removed_index >= 0 and self.current_index > removed_index:
+            self.current_index -= 1
+        self.scan_images(select_first=False)
+
+    def _add_menu_button_action(
+        self,
+        menu: QMenu,
+        text: str,
+        *,
+        color: str = "#14233A",
+        hover_background: str = "#F5F8FB",
+        trailing_text: str = "",
+        show_submenu_arrow: bool = False,
+    ) -> QWidgetAction:
+        action = QWidgetAction(menu)
+        container = QWidget(menu)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(26, 6, 26, 6)
+        layout.setSpacing(12)
+        label = QLabel(text, container)
+        label.setStyleSheet(f"color: {color};")
+        layout.addWidget(label)
+        layout.addStretch(1)
+        if trailing_text:
+            trailing_label = QLabel(trailing_text, container)
+            trailing_label.setStyleSheet("color: #6B7280;")
+            trailing_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            layout.addWidget(trailing_label)
+        if show_submenu_arrow:
+            arrow_label = QLabel("›", container)
+            arrow_label.setStyleSheet("color: #6B7280;")
+            arrow_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            layout.addWidget(arrow_label)
+        container.setStyleSheet(
+            f"QWidget {{ background: transparent; }}"
+            f"QWidget:hover {{ background: {hover_background}; }}"
+        )
+        container.mousePressEvent = lambda _event: action.trigger()
+        action.setDefaultWidget(container)
+        menu.addAction(action)
+        return action
+
+    def _add_danger_menu_action(
+        self,
+        menu: QMenu,
+        text: str,
+        *,
+        trailing_text: str = "",
+    ) -> QWidgetAction:
+        return self._add_menu_button_action(
+            menu,
+            text,
+            color="#C62828",
+            hover_background="#FCE8E6",
+            trailing_text=trailing_text,
+        )
+
+    def open_file_list_context_menu(self, pos) -> None:
+        row = self.file_list.indexAt(pos).row()
+        if not (0 <= row < len(self.image_items)):
+            return
+        image_path = self.image_items[row]
+        menu = QMenu(self)
+        save_default_action = None
+        save_labelme_action = None
+        save_yolo_action = None
+        if self.show_yolo_save_in_context_menu():
+            if not self.labelme_auto_save_enabled():
+                save_labelme_action = self._add_menu_button_action(menu, "保存Labelme标注")
+            if not self.yolo_auto_save_enabled():
+                save_yolo_action = self._add_menu_button_action(menu, "保存YOLO标注")
+        elif not self.labelme_auto_save_enabled():
+            save_default_action = self._add_menu_button_action(menu, "保存")
+        if (
+            save_default_action is not None
+            or save_labelme_action is not None
+            or save_yolo_action is not None
+        ):
+            menu.addSeparator()
+        delete_annotations_action = self._add_danger_menu_action(menu, "删除所有标注")
+        delete_image_action = self._add_danger_menu_action(menu, "删除图片及标注")
+        selected = menu.exec(self.file_list.viewport().mapToGlobal(pos))
+        if save_default_action is not None and selected == save_default_action:
+            self.save_current_default()
+            return
+        if save_labelme_action is not None and selected == save_labelme_action:
+            self.save_current_labelme()
+            return
+        if save_yolo_action is not None and selected == save_yolo_action:
+            self.save_current_yolo()
+            return
+        if selected == delete_annotations_action:
+            if self._confirm_file_action(
+                "删除所有标注",
+                f"确定删除 {image_path.name} 的全部标注吗？",
+            ):
+                self.clear_annotations_for_image(image_path)
+            return
+        if selected == delete_image_action:
+            if self._confirm_file_action(
+                "删除图片及标注",
+                f"确定删除图片 {image_path.name} 及其标注吗？",
+            ):
+                self.delete_image_and_annotations(image_path)
+
+    def set_selected_annotation_class(self, class_id: int) -> None:
+        if not (0 <= self.canvas.selected_index < len(self.canvas.annotations)):
+            return
+        self.canvas.annotations[self.canvas.selected_index].class_id = class_id
+        self.refresh_annotation_list()
+        self.mark_dirty_and_save()
+
+    def open_annotation_list_context_menu(self, pos) -> None:
+        row = self.annotation_list.indexAt(pos).row()
+        if not (0 <= row < len(self.canvas.annotations)):
+            return
+        self.canvas.selected_index = row
+        self.sync_selection(row)
+        self.canvas.update()
+        menu = QMenu(self)
+        class_menu = QMenu("标注类型", menu)
+        class_actions: dict[object, int] = {}
+        names = self.class_names()
+        current_class_id = self.canvas.annotations[row].class_id
+        for index, class_name in enumerate(names):
+            action = class_menu.addAction(f"{index} : {class_name}")
+            action.setCheckable(True)
+            action.setChecked(index == current_class_id)
+            class_actions[action] = index
+        class_entry_action = self._add_menu_button_action(
+            menu,
+            "标注类型",
+            show_submenu_arrow=True,
+        )
+        menu.addSeparator()
+        delete_action = self._add_danger_menu_action(menu, "删除标注")
+        selected = menu.exec(self.annotation_list.viewport().mapToGlobal(pos))
+        if selected == class_entry_action:
+            class_selected = class_menu.exec(menu.pos() + menu.actionGeometry(class_entry_action).topRight())
+            if class_selected in class_actions:
+                self.set_selected_annotation_class(class_actions[class_selected])
+            return
+        if selected in class_actions:
+            self.set_selected_annotation_class(class_actions[selected])
+            return
+        if selected == delete_action:
+            self.delete_selected()
 
     def keyPressEvent(self, event):  # noqa: N802 - Qt API name
         if event.key() == Qt.Key.Key_Delete:
@@ -564,6 +899,9 @@ class AnnotationPage(BasePage):
         self._refresh_path_labels()
         if not self.image_items:
             self.scan_images(select_first=True)
+
+    def has_unsaved_annotations(self) -> bool:
+        return bool(self.dirty)
 
 
 __all__ = [

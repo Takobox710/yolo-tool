@@ -332,6 +332,7 @@ def run_ai_label_cli(argv: list[str]) -> int:
     try:
         result = apply_ai_labeling(
             image_items=[Path(path) for path in payload.get("image_items", [])],
+            target_images=[Path(path) for path in payload.get("target_images", [])],
             current_image=Path(payload["current_image"]) if payload.get("current_image") else None,
             annotations_dir=Path(payload["annotations_dir"]),
             labels_dir=Path(payload["labels_dir"]),
@@ -441,6 +442,7 @@ def run_ai_runtime_cli(argv: list[str]) -> int:
                     model = ensure_model(model_path)
                     result = apply_ai_labeling(
                         image_items=[Path(path) for path in payload.get("image_items", [])],
+                        target_images=[Path(path) for path in payload.get("target_images", [])],
                         current_image=Path(payload["current_image"]) if payload.get("current_image") else None,
                         annotations_dir=Path(payload["annotations_dir"]),
                         labels_dir=Path(payload["labels_dir"]),

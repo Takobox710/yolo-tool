@@ -329,6 +329,7 @@ def test_pages_add_placeholders_and_help_icons(tmp_path):
     resize_labels = [label for label in resize_page.findChildren(QLabel) if "ⓘ" in label.text()]
     validate_labels = [label for label in validate_page.findChildren(QLabel) if "ⓘ" in label.text()]
     settings_labels = [label for label in settings_page.findChildren(QLabel) if "ⓘ" in label.text()]
+    settings_checks = [check for check in settings_page.findChildren(QCheckBox) if "ⓘ" in check.text()]
     assert len(train_labels) == 8
     assert len(train_checks) == 8
     assert len(convert_labels) == 6
@@ -337,6 +338,11 @@ def test_pages_add_placeholders_and_help_icons(tmp_path):
     assert len(resize_labels) == 0
     assert len(validate_labels) == 0
     assert len(settings_labels) == 0
+    assert len(settings_checks) == 4
+    assert any(check.text() == "多类别分布模式 ⓘ" and check.toolTip() == "开启后首页按多类别模式展示类别分布；顶部只显示总图片数，柱状图按各类别分别统计。" for check in settings_checks)
+    assert any(check.text() == "训练前显示自定义命令框 ⓘ" and check.toolTip() == "开启后点击开始训练会先弹出自定义命令框；关闭后直接按当前配置启动训练。" for check in settings_checks)
+    assert any(check.text() == "显示配置解释符号 ⓘ" and check.toolTip() == "开启后在配置名称后显示 ⓘ；关闭时只隐藏符号，鼠标悬停字段名称本身仍可查看解释。" for check in settings_checks)
+    assert any(check.text() == "模型验证显示 last ⓘ" and check.toolTip() == "开启后模型验证页的模型列表会额外显示各训练目录下的 last.pt；关闭时只显示 best.pt。" for check in settings_checks)
     assert any(label.text() == "训练轮数 ⓘ" and label.toolTip() == "训练轮数（epochs）；设置完整训练的总轮次，更大通常效果更好，但训练耗时更长。" for label in train_labels)
     assert any(label.text() == "线程数 ⓘ" and label.toolTip() == "数据加载线程数（workers）；提高后通常更快，但会占用更多 CPU 和系统内存。" for label in train_labels)
     assert any(label.text() == "图片尺寸 ⓘ" and label.toolTip() == "训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。" for label in train_labels)
@@ -466,3 +472,86 @@ def test_workbench_window_collects_program_logs():
     text = window.program_log_text()
     assert "程序启动。" in text
     assert "[ERROR] 测试日志" in text
+
+
+def test_workbench_window_close_event_skips_prompt_when_safe(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtGui import QCloseEvent
+    from scr.ui.qt import QApplication
+    from scr.ui.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    save_calls = {"count": 0}
+    stop_calls = []
+
+    monkeypatch.setattr(window.settings_service, "save", lambda _data: save_calls.__setitem__("count", save_calls["count"] + 1))
+    monkeypatch.setattr("scr.ui.window.stop_process", lambda handle: stop_calls.append(handle))
+
+    event = QCloseEvent()
+    window.closeEvent(event)
+
+    assert event.isAccepted() is True
+    assert save_calls["count"] == 1
+    assert len(stop_calls) == 3
+
+
+def test_workbench_window_close_event_prompts_for_unsaved_annotations(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtGui import QCloseEvent
+    from scr.ui.qt import QApplication, QMessageBox
+    from scr.ui.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    annotation_page = getattr(window.pages["annotation"], "inner_page", window.pages["annotation"])
+    annotation_page.dirty = True
+    asked = {"text": ""}
+    save_calls = {"count": 0}
+
+    def fake_question(_parent, _title, text, *_args, **_kwargs):
+        asked["text"] = text
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "question", fake_question)
+    monkeypatch.setattr(window.settings_service, "save", lambda _data: save_calls.__setitem__("count", save_calls["count"] + 1))
+    monkeypatch.setattr("scr.ui.window.stop_process", lambda _handle: None)
+
+    event = QCloseEvent()
+    window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    assert save_calls["count"] == 0
+    assert "当前有未保存的标注" in asked["text"]
+
+
+def test_workbench_window_close_event_prompts_for_running_training(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtGui import QCloseEvent
+    from scr.ui.qt import QApplication, QMessageBox
+    from scr.ui.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    train_page = getattr(window.pages["train"], "inner_page", window.pages["train"])
+    train_page.is_training = True
+    asked = {"text": ""}
+    save_calls = {"count": 0}
+
+    def fake_question(_parent, _title, text, *_args, **_kwargs):
+        asked["text"] = text
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", fake_question)
+    monkeypatch.setattr(window.settings_service, "save", lambda _data: save_calls.__setitem__("count", save_calls["count"] + 1))
+    monkeypatch.setattr("scr.ui.window.stop_process", lambda _handle: None)
+
+    event = QCloseEvent()
+    window.closeEvent(event)
+
+    assert event.isAccepted() is True
+    assert save_calls["count"] == 1
+    assert "模型训练尚未结束" in asked["text"]

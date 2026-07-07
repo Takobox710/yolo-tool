@@ -132,6 +132,7 @@ yolo_tool/
 - `process_utils.py`：Windows 后台子进程隐藏窗口参数，避免 PyInstaller GUI 程序反复弹出终端窗口。
 - `environment_service.py`：Python、关键依赖版本与 Torch 运行时状态检测；Torch 摘要默认通过短生命周期子进程获取，避免仅因打开系统设置或训练页就把 `torch` 运行时常驻到 GUI 主进程。
 - `WorkbenchWindow` 维护全局程序日志缓冲区；系统设置页下方只作为日志查看窗口，优先承载程序级运行信息与后台任务异常，不重复汇总训练页、验证页、AI 预标注、标注转换、图片压缩等页面已经各自展示的专属日志。
+- `WorkbenchWindow` 统一负责程序关闭前确认：若当前存在未保存标注，或训练任务尚未结束，则先弹出确认框，用户再次确认后才真正关闭程序。
 
 ## UI 分层约定
 
@@ -166,6 +167,7 @@ yolo_tool/
 - `features.distribution_multi_class_mode`：主页“各类别图片分布”是否切换为多类别统计模式。
 - `features.show_help_icons`：是否显示字段名后的 `ⓘ`；关闭时只隐藏 `ⓘ`，不移除字段名称上的 tooltip。
 - `features.show_last_training_models`：模型验证页“选择模型”下拉框是否额外显示训练结果中的 `last.pt`；默认 `False`，关闭时只显示 `best.pt`。
+- `annotation.show_yolo_save_in_context_menu`：标注页主画布与图片列表右键菜单是否按需分别显示 `保存Labelme标注` 与 `保存YOLO标注`；关闭时仅显示单个 `保存`，默认保存 Labelme。
 - 系统设置中不再提供“启动自动加载 torch”之类的常驻预热选项；GUI 默认不主动持有推理运行时，只有训练/验证/AI 预标注等实际任务启动后才在对应子进程中按需加载。
 - `conversion.use_labelme`：记录标注转换页当前是否启用 Labelme 转 YOLO。
 - `conversion.backup_yolo_files`：记录标注转换页是否备份本次转换生成的 YOLO 标注与 `data.yaml`。

@@ -117,6 +117,16 @@ def collect_ai_target_images(
     return list(image_items)
 
 
+def normalize_ai_target_images(
+    image_items: list[Path],
+    target_images: list[Path] | None,
+) -> list[Path]:
+    if target_images is None:
+        return []
+    target_set = {Path(path).resolve() for path in target_images}
+    return [path for path in image_items if Path(path).resolve() in target_set]
+
+
 def merge_ai_annotations(
     current: list["EditableAnnotation"],
     incoming: list["EditableAnnotation"],
@@ -185,6 +195,7 @@ def apply_ai_labeling(
     range_mode: str,
     current_index: int = -1,
     selected_images: list[Path] | None = None,
+    target_images: list[Path] | None = None,
     process_mode: str,
     class_mapping: dict[str, str],
     class_names: list[str],
@@ -200,15 +211,17 @@ def apply_ai_labeling(
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
-    targets = collect_ai_target_images(
-        image_items,
-        current_image,
-        annotations_dir,
-        labels_dir,
-        range_mode,
-        current_index=current_index,
-        selected_images=selected_images,
-    )
+    targets = normalize_ai_target_images(image_items, target_images)
+    if not targets:
+        targets = collect_ai_target_images(
+            image_items,
+            current_image,
+            annotations_dir,
+            labels_dir,
+            range_mode,
+            current_index=current_index,
+            selected_images=selected_images,
+        )
     active_model = model
     owns_model = active_model is None
     if active_model is None:

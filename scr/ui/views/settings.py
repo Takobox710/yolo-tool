@@ -70,6 +70,7 @@ class SettingsPage(BasePage):
             self.app.settings.get("features", {}).get(
                 "distribution_multi_class_mode", False
             ),
+            help_text="开启后首页按多类别模式展示类别分布；顶部只显示总图片数，柱状图按各类别分别统计。",
         )
         self.distribution_mode_check.stateChanged.connect(
             self._toggle_distribution_mode
@@ -79,6 +80,7 @@ class SettingsPage(BasePage):
         cmd_box, self.cmd_dialog_check = self.checkbox_with_help(
             "训练前显示自定义命令框",
             self.app.settings.get("features", {}).get("custom_command_dialog", True),
+            help_text="开启后点击开始训练会先弹出自定义命令框；关闭后直接按当前配置启动训练。",
         )
         self.cmd_dialog_check.setChecked(
             self.app.settings.get("features", {}).get("custom_command_dialog", True)
@@ -89,6 +91,7 @@ class SettingsPage(BasePage):
         help_box, self.help_icon_check = self.checkbox_with_help(
             "显示配置解释符号",
             self.app.settings.get("features", {}).get("show_help_icons", True),
+            help_text="开启后在配置名称后显示 ⓘ；关闭时只隐藏符号，鼠标悬停字段名称本身仍可查看解释。",
         )
         self.help_icon_check.setChecked(
             self.app.settings.get("features", {}).get("show_help_icons", True)
@@ -99,6 +102,7 @@ class SettingsPage(BasePage):
         model_box, self.show_last_models_check = self.checkbox_with_help(
             "模型验证显示 last",
             self.app.settings.get("features", {}).get("show_last_training_models", False),
+            help_text="开启后模型验证页的模型列表会额外显示各训练目录下的 last.pt；关闭时只显示 best.pt。",
         )
         self.show_last_models_check.setChecked(
             self.app.settings.get("features", {}).get("show_last_training_models", False)

@@ -54,10 +54,40 @@ def test_settings_page_exposes_distribution_mode_before_custom_command(tmp_path)
     )
 
     page = SettingsPage(fake_app)
-    checks = [check.text() for check in page.findChildren(QCheckBox)]
+    checks = [check.text().replace(" ⓘ", "") for check in page.findChildren(QCheckBox)]
 
     assert checks.index("多类别分布模式") < checks.index("训练前显示自定义命令框")
     assert "模型验证显示 last" in checks
+
+
+def test_settings_page_adds_help_symbols_and_tooltips(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.settings import SettingsPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        pages={},
+    )
+
+    page = SettingsPage(fake_app)
+
+    assert page.distribution_mode_check.text() == "多类别分布模式 ⓘ"
+    assert page.distribution_mode_check.toolTip() == "开启后首页按多类别模式展示类别分布；顶部只显示总图片数，柱状图按各类别分别统计。"
+    assert page.cmd_dialog_check.text() == "训练前显示自定义命令框 ⓘ"
+    assert page.cmd_dialog_check.toolTip() == "开启后点击开始训练会先弹出自定义命令框；关闭后直接按当前配置启动训练。"
+    assert page.help_icon_check.text() == "显示配置解释符号 ⓘ"
+    assert page.help_icon_check.toolTip() == "开启后在配置名称后显示 ⓘ；关闭时只隐藏符号，鼠标悬停字段名称本身仍可查看解释。"
+    assert page.show_last_models_check.text() == "模型验证显示 last ⓘ"
+    assert page.show_last_models_check.toolTip() == "开启后模型验证页的模型列表会额外显示各训练目录下的 last.pt；关闭时只显示 best.pt。"
 
 
 def test_settings_page_can_reset_defaults_with_confirmation(tmp_path, monkeypatch):

@@ -507,6 +507,7 @@ class AiPrelabelDialog(QDialog):
         self.undo_btn.setEnabled(False)
         worker_kwargs = {
             "image_items": [str(path) for path in self.page.image_items],
+            "target_images": [str(path) for path in targets],
             "current_image": (
                 str(self.page.current_image_path)
                 if self.page.current_image_path is not None

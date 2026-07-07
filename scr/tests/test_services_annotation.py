@@ -46,6 +46,19 @@ def test_collect_ai_target_images_supports_following_and_custom_ranges(tmp_path)
     assert custom == [images[0], images[2]]
 
 
+def test_normalize_ai_target_images_preserves_ui_selected_order_subset(tmp_path):
+    from scr.services.annotation_ai_service import normalize_ai_target_images
+
+    images = [tmp_path / f"{index}.jpg" for index in range(1, 5)]
+
+    targets = normalize_ai_target_images(
+        images,
+        [images[1], images[3], tmp_path / "other.jpg"],
+    )
+
+    assert targets == [images[1], images[3]]
+
+
 def test_annotation_preview_services(tmp_path):
     from scr.services.annotation_service import Annotation, load_yolo_annotations, render_annotation_preview
 
