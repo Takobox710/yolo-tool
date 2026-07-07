@@ -38,6 +38,8 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["training"]["patience"] == 100
     assert settings["annotation"]["auto_save"] is True
     assert settings["annotation"]["auto_convert_yolo"] is False
+    assert settings["annotation"]["continuous_draw"] is False
+    assert settings["annotation"]["quick_draw"] is True
 
 
 def test_settings_service_defaults_to_project_data_runtime(tmp_path):

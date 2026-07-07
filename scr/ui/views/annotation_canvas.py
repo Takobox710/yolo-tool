@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QPointF, QRectF
+from PySide6.QtCore import QPointF, QRectF, QTimer
 from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QMenu
 
@@ -60,10 +60,17 @@ class AnnotationCanvas(QWidget):
         self.active_handle: tuple[str, int] | None = None
         self.hovered_handle: tuple[str, int] | None = None
         self.move_anchor: tuple[float, float] | None = None
+        self.hovered_polygon_close_index = -1
         self.line_expand_enabled = False
         self.line_expand_pixels = 10
+        self.continuous_draw = False
+        self.quick_draw = True
+        self.flash_index = -1
         self.changed_callback = None
         self.selection_callback = None
+        self._flash_timer = QTimer(self)
+        self._flash_timer.setSingleShot(True)
+        self._flash_timer.timeout.connect(self._clear_flash)
 
     def set_image(
         self,
@@ -84,7 +91,10 @@ class AnnotationCanvas(QWidget):
         self.active_handle = None
         self.hovered_handle = None
         self.hovered_index = -1
+        self.hovered_polygon_close_index = -1
         self.move_anchor = None
+        self.flash_index = -1
+        self._flash_timer.stop()
         if image_path is None:
             self.pixmap = None
             self.image_size = (0, 0)
@@ -111,12 +121,17 @@ class AnnotationCanvas(QWidget):
         self.preview_line_end = None
         self.active_handle = None
         self.hovered_handle = None
+        self.hovered_polygon_close_index = -1
         self.move_anchor = None
         self.update()
 
     def set_line_expand_config(self, enabled: bool, pixels: int) -> None:
         self.line_expand_enabled = bool(enabled)
         self.line_expand_pixels = max(1, int(pixels))
+
+    def set_interaction_config(self, continuous_draw: bool, quick_draw: bool) -> None:
+        self.continuous_draw = bool(continuous_draw)
+        self.quick_draw = bool(quick_draw)
 
     def delete_selected(self) -> bool:
         if 0 <= self.selected_index < len(self.annotations):
@@ -147,27 +162,38 @@ class AnnotationCanvas(QWidget):
                 annotation,
                 selected=index == self.selected_index,
                 hovered=index == self.hovered_index,
+                flashing=index == self.flash_index,
             )
-        if self.drag_start and self.drag_current:
+        if self.draw_shape == "line_expand" and self.quick_draw and self.drag_start and self.drag_current:
+            preview = self._make_obb_annotation(self.drag_start, self.drag_current, None)
+            if preview:
+                self._draw_annotation(painter, preview, selected=True)
+        elif self.drag_start and self.drag_current:
             preview = self._make_annotation(self.drag_start, self.drag_current)
             if preview:
-                self._draw_annotation(painter, preview, selected=True, dashed=True)
+                self._draw_annotation(painter, preview, selected=True)
         elif self.obb_first and self.obb_second and self.drag_current:
             preview = self._make_obb_annotation(
                 self.obb_first, self.obb_second, self.drag_current
             )
             if preview:
-                self._draw_annotation(painter, preview, selected=True, dashed=True)
+                self._draw_annotation(painter, preview, selected=True)
         elif self.obb_first and self.preview_line_end:
-            painter.setPen(QPen(QColor("#26394D"), 1))
-            painter.drawLine(self._image_to_widget(self.obb_first), self._image_to_widget(self.preview_line_end))
+            self._draw_preview_polyline(
+                painter,
+                [self.obb_first, self.preview_line_end],
+                closed=False,
+            )
         if self.polygon_points:
-            preview_points = [self._image_to_widget(point) for point in self.polygon_points]
-            painter.setPen(QPen(QColor("#26394D"), 1))
-            for start, end in zip(preview_points, preview_points[1:]):
-                painter.drawLine(start, end)
+            preview_points = list(self.polygon_points)
             if self.preview_line_end is not None:
-                painter.drawLine(preview_points[-1], self._image_to_widget(self.preview_line_end))
+                preview_points.append(self.preview_line_end)
+            self._draw_preview_polyline(
+                painter,
+                preview_points,
+                closed=False,
+                handle_points=self.polygon_points,
+            )
 
     def mousePressEvent(self, event):  # noqa: N802 - Qt API name
         if self.pixmap is None:
@@ -205,70 +231,38 @@ class AnnotationCanvas(QWidget):
             self.update()
             return
         if self.draw_shape in {"obb_mirror", "obb_single", "line_expand"}:
-            if self.obb_first is None:
-                self.obb_first = image_point
-                self.obb_second = None
-                self.preview_line_end = image_point
-            elif self.obb_second is None:
-                self.obb_second = image_point
+            if self.draw_shape == "line_expand" and self.quick_draw:
+                self.drag_start = image_point
                 self.drag_current = image_point
-                self.preview_line_end = None
-            else:
-                annotation = self._make_obb_annotation(
-                    self.obb_first, self.obb_second, image_point
-                )
-                if annotation is not None:
-                    self.annotations.append(annotation)
-                    self.selected_index = len(self.annotations) - 1
-                    self._emit_changed()
-                    self._emit_selection()
-                self.obb_first = None
-                self.obb_second = None
-                self.drag_current = None
-                self.preview_line_end = None
+                self.update()
+                return
+            self._handle_rotated_shape_click(image_point)
             self.update()
             return
         if self.draw_shape == "circle":
-            if self.drag_start is None:
+            if self.quick_draw:
                 self.drag_start = image_point
                 self.drag_current = image_point
             else:
-                annotation = self._make_annotation(self.drag_start, image_point)
-                if annotation is not None:
-                    self.annotations.append(annotation)
-                    self.selected_index = len(self.annotations) - 1
-                    self._emit_changed()
-                    self._emit_selection()
-                self.drag_start = None
-                self.drag_current = None
+                self._handle_two_click_shape_click(image_point)
             self.update()
             return
         if self.draw_shape == "polygon":
-            if self.polygon_points and len(self.polygon_points) >= 3:
-                first_x, first_y = self.polygon_points[0]
-                dx = image_point[0] - first_x
-                dy = image_point[1] - first_y
-                if dx * dx + dy * dy <= max(36.0, self._handle_radius() ** 2 * 4):
-                    annotation = EditableAnnotation(self.current_class_id, "polygon", list(self.polygon_points))
-                    self.annotations.append(annotation)
-                    self.selected_index = len(self.annotations) - 1
-                    self.polygon_points = []
-                    self.preview_line_end = None
-                    self._emit_changed()
-                    self._emit_selection()
-                    self.update()
-                    return
-            self.polygon_points.append(image_point)
-            self.preview_line_end = image_point
+            self._handle_polygon_click(image_point)
             self.update()
             return
-        self.drag_start = image_point
-        self.drag_current = image_point
+        if self.quick_draw:
+            self.drag_start = image_point
+            self.drag_current = image_point
+        else:
+            self._handle_two_click_shape_click(image_point)
 
     def mouseMoveEvent(self, event):  # noqa: N802 - Qt API name
         image_point = self._widget_to_image(event.position(), clamp=True)
         if self.draw_shape == "select":
             self._update_hover_state(image_point)
+        elif self.draw_shape == "polygon":
+            self._update_polygon_hover_state(image_point)
         if self.active_handle is not None and 0 <= self.selected_index < len(self.annotations):
             if image_point is not None:
                 self._update_selected_handle(image_point)
@@ -282,6 +276,10 @@ class AnnotationCanvas(QWidget):
                     self._move_selected_annotation(dx, dy)
                     self.move_anchor = image_point
                     self.update()
+            return
+        if self.draw_shape == "line_expand" and self.quick_draw and self.drag_start is not None:
+            self.drag_current = image_point
+            self.update()
             return
         if self.obb_first is not None:
             if self.obb_second is not None:
@@ -315,28 +313,38 @@ class AnnotationCanvas(QWidget):
             self._update_hover_cursor()
             self.update()
             return
-        if self.draw_shape in {"obb_mirror", "obb_single", "line_expand", "polygon", "circle"}:
+        if self.draw_shape == "line_expand" and self.quick_draw:
+            if event.button() != Qt.MouseButton.LeftButton or self.drag_start is None:
+                return
+            image_point = self._widget_to_image(event.position())
+            if image_point is not None:
+                annotation = self._make_obb_annotation(self.drag_start, image_point, None)
+                if annotation is not None:
+                    self._finish_annotation(annotation)
+                else:
+                    self._reset_transient_draw_state()
+            self.update()
+            return
+        if self.draw_shape in {"obb_mirror", "obb_single", "line_expand", "polygon"}:
+            return
+        if not self.quick_draw:
             return
         if event.button() != Qt.MouseButton.LeftButton or self.drag_start is None:
-            return
-        if self.draw_shape == "circle":
             return
         image_point = self._widget_to_image(event.position())
         if image_point is not None:
             annotation = self._make_annotation(self.drag_start, image_point)
             if annotation is not None:
-                self.annotations.append(annotation)
-                self.selected_index = len(self.annotations) - 1
-                self._emit_changed()
-                self._emit_selection()
-        self.drag_start = None
-        self.drag_current = None
+                self._finish_annotation(annotation)
+            else:
+                self._reset_transient_draw_state()
         self.update()
 
     def leaveEvent(self, event):  # noqa: N802 - Qt API name
         super().leaveEvent(event)
         self.hovered_index = -1
         self.hovered_handle = None
+        self.hovered_polygon_close_index = -1
         if self.active_handle is None and self.move_anchor is None:
             self.setCursor(Qt.CursorShape.ArrowCursor)
         self.update()
@@ -416,11 +424,10 @@ class AnnotationCanvas(QWidget):
         self,
         start: tuple[float, float],
         end: tuple[float, float],
-        width_point: tuple[float, float],
+        width_point: tuple[float, float] | None,
     ) -> EditableAnnotation | None:
         x1, y1 = start
         x2, y2 = end
-        wx, wy = width_point
         dx = x2 - x1
         dy = y2 - y1
         length = (dx * dx + dy * dy) ** 0.5
@@ -428,12 +435,22 @@ class AnnotationCanvas(QWidget):
             return None
         nx = -dy / length
         ny = dx / length
+        if self.draw_shape == "line_expand":
+            distance = float(self.line_expand_pixels)
+            points = [
+                (x1 + nx * distance, y1 + ny * distance),
+                (x2 + nx * distance, y2 + ny * distance),
+                (x2 - nx * distance, y2 - ny * distance),
+                (x1 - nx * distance, y1 - ny * distance),
+            ]
+            return EditableAnnotation(self.current_class_id, "line_expand", points)
+        if width_point is None:
+            return None
+        wx, wy = width_point
         raw_distance = (wx - x1) * nx + (wy - y1) * ny
         distance = abs(raw_distance)
         if distance < 3:
             return None
-        if self.draw_shape == "line_expand":
-            distance = float(self.line_expand_pixels)
         if self.draw_shape == "obb_single":
             side = 1.0 if raw_distance >= 0 else -1.0
             points = [
@@ -460,6 +477,7 @@ class AnnotationCanvas(QWidget):
         selected: bool = False,
         hovered: bool = False,
         dashed: bool = False,
+        flashing: bool = False,
     ) -> None:
         color = _class_color(annotation.class_id)
         pen = QPen(color, 2 if selected else 1)
@@ -467,7 +485,7 @@ class AnnotationCanvas(QWidget):
             pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
         widget_points = [self._image_to_widget(point) for point in annotation.points]
-        if selected and hovered and not dashed:
+        if (selected and hovered and not dashed) or flashing:
             fill_color = QColor(255, 120, 120, 72)
             painter.setBrush(fill_color)
             if annotation.shape == "circle":
@@ -506,6 +524,48 @@ class AnnotationCanvas(QWidget):
         painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
         if selected and self.draw_shape == "select" and not dashed:
             self._draw_handles(painter, annotation)
+
+    def _draw_preview_polyline(
+        self,
+        painter: QPainter,
+        points: list[tuple[float, float]],
+        *,
+        closed: bool,
+        handle_points: list[tuple[float, float]] | None = None,
+    ) -> None:
+        if len(points) < 2:
+            handle_points = handle_points or points
+            self._draw_preview_points(painter, handle_points)
+            return
+        widget_points = [self._image_to_widget(point) for point in points]
+        painter.setPen(QPen(QColor("#B91C1C"), 2))
+        for start, end in zip(widget_points, widget_points[1:]):
+            painter.drawLine(start, end)
+        if closed:
+            painter.drawLine(widget_points[-1], widget_points[0])
+        self._draw_preview_points(painter, handle_points or points)
+
+    def _draw_preview_points(
+        self,
+        painter: QPainter,
+        points: list[tuple[float, float]],
+    ) -> None:
+        radius = max(2.5, self._handle_radius() - 0.75)
+        painter.setPen(QPen(QColor("#B91C1C"), 2))
+        for index, point in enumerate(points):
+            widget_point = self._image_to_widget(point)
+            is_closing_target = index == self.hovered_polygon_close_index
+            fill = QColor("#FFCACA") if is_closing_target else QColor("#FFFFFF")
+            painter.setBrush(fill)
+            painter.drawEllipse(
+                QRectF(
+                    widget_point.x() - radius,
+                    widget_point.y() - radius,
+                    radius * 2,
+                    radius * 2,
+                )
+            )
+        painter.setBrush(Qt.BrushStyle.NoBrush)
 
     def _hit_test(self, point: tuple[float, float]) -> int:
         for index in range(len(self.annotations) - 1, -1, -1):
@@ -667,24 +727,124 @@ class AnnotationCanvas(QWidget):
             return
         if self.draw_shape == "select" and (self.hovered_handle is not None or self.hovered_index >= 0):
             self.setCursor(Qt.CursorShape.PointingHandCursor)
+        elif self.draw_shape == "polygon" and self.hovered_polygon_close_index >= 0:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
 
+    def _update_polygon_hover_state(self, point: tuple[float, float] | None) -> None:
+        previous_index = self.hovered_polygon_close_index
+        self.hovered_polygon_close_index = -1
+        if point is not None:
+            closing_index = self._polygon_closing_index(point)
+            if closing_index is not None and len(self.polygon_points) >= 3:
+                if closing_index == 0 or closing_index >= 2:
+                    self.hovered_polygon_close_index = closing_index
+        self._update_hover_cursor()
+        if previous_index != self.hovered_polygon_close_index:
+            self.update()
+
     def _cancel_current_drawing(self) -> bool:
         if self.drag_start is not None or self.obb_first is not None or self.polygon_points:
-            self.drag_start = None
-            self.drag_current = None
-            self.obb_first = None
-            self.obb_second = None
-            self.preview_line_end = None
-            self.polygon_points = []
-            self.active_handle = None
-            self.move_anchor = None
+            self._reset_transient_draw_state()
             return True
         if self.draw_shape != "select":
             self.set_draw_shape("select")
             return True
         return False
+
+    def _reset_transient_draw_state(self) -> None:
+        self.drag_start = None
+        self.drag_current = None
+        self.obb_first = None
+        self.obb_second = None
+        self.preview_line_end = None
+        self.polygon_points = []
+        self.hovered_polygon_close_index = -1
+        self.active_handle = None
+        self.move_anchor = None
+
+    def _finish_annotation(self, annotation: EditableAnnotation, *, flash: bool = False) -> None:
+        self.annotations.append(annotation)
+        self.selected_index = len(self.annotations) - 1
+        self._emit_changed()
+        self._emit_selection()
+        if flash:
+            self._flash_annotation(self.selected_index)
+        if self.continuous_draw:
+            self._reset_transient_draw_state()
+        else:
+            self.set_draw_shape("select")
+
+    def _handle_two_click_shape_click(self, image_point: tuple[float, float]) -> None:
+        if self.drag_start is None:
+            self.drag_start = image_point
+            self.drag_current = image_point
+            return
+        annotation = self._make_annotation(self.drag_start, image_point)
+        if annotation is not None:
+            self._finish_annotation(annotation)
+        else:
+            self._reset_transient_draw_state()
+
+    def _handle_rotated_shape_click(self, image_point: tuple[float, float]) -> None:
+        if self.obb_first is None:
+            self.obb_first = image_point
+            self.obb_second = None
+            self.preview_line_end = image_point
+            return
+        if self.draw_shape == "line_expand":
+            annotation = self._make_obb_annotation(self.obb_first, image_point, None)
+            if annotation is not None:
+                self._finish_annotation(annotation)
+            else:
+                self._reset_transient_draw_state()
+            return
+        if self.obb_second is None:
+            self.obb_second = image_point
+            self.drag_current = image_point
+            self.preview_line_end = None
+            return
+        annotation = self._make_obb_annotation(
+            self.obb_first,
+            self.obb_second,
+            image_point,
+        )
+        if annotation is not None:
+            self._finish_annotation(annotation)
+        else:
+            self._reset_transient_draw_state()
+
+    def _handle_polygon_click(self, image_point: tuple[float, float]) -> None:
+        closing_index = self._polygon_closing_index(image_point)
+        if closing_index is not None and (
+            closing_index == 0 or closing_index >= 2
+        ) and len(self.polygon_points) >= 3:
+            points = list(self.polygon_points)
+            if closing_index != 0:
+                points = points[: closing_index + 1]
+            annotation = EditableAnnotation(self.current_class_id, "polygon", points)
+            self._finish_annotation(annotation, flash=True)
+            return
+        self.polygon_points.append(image_point)
+        self.preview_line_end = image_point
+
+    def _polygon_closing_index(self, image_point: tuple[float, float]) -> int | None:
+        radius_sq = max(36.0, self._handle_radius() ** 2 * 4)
+        for index, point in enumerate(self.polygon_points):
+            dx = image_point[0] - point[0]
+            dy = image_point[1] - point[1]
+            if dx * dx + dy * dy <= radius_sq:
+                return index
+        return None
+
+    def _flash_annotation(self, index: int) -> None:
+        self.flash_index = index
+        self._flash_timer.start(180)
+
+    def _clear_flash(self) -> None:
+        self.flash_index = -1
+        self.update()
 
     def _emit_changed(self) -> None:
         if self.changed_callback:
@@ -748,7 +908,11 @@ class AnnotationCanvas(QWidget):
         menu.addAction(delete_action)
         cancel_action = QAction("取消当前绘制", menu)
         cancel_action.setEnabled(
-            self.drag_start is not None or self.obb_first is not None or self.active_handle is not None or self.move_anchor is not None
+            self.drag_start is not None
+            or self.obb_first is not None
+            or bool(self.polygon_points)
+            or self.active_handle is not None
+            or self.move_anchor is not None
         )
         cancel_action.setShortcut(QKeySequence(Qt.Key.Key_Escape))
         cancel_action.setShortcutVisibleInContextMenu(True)
@@ -761,12 +925,7 @@ class AnnotationCanvas(QWidget):
         elif selected == delete_action:
             self.delete_selected()
         elif selected == cancel_action:
-            self.drag_start = None
-            self.drag_current = None
-            self.obb_first = None
-            self.obb_second = None
-            self.active_handle = None
-            self.move_anchor = None
+            self._reset_transient_draw_state()
             self.update()
         elif selected in class_actions and 0 <= self.selected_index < len(self.annotations):
             self.annotations[self.selected_index].class_id = class_actions[selected]

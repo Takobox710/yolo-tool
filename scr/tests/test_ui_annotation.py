@@ -69,7 +69,7 @@ def test_annotation_page_picture_list_marks_annotated_images(tmp_path):
     import json
 
     from scr.services.settings_service import build_default_settings
-    from scr.ui.qt import QApplication
+    from scr.ui.qt import QApplication, QCheckBox
     from scr.ui.views.annotation import AnnotationPage
 
     images_dir = tmp_path / "images"
@@ -106,10 +106,74 @@ def test_annotation_page_picture_list_marks_annotated_images(tmp_path):
     )
 
     page = AnnotationPage(fake_app)
-    items = [page.file_list.item(i).text() for i in range(page.file_list.count())]
+    first_widget = page.file_list.itemWidget(page.file_list.item(0))
+    second_widget = page.file_list.itemWidget(page.file_list.item(1))
 
-    assert items[0].startswith("☑︎ ")
-    assert items[1].startswith("☐ ")
+    assert isinstance(first_widget, QCheckBox)
+    assert isinstance(second_widget, QCheckBox)
+    assert first_widget.text() == "1.jpg"
+    assert second_widget.text() == "2.jpg"
+    assert first_widget.isChecked() is True
+    assert second_widget.isChecked() is False
+
+
+def test_annotation_page_delete_selected_updates_current_checkbox_without_full_refresh(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    import json
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication, QCheckBox
+    from scr.ui.views.annotation import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    (images_dir / "1.json").write_text(
+        json.dumps(
+            {
+                "imagePath": "1.jpg",
+                "imageWidth": 32,
+                "imageHeight": 32,
+                "shapes": [
+                    {
+                        "label": "weld",
+                        "points": [[1, 1], [10, 10]],
+                        "shape_type": "rectangle",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    first_item = page.file_list.item(0)
+    first_widget = page.file_list.itemWidget(first_item)
+
+    assert isinstance(first_widget, QCheckBox)
+    assert first_widget.isChecked() is True
+    assert len(page.canvas.annotations) == 1
+
+    def fail_refresh_file_list():
+        raise AssertionError("delete_selected should not rebuild the entire file list")
+
+    page.refresh_file_list = fail_refresh_file_list
+    page.canvas.selected_index = 0
+    page.delete_selected()
+
+    assert len(page.canvas.annotations) == 0
+    assert first_widget.isChecked() is False
 
 
 def test_ai_prelabel_dialog_uses_expected_range_count(tmp_path):
@@ -139,6 +203,142 @@ def test_ai_prelabel_dialog_uses_expected_range_count(tmp_path):
     assert dialog.range_count_label.text() == "已选择 1 张图片"
     dialog.range_combo.setCurrentText("全部图片")
     assert dialog.range_count_label.text() == "已选择 2 张图片"
+
+
+def test_annotation_canvas_two_click_rectangle_respects_quick_draw_setting():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.set_interaction_config(False, False)
+    canvas.set_draw_shape("rect")
+
+    canvas._handle_two_click_shape_click((10.0, 10.0))
+    assert canvas.drag_start == (10.0, 10.0)
+    assert len(canvas.annotations) == 0
+
+    canvas._handle_two_click_shape_click((30.0, 30.0))
+    assert len(canvas.annotations) == 1
+    assert canvas.annotations[0].shape == "rect"
+    assert canvas.draw_shape == "select"
+    assert canvas.drag_start is None
+
+
+def test_annotation_canvas_continuous_draw_keeps_shape_after_finish():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.set_interaction_config(True, False)
+    canvas.set_draw_shape("rect")
+
+    canvas._handle_two_click_shape_click((10.0, 10.0))
+    canvas._handle_two_click_shape_click((30.0, 30.0))
+
+    assert len(canvas.annotations) == 1
+    assert canvas.draw_shape == "rect"
+    assert canvas.drag_start is None
+    assert canvas.drag_current is None
+
+
+def test_annotation_canvas_line_expand_finishes_on_second_click_when_quick_draw_disabled():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.set_interaction_config(False, False)
+    canvas.set_draw_shape("line_expand")
+    canvas.set_line_expand_config(True, 12)
+
+    canvas._handle_rotated_shape_click((10.0, 10.0))
+    assert canvas.obb_first == (10.0, 10.0)
+
+    canvas._handle_rotated_shape_click((30.0, 10.0))
+
+    assert len(canvas.annotations) == 1
+    assert canvas.annotations[0].shape == "line_expand"
+    assert canvas.draw_shape == "select"
+    assert canvas.obb_first is None
+    assert canvas.obb_second is None
+
+
+def test_annotation_canvas_line_expand_quick_draw_finishes_on_mouse_release():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QPointF
+    from types import SimpleNamespace
+
+    from scr.ui.qt import QPixmap, Qt
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.set_interaction_config(False, True)
+    canvas.set_draw_shape("line_expand")
+    canvas.set_line_expand_config(True, 12)
+    canvas.pixmap = QPixmap(100, 100)
+    canvas.image_size = (100, 100)
+
+    press_event = SimpleNamespace(
+        button=lambda: Qt.MouseButton.LeftButton,
+        position=lambda: QPointF(10.0, 10.0),
+    )
+    canvas._widget_to_image = lambda _point, clamp=False: (10.0, 10.0)
+    canvas.mousePressEvent(press_event)
+
+    assert canvas.drag_start == (10.0, 10.0)
+
+    release_event = SimpleNamespace(
+        button=lambda: Qt.MouseButton.LeftButton,
+        position=lambda: QPointF(60.0, 10.0),
+    )
+    canvas._widget_to_image = lambda _point, clamp=False: (60.0, 10.0)
+    canvas.mouseReleaseEvent(release_event)
+
+    assert len(canvas.annotations) == 1
+    assert canvas.annotations[0].shape == "line_expand"
+    assert canvas.draw_shape == "select"
+    assert canvas.drag_start is None
+    assert canvas.drag_current is None
+
+
+def test_annotation_canvas_polygon_clicking_existing_point_closes_and_flashes():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.set_draw_shape("polygon")
+
+    canvas._handle_polygon_click((10.0, 10.0))
+    canvas._handle_polygon_click((30.0, 10.0))
+    canvas._handle_polygon_click((30.0, 30.0))
+    canvas._handle_polygon_click((10.0, 10.0))
+
+    assert len(canvas.annotations) == 1
+    assert canvas.annotations[0].shape == "polygon"
+    assert len(canvas.annotations[0].points) == 3
+    assert canvas.flash_index == 0
+    assert canvas.draw_shape == "select"
+    assert canvas.polygon_points == []
+
+
+def test_annotation_canvas_polygon_hover_on_closing_point_uses_pointing_hand_cursor():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import Qt
+    from scr.ui.views.annotation_canvas import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.set_draw_shape("polygon")
+    canvas.polygon_points = [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0)]
+
+    canvas._update_polygon_hover_state((10.0, 10.0))
+
+    assert canvas.hovered_polygon_close_index == 0
+    assert canvas.cursor().shape() == Qt.CursorShape.PointingHandCursor
 
 
 def test_ai_prelabel_dialog_supports_following_and_custom_ranges(tmp_path):

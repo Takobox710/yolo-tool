@@ -26,12 +26,14 @@ class AnnotationSettingsDialog(QDialog):
         pixels: int,
         auto_save: bool,
         auto_convert_yolo: bool,
+        continuous_draw: bool,
+        quick_draw: bool,
         yolo_dir: str,
         parent=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("更多设置")
-        self.resize(420, 320)
+        self.resize(420, 380)
         layout = QVBoxLayout(self)
         self.auto_save_check = QCheckBox("自动保存 Labelme JSON")
         self.auto_save_check.setChecked(bool(auto_save))
@@ -39,6 +41,12 @@ class AnnotationSettingsDialog(QDialog):
         self.auto_convert_check = QCheckBox("自动转换为 YOLO 格式")
         self.auto_convert_check.setChecked(bool(auto_convert_yolo))
         layout.addWidget(self.auto_convert_check)
+        self.continuous_draw_check = QCheckBox("开启连续标注")
+        self.continuous_draw_check.setChecked(bool(continuous_draw))
+        layout.addWidget(self.continuous_draw_check)
+        self.quick_draw_check = QCheckBox("开启快捷标注")
+        self.quick_draw_check.setChecked(bool(quick_draw))
+        layout.addWidget(self.quick_draw_check)
         layout.addWidget(QLabel("YOLO 标注文件夹"))
         yolo_row = QHBoxLayout()
         self.yolo_dir_edit = QLineEdit(yolo_dir)
@@ -71,12 +79,14 @@ class AnnotationSettingsDialog(QDialog):
         if directory:
             self.yolo_dir_edit.setText(directory)
 
-    def values(self) -> tuple[bool, int, bool, bool, str]:
+    def values(self) -> tuple[bool, int, bool, bool, bool, bool, str]:
         return (
             self.enable_combo.currentIndex() == 1,
             int(self.pixel_spin.value()),
             self.auto_save_check.isChecked(),
             self.auto_convert_check.isChecked(),
+            self.continuous_draw_check.isChecked(),
+            self.quick_draw_check.isChecked(),
             self.yolo_dir_edit.text().strip(),
         )
 

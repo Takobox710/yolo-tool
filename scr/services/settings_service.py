@@ -136,6 +136,8 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
         "annotation": {
             "auto_save": True,
             "auto_convert_yolo": False,
+            "continuous_draw": False,
+            "quick_draw": True,
             "line_expand_enabled": False,
             "line_expand_pixels": 10,
             "ai_prelabel": {

@@ -16,6 +16,7 @@ from scr.services.editable_annotation_service import (
 from scr.services.rename_service import natural_sort_key
 from scr.ui.page_base import BasePage, _IMAGE_SUFFIXES
 from scr.ui.qt import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -209,6 +210,7 @@ class AnnotationPage(BasePage):
         Path(directory).mkdir(parents=True, exist_ok=True)
         self._refresh_path_labels()
         self.load_current()
+        self.refresh_file_list()
 
     def path_from_setting(self, key: str) -> Path:
         return Path(self.app.settings["paths"][key])
@@ -297,7 +299,7 @@ class AnnotationPage(BasePage):
         self.canvas.set_image(image_path, annotations, self.class_names())
         self.dirty = False
         self.refresh_annotation_list()
-        self.refresh_file_list()
+        self._update_current_file_list_item()
 
     def save_current(self, *, force: bool = False, save_json: bool = True) -> None:
         if not self.dirty and not force:
@@ -361,6 +363,10 @@ class AnnotationPage(BasePage):
                 annotation_settings.get("line_expand_enabled", False),
                 annotation_settings.get("line_expand_pixels", 10),
             )
+            self.canvas.set_interaction_config(
+                annotation_settings.get("continuous_draw", False),
+                annotation_settings.get("quick_draw", True),
+            )
 
     def _refresh_path_labels(self) -> None:
         return None
@@ -407,16 +413,28 @@ class AnnotationPage(BasePage):
             current.get("line_expand_pixels", 10),
             current.get("auto_save", True),
             current.get("auto_convert_yolo", False),
+            current.get("continuous_draw", False),
+            current.get("quick_draw", True),
             str(self.path_from_setting("labels_dir")),
             self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        enabled, pixels, auto_save, auto_convert_yolo, yolo_dir = dialog.values()
+        (
+            enabled,
+            pixels,
+            auto_save,
+            auto_convert_yolo,
+            continuous_draw,
+            quick_draw,
+            yolo_dir,
+        ) = dialog.values()
         self.app.settings.setdefault("annotation", {})["line_expand_enabled"] = enabled
         self.app.settings["annotation"]["line_expand_pixels"] = pixels
         self.app.settings["annotation"]["auto_save"] = auto_save
         self.app.settings["annotation"]["auto_convert_yolo"] = auto_convert_yolo
+        self.app.settings["annotation"]["continuous_draw"] = continuous_draw
+        self.app.settings["annotation"]["quick_draw"] = quick_draw
         if yolo_dir:
             self.app.settings.setdefault("paths", {})["labels_dir"] = yolo_dir
             Path(yolo_dir).mkdir(parents=True, exist_ok=True)
@@ -462,7 +480,7 @@ class AnnotationPage(BasePage):
             self.annotation_list.addItem(item)
         self.annotation_list.setCurrentRow(self.canvas.selected_index)
         self.annotation_list.blockSignals(False)
-        self.refresh_file_list()
+        self._update_current_file_list_item()
 
     def _has_annotation_for_image(self, image_path: Path) -> bool:
         if self.current_image_path == image_path and bool(self.canvas.annotations):
@@ -491,14 +509,35 @@ class AnnotationPage(BasePage):
         if hasattr(self, "file_count_label"):
             self.file_count_label.setText(f"{current}/{total}")
 
+    def _current_image_has_annotations(self) -> bool:
+        return bool(self.canvas.annotations)
+
+    def _update_current_file_list_item(self) -> None:
+        if not hasattr(self, "file_list"):
+            return
+        if not (0 <= self.current_index < len(self.image_items)):
+            return
+        item = self.file_list.item(self.current_index)
+        if item is None:
+            return
+        widget = self.file_list.itemWidget(item)
+        if isinstance(widget, QCheckBox):
+            widget.setChecked(self._current_image_has_annotations())
+
     def refresh_file_list(self) -> None:
         if not hasattr(self, "file_list"):
             return
         self.file_list.blockSignals(True)
         self.file_list.clear()
         for path in self.image_items:
-            checked = "☑︎" if self._has_annotation_for_image(path) else "☐"
-            self.file_list.addItem(f"{checked} {path.name}")
+            item = QListWidgetItem()
+            checkbox = QCheckBox(path.name)
+            checkbox.setChecked(self._has_annotation_for_image(path))
+            checkbox.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            item.setSizeHint(checkbox.sizeHint())
+            self.file_list.addItem(item)
+            self.file_list.setItemWidget(item, checkbox)
         self.file_list.blockSignals(False)
         if 0 <= self.current_index < len(self.image_items):
             self.file_list.blockSignals(True)
@@ -507,8 +546,7 @@ class AnnotationPage(BasePage):
         self._update_file_count_label()
 
     def delete_selected(self) -> None:
-        if self.canvas.delete_selected():
-            self.refresh_annotation_list()
+        self.canvas.delete_selected()
 
     def keyPressEvent(self, event):  # noqa: N802 - Qt API name
         if event.key() == Qt.Key.Key_Delete:
