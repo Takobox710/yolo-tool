@@ -130,3 +130,50 @@ def test_torch_cuda_summary_can_use_subprocess_helper(monkeypatch):
     assert calls["command"][-1] == "--torch-summary"
     assert calls["creationflags"] == getattr(environment_service.subprocess, "CREATE_NO_WINDOW", 0)
     assert summary == {"torch": "2.0.0", "cuda": "13.0", "gpu": "Test GPU"}
+
+
+def test_dependency_versions_reports_versions_and_missing_modules(monkeypatch):
+    from scr.services import environment_service
+
+    monkeypatch.setattr(
+        environment_service,
+        "cached_call",
+        lambda key, ttl_seconds, loader, clock=None: loader(),
+    )
+
+    module_map = {
+        "PySide6": object(),
+        "ultralytics": object(),
+        "cv2": object(),
+        "PIL": object(),
+        "psutil": None,
+    }
+
+    monkeypatch.setattr(
+        environment_service.importlib.util,
+        "find_spec",
+        lambda name: module_map.get(name),
+    )
+
+    def fake_version(name):
+        versions = {
+            "PySide6": "6.10.0",
+            "ultralytics": "8.4.80",
+            "opencv-python": "4.13.0",
+            "Pillow": "12.2.0",
+        }
+        if name not in versions:
+            raise environment_service.metadata.PackageNotFoundError(name)
+        return versions[name]
+
+    monkeypatch.setattr(environment_service.metadata, "version", fake_version)
+
+    versions = environment_service.dependency_versions()
+
+    assert versions == {
+        "PySide6": "6.10.0",
+        "Ultralytics": "8.4.80",
+        "OpenCV": "4.13.0",
+        "Pillow": "12.2.0",
+        "psutil": "未安装",
+    }

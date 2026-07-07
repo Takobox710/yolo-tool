@@ -48,7 +48,7 @@ binaries = []
 for package in ("torch", "cv2"):
     binaries += collect_dynamic_libs(package)
 
-hiddenimports = collect_submodules("ultralytics")
+hiddenimports = collect_submodules("ultralytics", on_error="ignore")
 if not is_dev:
     datas += collect_data_files("matplotlib", subdir="mpl-data")
     hiddenimports += [

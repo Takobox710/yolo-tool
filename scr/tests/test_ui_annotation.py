@@ -536,7 +536,7 @@ def test_ai_prelabel_dialog_populates_mapping_from_project_classes(tmp_path):
 
     page = AnnotationPage(fake_app)
     dialog = AiPrelabelDialog(page)
-    dialog.apply_model_labels(["weld", "person"])
+    dialog.apply_model_labels(dialog.resolved_model_path(), ["weld", "person"])
 
     assert dialog.mapping_table.rowCount() == 2
     first_combo = dialog.mapping_table.cellWidget(0, 2)
@@ -633,3 +633,46 @@ def test_ai_prelabel_dialog_persists_preferences_on_close(tmp_path):
     assert second_dialog.current_range_mode() == "自定义图片"
     assert second_dialog.current_process_mode() == "替换"
     assert second_dialog.custom_selected_images == [page.image_items[1].resolve()]
+
+
+def test_ai_prelabel_dialog_ignores_stale_model_label_results_after_switch(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.annotation import AiPrelabelDialog, AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    first_model = tmp_path / "data" / "models" / "first.pt"
+    second_model = tmp_path / "data" / "models" / "second.pt"
+    first_model.parent.mkdir(parents=True)
+    first_model.write_text("first", encoding="utf-8")
+    second_model.write_text("second", encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AiPrelabelDialog(page)
+    dialog._model_display_paths = {
+        str(first_model): first_model,
+        str(second_model): second_model,
+    }
+    dialog.model_combo.clear()
+    dialog.model_combo.addItems([str(first_model), str(second_model)])
+    dialog.model_combo.setCurrentText(str(first_model))
+
+    dialog.model_combo.setCurrentText(str(second_model))
+    dialog.apply_model_labels(str(first_model), ["stale-label"])
+
+    assert dialog.model_labels == []
+    dialog.apply_model_labels(str(second_model), ["fresh-label"])
+    assert dialog.model_labels == ["fresh-label"]

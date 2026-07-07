@@ -79,6 +79,26 @@ class BasePage(FormPageMixin, QWidget):
     def path_from_edit(self, edit: QLineEdit) -> Path:
         return Path(self.resolve_path_text(edit))
 
+    def append_program_log(self, text: str, *, level: str | None = None) -> None:
+        hook = getattr(self.app, "append_program_log", None)
+        if callable(hook):
+            hook(text, level=level or self.infer_log_level(text))
+
+    def program_log_text(self) -> str:
+        hook = getattr(self.app, "program_log_text", None)
+        if callable(hook):
+            return str(hook())
+        return "等待程序日志..."
+
+    @staticmethod
+    def infer_log_level(text: str) -> str:
+        content = str(text or "")
+        if any(token in content for token in ("失败", "异常", "错误", "Traceback", "退出码")):
+            return "ERROR"
+        if any(token in content for token in ("停止", "警告", "warning")):
+            return "WARN"
+        return "INFO"
+
     def page_layout(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)

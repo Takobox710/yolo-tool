@@ -42,7 +42,7 @@ from scr.ui.views.annotation_ai_preferences import (
     preferred_ai_model_text,
     save_ai_prelabel_preferences,
 )
-from scr.ui.workers import AnnotationAiWorker, ModelLabelsWorker
+from scr.ui.workers import AiRuntimeWorker
 
 if TYPE_CHECKING:
     from scr.ui.views.annotation import AnnotationPage
@@ -53,15 +53,20 @@ class AiPrelabelDialog(QDialog):
         super().__init__(parent or page)
         self.page = page
         self.stop_event = threading.Event()
-        self.ai_worker: AnnotationAiWorker | None = None
-        self.labels_worker: ModelLabelsWorker | None = None
+        self.runtime_worker = AiRuntimeWorker()
         self._model_display_paths: dict[str, Path] = {}
+        self._pending_labels_model_path = ""
         self.model_labels: list[str] = []
         self.mapping_combos: list[QComboBox] = []
         self.backups: dict[Path, tuple[str | None, str | None]] = {}
         self.custom_selected_images: list[Path] = []
         self.original_class_names = list(page.class_names())
         self._load_saved_preferences()
+        self.runtime_worker.model_labels_loaded.connect(self.apply_model_labels)
+        self.runtime_worker.model_labels_failed.connect(self.apply_model_labels_error)
+        self.runtime_worker.progress_payload.connect(self.apply_progress)
+        self.runtime_worker.finished_with_result.connect(self.finish_ai_labeling)
+        self.runtime_worker.failed.connect(self.fail_ai_labeling)
         self.setWindowTitle("AI 智能预标注")
         self.resize(700, 620)
         self.setMinimumSize(650, 520)
@@ -250,7 +255,7 @@ class AiPrelabelDialog(QDialog):
 
     def showEvent(self, event):  # noqa: N802 - Qt API name
         super().showEvent(event)
-        if not self.model_labels and self.labels_worker is None:
+        if not self.model_labels:
             self.reload_model_labels()
 
     def _ai_prelabel_settings(self) -> dict:
@@ -282,19 +287,16 @@ class AiPrelabelDialog(QDialog):
 
     def accept(self) -> None:
         self._save_preferences()
-        self._stop_ai_worker()
-        self._stop_labels_worker()
+        self._shutdown_runtime_worker()
         super().accept()
 
     def reject(self) -> None:
         self._save_preferences()
-        self._stop_ai_worker()
-        self._stop_labels_worker()
+        self._shutdown_runtime_worker()
         super().reject()
 
     def closeEvent(self, event):  # noqa: N802 - Qt API name
-        self._stop_ai_worker()
-        self._stop_labels_worker()
+        self._shutdown_runtime_worker()
         super().closeEvent(event)
 
     def choose_model(self) -> None:
@@ -401,10 +403,10 @@ class AiPrelabelDialog(QDialog):
 
     def reload_model_labels(self) -> None:
         model_path = self.resolved_model_path()
+        self._pending_labels_model_path = model_path
+        self.model_labels = []
         self.mapping_summary.setText("正在加载模型类别...")
         self.mapping_table.setRowCount(0)
-        if self.labels_worker is not None and self.labels_worker.isRunning():
-            return
         if not model_path:
             self.mapping_summary.setText("未选择模型")
             return
@@ -412,27 +414,28 @@ class AiPrelabelDialog(QDialog):
         if not model_file.exists() or model_file.stat().st_size < 1024:
             self.mapping_summary.setText("模型类别待加载")
             return
-        self.labels_worker = ModelLabelsWorker(model_path)
-        self.labels_worker.finished_with_labels.connect(self.apply_model_labels)
-        self.labels_worker.failed.connect(self.apply_model_labels_error)
-        self.labels_worker.finished.connect(self._clear_labels_worker)
-        self.labels_worker.start()
+        self._ensure_runtime_worker_started()
+        self.runtime_worker.request_model_labels(model_path)
 
-    def _clear_labels_worker(self) -> None:
-        self.labels_worker = None
+    def _ensure_runtime_worker_started(self) -> None:
+        if not self.runtime_worker.isRunning():
+            self.runtime_worker.start()
 
-    def _stop_labels_worker(self) -> None:
-        if self.labels_worker is not None and self.labels_worker.isRunning():
-            self.labels_worker.requestInterruption()
-            self.labels_worker.quit()
-            self.labels_worker.wait(3000)
-        self.labels_worker = None
+    def _shutdown_runtime_worker(self) -> None:
+        if self.runtime_worker.isRunning():
+            self.runtime_worker.shutdown()
+            self.runtime_worker.wait(3000)
+        self._pending_labels_model_path = ""
 
-    def apply_model_labels(self, labels: list[str]) -> None:
+    def apply_model_labels(self, model_path: str, labels: list[str]) -> None:
+        if str(model_path) != self.resolved_model_path():
+            return
         self.model_labels = list(labels)
         self.populate_mapping_table()
 
-    def apply_model_labels_error(self, message: str) -> None:
+    def apply_model_labels_error(self, model_path: str, message: str) -> None:
+        if str(model_path) != self.resolved_model_path():
+            return
         self.mapping_summary.setText(f"加载模型类别失败：{message}")
 
     def populate_mapping_table(self) -> None:
@@ -476,7 +479,7 @@ class AiPrelabelDialog(QDialog):
         return collect_ai_mapping(self.mapping_table, self.mapping_combos)
 
     def start_ai_labeling(self) -> None:
-        if self.ai_worker is not None and self.ai_worker.isRunning():
+        if not self.start_btn.isEnabled():
             return
         model_path = self.resolved_model_path()
         if not model_path:
@@ -525,24 +528,8 @@ class AiPrelabelDialog(QDialog):
             "output_mode": self.page.output_mode,
             "auto_convert_yolo": bool(self.page.app.settings.get("annotation", {}).get("auto_convert_yolo", False)),
         }
-        self.ai_worker = AnnotationAiWorker(worker_kwargs, self.stop_event)
-        self.ai_worker.progress_payload.connect(self.apply_progress)
-        self.ai_worker.finished_with_result.connect(self.finish_ai_labeling)
-        self.ai_worker.failed.connect(self.fail_ai_labeling)
-        self.ai_worker.finished.connect(self._clear_ai_worker)
-        self.ai_worker.start()
-
-    def _clear_ai_worker(self) -> None:
-        self.ai_worker = None
-
-    def _stop_ai_worker(self) -> None:
-        if self.ai_worker is None:
-            return
-        request_stop = getattr(self.ai_worker, "request_stop", None)
-        if callable(request_stop):
-            request_stop()
-        self.ai_worker.wait(3000)
-        self.ai_worker = None
+        self._ensure_runtime_worker_started()
+        self.runtime_worker.start_ai_labeling(worker_kwargs)
 
     def apply_progress(self, payload: dict) -> None:
         total = max(1, int(payload.get("total") or 1))
@@ -581,10 +568,7 @@ class AiPrelabelDialog(QDialog):
     def stop_ai_labeling(self) -> None:
         self.stop_event.set()
         self.stop_btn.setEnabled(False)
-        if self.ai_worker is not None:
-            request_stop = getattr(self.ai_worker, "request_stop", None)
-            if callable(request_stop):
-                request_stop()
+        self.runtime_worker.request_stop()
         self.append_log("已请求停止 AI 预标注")
 
     def undo_ai_changes(self) -> None:

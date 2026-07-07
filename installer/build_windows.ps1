@@ -45,19 +45,77 @@ New-Item -ItemType Directory -Force -Path $TargetModelsDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "images") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "labels") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "result") | Out-Null
+$RuntimeSettingsPath = Join-Path $AppDir "data/runtime/settings.json"
+$RuntimeAppStatePath = Join-Path $AppDir "data/runtime/app_state.json"
 
 $SourceModelsDir = Join-Path $Root "data/models"
+$SourceModelFiles = @()
 if (Test-Path -LiteralPath $SourceModelsDir) {
-    Get-ChildItem -LiteralPath $SourceModelsDir -Filter *.pt -File | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $AppDir "data/models" $_.Name) -Force
+    $SourceModelFiles = @(Get-ChildItem -LiteralPath $SourceModelsDir -Filter *.pt -File)
+    foreach ($ModelFile in $SourceModelFiles) {
+        $TargetModelPath = Join-Path $TargetModelsDir $ModelFile.Name
+        Copy-Item -LiteralPath $ModelFile.FullName -Destination $TargetModelPath -Force
     }
 }
 
 $RootModelPath = Join-Path $Root "yolo26n.pt"
-if (Test-Path -LiteralPath $RootModelPath) {
-    Copy-Item -LiteralPath $RootModelPath -Destination (Join-Path $AppDir "yolo26n.pt") -Force
+$TargetRootModelPath = Join-Path $AppDir "yolo26n.pt"
+if (-not (Test-Path -LiteralPath $RootModelPath)) {
+    throw "Required root model file not found: $RootModelPath"
+}
+Copy-Item -LiteralPath $RootModelPath -Destination $TargetRootModelPath -Force
+
+if (-not (Test-Path -LiteralPath $TargetRootModelPath)) {
+    throw "Build output is missing root model file: yolo26n.pt"
+}
+
+@"
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from scr.services.settings_service import build_default_settings, save_last_project_root
+
+app_dir = Path(sys.argv[1]).resolve()
+settings_path = app_dir / "data" / "runtime" / "settings.json"
+settings_path.parent.mkdir(parents=True, exist_ok=True)
+settings = build_default_settings(app_dir)
+settings_path.write_text(
+    json.dumps(settings, ensure_ascii=False, indent=2),
+    encoding="utf-8",
+)
+save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")
+"@ | pixi run python - $AppDir
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to generate packaged runtime settings files"
+}
+
+if (-not (Test-Path -LiteralPath $RuntimeSettingsPath)) {
+    throw "Build output is missing runtime settings file: data/runtime/settings.json"
+}
+
+if (-not (Test-Path -LiteralPath $RuntimeAppStatePath)) {
+    throw "Build output is missing app state file: data/runtime/app_state.json"
+}
+
+if ($SourceModelFiles.Count -gt 0) {
+    $MissingModels = @()
+    foreach ($ModelName in ($SourceModelFiles | ForEach-Object { $_.Name })) {
+        $BuiltModelPath = Join-Path $TargetModelsDir $ModelName
+        if (-not (Test-Path -LiteralPath $BuiltModelPath)) {
+            $MissingModels += $ModelName
+        }
+    }
+
+    if ($MissingModels.Count -gt 0) {
+        throw "Build output is missing model files under data/models: $($MissingModels -join ', ')"
+    }
 }
 
 Write-Host "Mode: $Mode"
 Write-Host "Built: $AppDir"
-Write-Host "Project settings will be created at: $AppDir/data/runtime/settings.json"
+Write-Host "Packaged runtime settings: $RuntimeSettingsPath"
+Write-Host "Packaged app state: $RuntimeAppStatePath"

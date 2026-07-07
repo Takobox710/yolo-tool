@@ -1,12 +1,29 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from scr.services.settings_service import build_default_settings
-from scr.services.environment_service import detect_modules, pixi_available, system_status, torch_cuda_summary
+from scr.services.environment_service import (
+    application_version,
+    dependency_versions,
+    python_version,
+    torch_cuda_summary,
+)
 from scr.ui.page_base import BasePage
 from scr.ui.qt import Qt, QFrame, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTextEdit, QTimer, QVBoxLayout
+
+
+STATUS_CARD_LABELS = [
+    "Python",
+    "Torch",
+    "Ultralytics",
+    "PySide6",
+    "OpenCV",
+    "Pillow",
+    "psutil",
+    "程序版本",
+]
+
 
 class SettingsPage(BasePage):
     def __init__(self, app):
@@ -26,9 +43,7 @@ class SettingsPage(BasePage):
         info_grid.setContentsMargins(12, 12, 12, 12)
         info_grid.setSpacing(8)
         self.status_cards = {}
-        for index, label in enumerate(
-            ["Pixi", "Torch/CUDA", "GPU", "显存", "CPU", "内存", "磁盘", "模块"]
-        ):
+        for index, label in enumerate(STATUS_CARD_LABELS):
             inner = QFrame()
             inner.setObjectName("systemInfoInner")
             inner_layout = QVBoxLayout(inner)
@@ -82,7 +97,7 @@ class SettingsPage(BasePage):
         controls_layout.addWidget(help_box)
 
         model_box, self.show_last_models_check = self.checkbox_with_help(
-            "训练模型显示 last",
+            "模型验证显示 last",
             self.app.settings.get("features", {}).get("show_last_training_models", False),
         )
         self.show_last_models_check.setChecked(
@@ -99,9 +114,20 @@ class SettingsPage(BasePage):
         controls_layout.addWidget(self.reset_btn)
         layout.addWidget(controls_row)
 
+        log_panel = QFrame()
+        log_panel.setObjectName("card")
+        log_layout = QVBoxLayout(log_panel)
+        log_layout.setContentsMargins(12, 10, 12, 12)
+        log_layout.setSpacing(8)
+        log_title = QLabel("程序日志")
+        log_title.setObjectName("sectionTitle")
+        log_layout.addWidget(log_title)
+
         self.log = QTextEdit()
         self.prepare_readonly_text(self.log)
-        layout.addWidget(self.log, 1)
+        self.log.setPlainText(self.program_log_text())
+        log_layout.addWidget(self.log, 1)
+        layout.addWidget(log_panel, 1)
         self.distribution_mode_check.setChecked(
             self.app.settings.get("features", {}).get(
                 "distribution_multi_class_mode", False
@@ -208,7 +234,7 @@ class SettingsPage(BasePage):
             self._auto_refresh_timer.start()
         for label in self.status_cards:
             self.set_status_card(label, "检测中...")
-        self.log.setPlainText("正在后台检测环境...")
+        self.log.setPlainText(self.program_log_text())
         self.app.run_background(
             "env",
             lambda: self._load_env_payload(),
@@ -219,10 +245,10 @@ class SettingsPage(BasePage):
 
     def _load_env_payload(self):
         return {
-            "pixi": pixi_available(),
-            "modules": detect_modules(),
+            "python": python_version(),
+            "dependencies": dependency_versions(),
             "cuda": torch_cuda_summary(use_subprocess=True),
-            "status": system_status(),
+            "app_version": application_version(),
             "settings": self.app.settings,
         }
 
@@ -236,34 +262,41 @@ class SettingsPage(BasePage):
         self._apply_env_data(payload)
 
     def _apply_env_data(self, payload):
-        pixi_text = "可用" if payload.get("pixi") else "不可用"
-        modules = payload.get("modules") or {}
-        module_text = ", ".join(
-            f"{name}:{'OK' if ok else '缺失'}" for name, ok in modules.items()
-        ) or "待检测"
+        python_text = payload.get("python") or "未知"
+        dependencies = payload.get("dependencies") or {}
         cuda = payload.get("cuda") or {}
-        status = payload.get("status") or {}
+        torch_text = self._format_torch_status(cuda)
 
-        self.set_status_card("Pixi", pixi_text)
-        self.set_status_card(
-            "Torch/CUDA",
-            f"{cuda.get('torch', '未知')} / CUDA {cuda.get('cuda', '未知')}",
-        )
-        self.set_status_card("GPU", status.get("gpu", cuda.get("gpu", "待检测")))
-        self.set_status_card("显存", status.get("vram", "待检测"))
-        self.set_status_card("CPU", status.get("cpu", "待检测"))
-        self.set_status_card("内存", status.get("memory", "待检测"))
-        self.set_status_card("磁盘", status.get("disk", "待检测"))
-        self.set_status_card("模块", module_text)
-        self.log.setPlainText(
-            json.dumps(
-                {
-                    "pixi": payload.get("pixi"),
-                    "cuda": cuda,
-                    "status": status,
-                    "modules": modules,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
+        self.set_status_card("Python", f"{python_text}：可用")
+        self.set_status_card("Torch", torch_text)
+        self.set_status_card("Ultralytics", self._format_dependency_status(dependencies, "Ultralytics"))
+        self.set_status_card("PySide6", self._format_dependency_status(dependencies, "PySide6"))
+        self.set_status_card("OpenCV", self._format_dependency_status(dependencies, "OpenCV"))
+        self.set_status_card("Pillow", self._format_dependency_status(dependencies, "Pillow"))
+        self.set_status_card("psutil", self._format_dependency_status(dependencies, "psutil"))
+        self.set_status_card("程序版本", payload.get("app_version", "未知"))
+
+    def append_program_log_entry(self, entry: str) -> None:
+        current = self.log.toPlainText().strip()
+        if not current or current == "等待程序日志...":
+            self.log.setPlainText(entry)
+            return
+        self.log.append(entry)
+
+    @staticmethod
+    def _format_dependency_status(
+        dependencies: dict[str, str], label: str
+    ) -> str:
+        version = str(dependencies.get(label, "未安装"))
+        status = "可用" if version not in {"", "未安装"} else "不可用"
+        return f"{version}：{status}"
+
+    @staticmethod
+    def _format_torch_status(cuda: dict[str, str]) -> str:
+        torch_version = str(cuda.get("torch", "未安装"))
+        cuda_version = str(cuda.get("cuda", "未知"))
+        if torch_version in {"", "未安装", "未知"}:
+            return f"{torch_version}：不可用"
+        if cuda_version in {"", "None", "未知"}:
+            return f"{torch_version}：CUDA不可用"
+        return f"{torch_version}：可用"

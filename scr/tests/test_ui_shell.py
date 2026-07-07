@@ -154,7 +154,7 @@ def test_main_pages_can_be_constructed(tmp_path):
     assert data_page.tool_stack.count() == 4
     assert train_page.start_btn.text() == "开始训练"
     assert validate_page.start_det_btn.text() == "批量检测"
-    assert "Pixi" in settings_page.status_cards
+    assert "Torch" in settings_page.status_cards
     assert settings_page.help_icon_check.isChecked() is True
 
 
@@ -451,3 +451,18 @@ def test_workbench_window_uses_new_default_size():
 
     assert window.width() == 1100
     assert window.height() == 740
+
+
+def test_workbench_window_collects_program_logs():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.ui.qt import QApplication
+    from scr.ui.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    window.append_program_log("测试日志", level="ERROR")
+
+    text = window.program_log_text()
+    assert "程序启动。" in text
+    assert "[ERROR] 测试日志" in text

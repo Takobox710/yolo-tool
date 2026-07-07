@@ -366,3 +366,122 @@ def run_ai_label_cli(argv: list[str]) -> int:
     except Exception as exc:
         _emit_structured("error", message=str(exc))
         return 1
+
+
+def run_ai_runtime_cli(argv: list[str]) -> int:
+    import sys
+    import threading
+    from pathlib import Path
+
+    from scr.services.annotation_ai_service import apply_ai_labeling, extract_model_labels
+    from scr.services.detection_service import release_inference_runtime
+    from scr.services.editable_annotation_service import (
+        save_editable_annotations,
+        save_labelme_annotations,
+    )
+    from scr.services.ultralytics_compat import ensure_cv2_highgui_compat
+
+    del argv
+
+    ensure_cv2_highgui_compat()
+    from ultralytics import YOLO
+
+    active_model = None
+    active_model_path = ""
+
+    def emit_response(request_id: str, result: dict[str, Any]) -> None:
+        _emit_structured("runtime_response", request_id=request_id, result=result)
+
+    def emit_error(request_id: str, message: str) -> None:
+        _emit_structured("runtime_error", request_id=request_id, message=message)
+
+    def ensure_model(model_path: str):
+        nonlocal active_model, active_model_path
+        resolved_path = str(model_path).strip()
+        if not resolved_path:
+            raise ValueError("缺少模型文件。")
+        if active_model is not None and active_model_path == resolved_path:
+            return active_model
+        if active_model is not None:
+            del active_model
+            active_model = None
+            active_model_path = ""
+            release_inference_runtime()
+        active_model = YOLO(resolved_path)
+        active_model_path = resolved_path
+        return active_model
+
+    try:
+        for raw_line in sys.stdin:
+            line = str(raw_line).strip()
+            if not line:
+                continue
+            try:
+                command = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            request_id = str(command.get("request_id") or "")
+            action = str(command.get("action") or "")
+
+            try:
+                if action == "shutdown":
+                    return 0
+                if action == "load_model_labels":
+                    model_path = str(command.get("model_path") or "")
+                    labels = extract_model_labels(ensure_model(model_path))
+                    emit_response(
+                        request_id,
+                        {"labels": labels, "model_path": model_path},
+                    )
+                    continue
+                if action == "apply_ai_labeling":
+                    payload = dict(command.get("payload") or {})
+                    model_path = str(payload.get("model_path") or "")
+                    model = ensure_model(model_path)
+                    result = apply_ai_labeling(
+                        image_items=[Path(path) for path in payload.get("image_items", [])],
+                        current_image=Path(payload["current_image"]) if payload.get("current_image") else None,
+                        annotations_dir=Path(payload["annotations_dir"]),
+                        labels_dir=Path(payload["labels_dir"]),
+                        model_path=model_path,
+                        confidence=float(payload["confidence"]),
+                        iou=float(payload["iou"]),
+                        imgsz=int(payload["imgsz"]),
+                        range_mode=str(payload["range_mode"]),
+                        current_index=int(payload.get("current_index", -1)),
+                        selected_images=[Path(path) for path in payload.get("selected_images", [])],
+                        process_mode=str(payload["process_mode"]),
+                        class_mapping={str(k): str(v) for k, v in dict(payload.get("class_mapping", {})).items()},
+                        class_names=[str(name) for name in payload.get("class_names", [])],
+                        line_expand_pixels=int(payload["line_expand_pixels"]),
+                        save_json_fn=save_labelme_annotations,
+                        save_yolo_fn=save_editable_annotations,
+                        output_mode=str(payload["output_mode"]),
+                        auto_convert_yolo=bool(payload["auto_convert_yolo"]),
+                        progress_callback=lambda data: _emit_structured(
+                            "runtime_progress",
+                            request_id=request_id,
+                            payload=data,
+                        ),
+                        stop_event=threading.Event(),
+                        model=model,
+                    )
+                    emit_response(
+                        request_id,
+                        {
+                            "processed": result.processed,
+                            "total": result.total,
+                            "updated_images": [str(path) for path in result.updated_images],
+                            "skipped_images": [str(path) for path in result.skipped_images],
+                        },
+                    )
+                    continue
+                emit_error(request_id, f"不支持的 AI 运行时命令：{action}")
+            except Exception as exc:
+                emit_error(request_id, str(exc))
+        return 0
+    finally:
+        if active_model is not None:
+            del active_model
+            release_inference_runtime()

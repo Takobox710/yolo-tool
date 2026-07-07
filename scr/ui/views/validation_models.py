@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from scr.services.detection_service import find_result_model_paths
 from scr.services.path_service import simplified_model_path
-from scr.services.training_service import find_training_model_paths
 
 
 @dataclass
@@ -15,6 +15,14 @@ class ValidationModelChoices:
     display_paths: dict[str, Path]
     display_names: list[str]
     selected_display: str
+
+
+def _result_model_sort_key(path: Path) -> tuple[int, int]:
+    run_name = path.parent.parent.name
+    match = re.fullmatch(r"train(?:-(\d+))?", run_name.strip(), re.IGNORECASE)
+    run_number = int(match.group(1) or 1) if match else 0
+    model_priority = 1 if path.name.lower() == "best.pt" else 0
+    return (-run_number, -model_priority)
 
 
 def build_validation_model_choices(
@@ -37,17 +45,11 @@ def build_validation_model_choices(
     all_paths: list[Path] = []
     display_paths: dict[str, Path] = {}
     seen: set[str] = set()
-    for path in find_training_model_paths(project_root, project_root):
-        resolved_path = path.resolve()
-        resolved = str(resolved_path)
-        if resolved in seen:
-            continue
-        all_paths.append(resolved_path)
-        display_paths[simplified_model_path(str(resolved_path), project_root)] = resolved_path
-        seen.add(resolved)
-
-    for path in find_result_model_paths(
-        result_dir, show_last_training_models=show_last_training_models
+    for path in sorted(
+        find_result_model_paths(
+            result_dir, show_last_training_models=show_last_training_models
+        ),
+        key=_result_model_sort_key,
     ):
         resolved_path = path.resolve()
         resolved = str(resolved_path)
@@ -76,6 +78,8 @@ def build_validation_model_choices(
                     selected_display = best_display
             elif current_path.exists():
                 selected_display = simplified_model_path(str(current_path), project_root)
+    if selected_display and selected_display not in display_paths:
+        selected_display = ""
     if not selected_display and display_names:
         selected_display = display_names[0]
 

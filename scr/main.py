@@ -36,6 +36,10 @@ def main() -> None:
         from scr.train_cli import run_ai_label_cli
 
         raise SystemExit(run_ai_label_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-ai-runtime":
+        from scr.train_cli import run_ai_runtime_cli
+
+        raise SystemExit(run_ai_runtime_cli(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "--yolo-model-labels":
         from scr.train_cli import run_model_labels_cli
 

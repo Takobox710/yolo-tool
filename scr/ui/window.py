@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 from scr.theme import STYLE
@@ -27,6 +29,7 @@ class WorkbenchWindow(QMainWindow):
         self.training_handle = None
         self.export_handle = None
         self.validation_handle = None
+        self._program_logs: deque[str] = deque(maxlen=600)
         self.current_page_key = "home"
         self.page_order = ["home", "annotation", "data", "train", "validate", "settings"]
         self.page_titles = {
@@ -45,6 +48,7 @@ class WorkbenchWindow(QMainWindow):
         self.resize(1100, 740)
         self.setMinimumSize(800, 600)
         self._build()
+        self.append_program_log("程序启动。")
 
     def _apply_settings_defaults(self) -> None:
         self.settings.setdefault("features", {}).setdefault("custom_command_dialog", True)
@@ -114,6 +118,7 @@ class WorkbenchWindow(QMainWindow):
         self.settings = self.settings_service.load()
         self._apply_settings_defaults()
         self.reload_pages("home")
+        self.append_program_log(f"已切换项目目录：{self.settings['project']['root']}")
 
     def show_page(self, key: str):
         if key not in self.page_titles:
@@ -143,6 +148,8 @@ class WorkbenchWindow(QMainWindow):
         return scroll_page(SettingsPage(self))
 
     def run_background(self, kind: str, fn):
+        if self._should_log_background_kind(kind):
+            self.append_program_log(f"开始后台任务：{kind}")
         worker = Worker(kind, fn)
         self.workers.append(worker)
         worker.finished_with_payload.connect(self.handle_background)
@@ -151,8 +158,14 @@ class WorkbenchWindow(QMainWindow):
 
     def handle_background(self, kind: str, payload):
         if isinstance(payload, dict) and payload.get("error"):
+            self.append_program_log(
+                f"后台任务异常（{kind}）：{payload['error']}",
+                level="ERROR",
+            )
             QMessageBox.warning(self, "后台任务异常", payload["error"])
             return
+        if self._should_log_background_kind(kind):
+            self.append_program_log(f"后台任务完成：{kind}")
         current = self.stack.currentWidget()
         current = getattr(current, "inner_page", current)
         handler = getattr(current, f"apply_{kind}", None)
@@ -185,6 +198,7 @@ class WorkbenchWindow(QMainWindow):
         self.settings = self.settings_service.reset_to_defaults()
         self._apply_settings_defaults()
         self.reload_pages(target_page)
+        self.append_program_log("当前项目设置已恢复为默认值。")
         QMessageBox.information(self, "恢复默认设置", "当前项目设置已恢复为默认值。")
         return self.settings
 
@@ -202,6 +216,28 @@ class WorkbenchWindow(QMainWindow):
         hook = getattr(target, hook_name, None)
         if hook:
             hook()
+
+    def append_program_log(self, message: str, *, level: str = "INFO") -> None:
+        text = str(message or "").strip()
+        if not text:
+            return
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        entry = f"[{timestamp}] [{level}] {text}"
+        self._program_logs.append(entry)
+        settings_page = self.pages.get("settings")
+        target = getattr(settings_page, "inner_page", settings_page)
+        hook = getattr(target, "append_program_log_entry", None)
+        if callable(hook):
+            hook(entry)
+
+    def program_log_text(self) -> str:
+        if not self._program_logs:
+            return "等待程序日志..."
+        return "\n".join(self._program_logs)
+
+    @staticmethod
+    def _should_log_background_kind(kind: str) -> bool:
+        return kind not in {"env", "env_auto", "train_status"}
 
 def build_style() -> str:
     return STYLE

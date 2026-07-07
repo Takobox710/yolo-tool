@@ -6,14 +6,38 @@ import shutil
 import subprocess
 import sys
 import time
+from importlib import metadata
 from pathlib import Path
 from typing import Callable, TypeVar
 
 from scr.services.process_utils import hidden_subprocess_kwargs
+from scr import APP_VERSION
 
 
 T = TypeVar("T")
 _CACHE: dict[str, tuple[float, object]] = {}
+PACKAGE_SPECS: dict[str, dict[str, tuple[str, ...] | str]] = {
+    "PySide6": {
+        "module": "PySide6",
+        "distributions": ("PySide6",),
+    },
+    "Ultralytics": {
+        "module": "ultralytics",
+        "distributions": ("ultralytics",),
+    },
+    "OpenCV": {
+        "module": "cv2",
+        "distributions": ("opencv-python", "opencv-python-headless"),
+    },
+    "Pillow": {
+        "module": "PIL",
+        "distributions": ("Pillow",),
+    },
+    "psutil": {
+        "module": "psutil",
+        "distributions": ("psutil",),
+    },
+}
 
 
 def cached_call(key: str, ttl_seconds: float, loader: Callable[[], T], clock: Callable[[], float] = time.monotonic) -> T:
@@ -29,11 +53,47 @@ def cached_call(key: str, ttl_seconds: float, loader: Callable[[], T], clock: Ca
 
 
 def detect_modules() -> dict[str, bool]:
-    return {name: importlib.util.find_spec(name) is not None for name in ("PySide6", "ultralytics", "cv2", "PIL", "psutil")}
+    return {
+        str(spec["module"]): importlib.util.find_spec(str(spec["module"])) is not None
+        for spec in PACKAGE_SPECS.values()
+    }
+
+
+def python_version() -> str:
+    return sys.version.split()[0]
+
+
+def application_version() -> str:
+    return APP_VERSION
+
+
+def dependency_versions() -> dict[str, str]:
+    return cached_call("dependency_versions", 60.0, _load_dependency_versions)
 
 
 def pixi_available() -> bool:
     return shutil.which("pixi") is not None
+
+
+def _load_dependency_versions() -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for label, spec in PACKAGE_SPECS.items():
+        module_name = str(spec["module"])
+        if importlib.util.find_spec(module_name) is None:
+            versions[label] = "未安装"
+            continue
+        version = _detect_distribution_version(tuple(spec["distributions"]))
+        versions[label] = version or "已安装"
+    return versions
+
+
+def _detect_distribution_version(distributions: tuple[str, ...]) -> str:
+    for distribution in distributions:
+        try:
+            return metadata.version(distribution)
+        except metadata.PackageNotFoundError:
+            continue
+    return ""
 
 
 def torch_cuda_summary(*, use_subprocess: bool = False) -> dict[str, str]:

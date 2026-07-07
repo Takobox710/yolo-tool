@@ -101,6 +101,47 @@ def spawn_structured_process(command: list[str], cwd: str, queue: Queue) -> Proc
     return ProcessHandle(process=process, thread=thread)
 
 
+def spawn_interactive_structured_process(
+    command: list[str], cwd: str, queue: Queue
+) -> ProcessHandle:
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        **hidden_subprocess_kwargs(),
+    )
+
+    def forward() -> None:
+        assert process.stdout is not None
+        try:
+            for line in process.stdout:
+                cleaned = sanitize_terminal_line(line)
+                if not cleaned:
+                    continue
+                if cleaned.startswith(STRUCTURED_OUTPUT_PREFIX):
+                    raw_payload = cleaned[len(STRUCTURED_OUTPUT_PREFIX) :]
+                    try:
+                        payload = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        queue.put(("log", cleaned))
+                        continue
+                    queue.put(("structured", payload))
+                    continue
+                queue.put(("log", cleaned))
+        finally:
+            queue.put(("exit", process.wait()))
+
+    thread = threading.Thread(target=forward, daemon=True)
+    thread.start()
+    return ProcessHandle(process=process, thread=thread)
+
+
 def _wait_for_process_exit(process: subprocess.Popen, timeout_seconds: float) -> bool:
     try:
         process.wait(timeout=timeout_seconds)

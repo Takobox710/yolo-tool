@@ -126,13 +126,21 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "pyinstaller" in script
     assert 'ValidateSet("release", "dev")' in script
     assert 'YOLO_TOOL_BUILD_MODE' in script
-    assert 'ROOT / "yolo26n.pt"' in spec
+    assert 'ROOT_MODEL_FILES = [' in spec
     assert '"data/models"' in spec
     assert 'HOOKS_DIR = ROOT / "installer" / "hooks"' in spec
     assert 'SetupIconFile=..\\scr\\assets\\app_icon.ico' in iss
     assert 'Source: "..\\dist\\YOLOTool\\{#MyAppExeName}"' in iss
-    assert 'Copy-Item -LiteralPath $RootModelPath -Destination (Join-Path $AppDir "yolo26n.pt") -Force' in script
-    assert 'Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $AppDir "data/models" $_.Name) -Force' in script
+    assert 'Source: "..\\dist\\YOLOTool\\*.pt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist' in iss
+    assert '$TargetModelPath = Join-Path $TargetModelsDir $ModelFile.Name' in script
+    assert 'Copy-Item -LiteralPath $RootModelPath -Destination $TargetRootModelPath -Force' in script
+    assert 'Build output is missing root model file: yolo26n.pt' in script
+    assert 'Build output is missing model files under data/models' in script
+    assert 'from scr.services.settings_service import build_default_settings, save_last_project_root' in script
+    assert 'settings = build_default_settings(app_dir)' in script
+    assert 'save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")' in script
+    assert 'Build output is missing runtime settings file: data/runtime/settings.json' in script
+    assert 'Build output is missing app state file: data/runtime/app_state.json' in script
     assert "build_windows.ps1" in one_click_script
 
 
@@ -181,7 +189,7 @@ def test_qt_app_matches_reference_ui_sections():
     ]:
         assert expected in src
     assert 'page.start_btn = QPushButton("开始训练")' in src
-    assert "sidebar.setFixedWidth(180)" in src
+    assert "sidebar.setFixedWidth(178)" in src
     assert 'title = QLabel("模型训练")' not in src
     assert 'title = QLabel("模型验证")' not in src
     assert 'QLabel("模型配置")' in VALIDATE_LAYOUT_VIEW.read_text(encoding="utf-8")

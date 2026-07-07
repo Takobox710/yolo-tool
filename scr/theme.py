@@ -4,12 +4,13 @@ STYLE = """
 QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
 #nav { background: #26394D; }
 #brand { color: white; font-size: 24px; font-weight: 700; }
-#navButton { color: white; background: transparent; border: 0; padding: 10px 14px; font-weight: 700; }
+#navButton { color: white; background: transparent; border: 0; padding: 10px 14px; font-weight: 700; font-size: 17px; }
 #navButton:checked, #navButton:hover { background: #344D66; border-radius: 6px; }
 #dataSidebar { background: #26394D; border-radius: 8px; }
-#sideTitle { color: white; font-size: 18px; font-weight: 700; padding: 8px; }
-#dataNavButton { color: white; background: transparent; border: 0; padding: 10px 14px; text-align: left; }
-#dataNavButton:checked, #dataNavButton:hover { background: #344D66; border-radius: 6px; }
+#dataSidebarTitle { color: white; font-size: 24px; font-weight: 700; padding: 4px 0 10px 0; }
+#dataSidebarDivider { color: #536779; background: #536779; max-height: 1px; }
+#dataNavButton { color: white; background: transparent; border: 0; padding: 10px 8px; text-align: left; font-size: 16px; }
+#dataNavButton:checked, #dataNavButton:hover { background: #344D66; border-radius: 5px; }
 #annotationSidebar { background: #26394D; border-radius: 8px; }
 #annotationIcon { color: white; font-size: 30px; font-weight: 700; }
 #annotationTitle { color: white; font-size: 24px; font-weight: 700; padding: 4px 0 10px 0; }

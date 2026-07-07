@@ -41,18 +41,22 @@ def resolve_ai_model_path(model_text: str, project_root: Path) -> str:
     return resolve_training_model_reference(model_text, project_root)
 
 
+def extract_model_labels(model) -> list[str]:
+    names = getattr(model, "names", {})
+    if isinstance(names, dict):
+        return [str(names[key]).strip() for key in sorted(names) if str(names[key]).strip()]
+    if isinstance(names, (list, tuple)):
+        return [str(name).strip() for name in names if str(name).strip()]
+    return []
+
+
 def load_model_labels(model_path: str) -> list[str]:
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
     model = YOLO(model_path)
     try:
-        names = getattr(model, "names", {})
-        if isinstance(names, dict):
-            return [str(names[key]).strip() for key in sorted(names) if str(names[key]).strip()]
-        if isinstance(names, (list, tuple)):
-            return [str(name).strip() for name in names if str(name).strip()]
-        return []
+        return extract_model_labels(model)
     finally:
         del model
         release_inference_runtime()
@@ -191,6 +195,7 @@ def apply_ai_labeling(
     auto_convert_yolo: bool,
     progress_callback,
     stop_event: threading.Event,
+    model=None,
 ) -> AiLabelResult:
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
@@ -204,7 +209,10 @@ def apply_ai_labeling(
         current_index=current_index,
         selected_images=selected_images,
     )
-    model = YOLO(model_path)
+    active_model = model
+    owns_model = active_model is None
+    if active_model is None:
+        active_model = YOLO(model_path)
     try:
         updated_images: list[Path] = []
         skipped_images: list[Path] = []
@@ -238,7 +246,7 @@ def apply_ai_labeling(
             )
             detected, names, model_labels = predict_annotations_for_image(
                 image_path,
-                model,
+                active_model,
                 confidence,
                 iou,
                 imgsz,
@@ -269,5 +277,6 @@ def apply_ai_labeling(
             skipped_images=skipped_images,
         )
     finally:
-        del model
-        release_inference_runtime()
+        if owns_model:
+            del active_model
+            release_inference_runtime()

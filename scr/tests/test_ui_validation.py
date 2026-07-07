@@ -87,7 +87,7 @@ def test_validation_page_lists_training_best_and_last_models_by_feature_flag(tmp
     assert "train-2\\last.pt" not in items
 
 
-def test_validation_page_lists_base_models_before_training_output_models(tmp_path):
+def test_validation_page_only_lists_training_output_models(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from scr.services.settings_service import build_default_settings
@@ -96,9 +96,6 @@ def test_validation_page_lists_base_models_before_training_output_models(tmp_pat
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    models_dir = tmp_path / "data" / "models"
-    models_dir.mkdir(parents=True)
-    (models_dir / "alpha.pt").write_text("a", encoding="utf-8")
     (tmp_path / "result" / "train" / "weights").mkdir(parents=True)
     (tmp_path / "result" / "train" / "weights" / "best.pt").write_text(
         "b", encoding="utf-8"
@@ -116,8 +113,77 @@ def test_validation_page_lists_base_models_before_training_output_models(tmp_pat
 
     items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
 
-    assert items == ["data\\models\\alpha.pt", "train\\best.pt"]
-    assert page._get_model_path() == str((models_dir / "alpha.pt").resolve())
+    assert items == ["train\\best.pt"]
+    assert page._get_model_path() == str((tmp_path / "result" / "train" / "weights" / "best.pt").resolve())
+
+
+def test_validation_page_lists_newer_training_numbers_first(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["features"]["show_last_training_models"] = True
+    for run_name in ("train-2", "train-10"):
+        run_dir = tmp_path / "result" / run_name / "weights"
+        run_dir.mkdir(parents=True)
+        (run_dir / "best.pt").write_text("best", encoding="utf-8")
+        (run_dir / "last.pt").write_text("last", encoding="utf-8")
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.on_show()
+
+    items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
+
+    assert items == [
+        "train-10\\best.pt",
+        "train-10\\last.pt",
+        "train-2\\best.pt",
+        "train-2\\last.pt",
+    ]
+
+
+def test_validation_page_ignores_base_models_in_data_models(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from scr.services.settings_service import build_default_settings
+    from scr.ui.qt import QApplication
+    from scr.ui.views.validation import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    models_dir = tmp_path / "data" / "models"
+    models_dir.mkdir(parents=True)
+    model_path = models_dir / "alpha.pt"
+    model_path.write_text("a", encoding="utf-8")
+    run_model_path = tmp_path / "result" / "train-1" / "weights" / "best.pt"
+    run_model_path.parent.mkdir(parents=True)
+    run_model_path.write_text("best", encoding="utf-8")
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.on_show()
+    items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
+
+    assert items == ["train-1\\best.pt"]
+    assert "alpha.pt" not in items
+    assert page._get_model_path() == str(run_model_path.resolve())
 
 
 def test_validation_page_uses_best_when_last_is_selected_and_flag_turns_off(tmp_path):
