@@ -104,6 +104,15 @@ def test_training_command_includes_all_hsv_params_when_configured():
     assert "hsv_v=0.4" in command
 
 
+def test_app_cli_command_uses_module_entry_under_current_python():
+    from src.services.training import app_cli_command
+
+    command = app_cli_command("--yolo-train", "obb", "train")
+
+    assert command[:3] == [sys.executable, "-m", "src.main"]
+    assert command[3:] == ["--yolo-train", "obb", "train"]
+
+
 def test_build_val_command_uses_app_cli_val_entry(tmp_path):
     from src.services.training import build_val_command
 

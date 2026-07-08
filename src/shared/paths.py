@@ -7,11 +7,11 @@ from pathlib import Path
 def app_root() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 ROOT = app_root()
-PACKAGE_ROOT = Path(__file__).resolve().parent
+PACKAGE_ROOT = ROOT / "src"
 ASSETS_ROOT = PACKAGE_ROOT / "assets"
 DATA_ROOT = ROOT / "data"
 RUNTIME_ROOT = DATA_ROOT / "runtime"

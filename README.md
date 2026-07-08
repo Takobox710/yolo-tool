@@ -104,6 +104,8 @@
 python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
 ```
 
+开发态隐藏 CLI 会通过仓库根目录作为工作目录启动 `python -m src.main ...`。如果把子进程 `cwd` 切到外部项目目录或 `src/` 目录，Python 将无法解析顶层 `src` 包，训练/验证等后台任务会直接启动失败。
+
 打包后的程序会通过 `YOLOTool.exe --yolo-train ...` 启动内部训练入口，不依赖目标机器上的 `pixi` 或 `yolo` 命令。
 
 ### 5. 模型验证

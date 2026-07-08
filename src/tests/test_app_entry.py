@@ -71,6 +71,28 @@ def test_app_file_has_direct_script_import_bootstrap():
     assert "run_app()" in src
 
 
+def test_shared_paths_use_repo_root_in_dev_mode():
+    from src.shared.paths import (
+        ASSETS_ROOT,
+        DATA_ROOT,
+        ICON_ICO,
+        ICON_PNG,
+        PACKAGE_ROOT,
+        ROOT,
+        RUNTIME_ROOT,
+    )
+
+    repo_root = Path.cwd().resolve()
+
+    assert ROOT == repo_root
+    assert PACKAGE_ROOT == repo_root / "src"
+    assert ASSETS_ROOT == repo_root / "src" / "assets"
+    assert DATA_ROOT == repo_root / "data"
+    assert RUNTIME_ROOT == repo_root / "data" / "runtime"
+    assert ICON_PNG == repo_root / "src" / "assets" / "app_icon.png"
+    assert ICON_ICO == repo_root / "src" / "assets" / "app_icon.ico"
+
+
 def test_direct_script_hidden_train_entry_has_package_context():
     result = subprocess.run(
         [sys.executable, "src/main.py", "--yolo-train"],

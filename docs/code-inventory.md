@@ -4,19 +4,17 @@
 
 ## 目录摘要
 
-- `src`: 194 个文件，20473 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
-- `docs`: 9 个文件，749 行文本；架构、规格、打包与代码清单文档。
-- `installer`: 11 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
+- `src`: 194 个文件，20504 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `docs`: 9 个文件，751 行文本；架构、规格、打包与代码清单文档。
+- `installer`: 12 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
 
 | 路径 | 行数 | 说明 |
 | --- | ---: | --- |
-| `AGENTS.md` | 130 | 本仓库 AI 执行约束与开发规则。 |
-| `README.md` | 358 | 项目概览、命令入口与使用说明。 |
+| `AGENTS.md` | 136 | 本仓库 AI 执行约束与开发规则。 |
+| `README.md` | 360 | 项目概览、命令入口与使用说明。 |
 | `pixi.toml` | 32 | Pixi 环境、依赖与任务命令定义。 |
-| `refactor_plan.md` | 628 | 本次 src 重构目标结构与验收计划。 |
-| `second_stage_plan.md` | 422 | 仓库文件。 |
 | `src/__init__.py` | 1 | 仓库文件。 |
 | `src/app.py` | 8 | 仓库文件。 |
 | `src/assets/app_icon.ico` | 0 | 应用图标与静态资源。 |
@@ -98,11 +96,11 @@
 | `src/tests/services/settings/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/settings/test_project_settings.py` | 175 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/training/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/training/test_training_services.py` | 269 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/training/test_training_services.py` | 278 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/validation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/validation/test_model_catalog.py` | 34 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/validation/test_prediction_services.py` | 206 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/test_app_entry.py` | 207 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/test_app_entry.py` | 229 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/test_annotation_page.py` | 1123 | pytest 测试、结构约束与回归用例。 |
@@ -211,14 +209,14 @@
 | `src/ui/widgets/__init__.py` | 1 | 图表与基础复用控件。 |
 | `src/ui/widgets/base.py` | 90 | 图表与基础复用控件。 |
 | `src/ui/widgets/charts.py` | 332 | 图表与基础复用控件。 |
-| `docs/architecture.md` | 165 | 项目架构、打包与维护文档。 |
-| `docs/code-inventory.md` | 233 | 项目架构、打包与维护文档。 |
+| `docs/architecture.md` | 166 | 项目架构、打包与维护文档。 |
+| `docs/code-inventory.md` | 232 | 项目架构、打包与维护文档。 |
 | `docs/packaging-windows.md` | 34 | 项目架构、打包与维护文档。 |
 | `docs/spec/annotation.md` | 76 | 页面与功能规格说明。 |
 | `docs/spec/data-processing.md` | 55 | 页面与功能规格说明。 |
 | `docs/spec/home.md` | 36 | 页面与功能规格说明。 |
 | `docs/spec/settings.md` | 26 | 页面与功能规格说明。 |
-| `docs/spec/training.md` | 68 | 页面与功能规格说明。 |
+| `docs/spec/training.md` | 70 | 页面与功能规格说明。 |
 | `docs/spec/validation.md` | 56 | 页面与功能规格说明。 |
 | `installer/build_windows.ps1` | 122 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-PySide6.scripts.deploy_lib.py` | 1 | Windows 打包脚本与安装配置。 |
@@ -227,6 +225,7 @@
 | `installer/output/YOLOTool_Setup_1.1.0.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.2.0.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.2.1.exe` | 0 | Windows 打包脚本与安装配置。 |
+| `installer/output/YOLOTool_Setup_1.2.2.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/package_windows.ps1` | 79 | Windows 打包脚本与安装配置。 |
 | `installer/yolo_tool.iss` | 83 | Windows 打包脚本与安装配置。 |
 | `installer/YOLOTool.spec` | 107 | Windows 打包脚本与安装配置。 |

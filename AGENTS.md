@@ -17,6 +17,8 @@
 - UI 测试按 `src/tests/ui/<domain>/` 分目录维护；服务层测试按 `src/tests/services/<domain>/` 分目录维护；结构围栏测试放在 `src/tests/architecture/`。
 - 不要把 `.pixi/`、`dist/`、`build/`、缓存目录、模型训练产物加入 git。
 - 需要提交 git 时，必须完成所有任务后再做一次总提交，不要中途零散提交。
+- 修改任何会影响行为、结构、入口、打包方式、设置字段、测试组织、页面布局或用户操作流程的代码后，必须同步检查并更新受影响文档；至少包括 `docs/spec/*.md`、`docs/architecture.md`、`docs/packaging-windows.md`、`README.md` 与 `docs/code-inventory.md` 中相关文件。禁止只改代码不更新文档。
+- 每次完成一批可感知改动后，必须同步更新根目录 `CHANGELOG.md`；日常开发阶段只允许在 `Unreleased > 待提交改动` 顶部追加简短记录，格式固定为 `- YYYY/MM/DD HH:mm：本次改动`，最新记录必须放最前面。后续任何 AI 在准备 git 提交说明、GitHub 提交说明或版本更新说明前，必须先阅读该文件，再结合当前 `git diff` 生成总结，不能只依赖当前对话上下文。
 - 如果编译或测试错误连续出现 5 次仍未解决，必须立即停止并向人类报告，严禁盲猜死循环。
 - 不改变公开入口：`pixi run app`、`pixi run test`、`pixi run check`、`python -m src.main`。
 - 打包后训练/导出/验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py`。
@@ -52,6 +54,7 @@ yolo_tool/
 - 模型验证规格：`docs/spec/validation.md`
 - 系统设置规格：`docs/spec/settings.md`
 - Windows 打包：`docs/packaging-windows.md`
+- 版本更新与改动记录：`CHANGELOG.md`
 
 改功能前先读对应 spec；改共享逻辑前先读 `docs/architecture.md`。
 
@@ -61,8 +64,9 @@ yolo_tool/
 2. 读对应 `docs/spec/*.md` 与现有测试，确认用户请求是否改变既有约定。
 3. 优先修改服务层中的可测试逻辑，再让 UI 调用服务层。
 4. 保持公开类名与入口兼容，例如 `AnnotationPage`、`ValidatePage`、`TrainPage`、`HomePage`。
-5. 修改后至少运行 `pixi run check`；涉及行为变化时运行相关测试，收尾前优先运行 `pixi run test`。
-6. 如果连续 5 次编译或测试失败仍无法解决，停止并报告失败命令、错误摘要和已尝试方案。
+5. 修改后同步更新受影响文档；如果改动会影响用户可见行为、维护结构、入口、打包、设置字段或测试组织，必须同时更新根目录 `CHANGELOG.md` 的 `Unreleased > 待提交改动`，并把最新记录插到最上方。
+6. 修改后至少运行 `pixi run check`；涉及行为变化时运行相关测试，收尾前优先运行 `pixi run test`。
+7. 如果连续 5 次编译或测试失败仍无法解决，停止并报告失败命令、错误摘要和已尝试方案。
 
 ## 分层规则
 
@@ -127,4 +131,6 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 - 重构时保持导入兼容，优先做小步移动和 re-export，再逐步收紧边界。
 - 不为了清空 PyInstaller warning 恢复大包 `collect_all(...)` 全量扫描；只按真实运行缺失补依赖。
 - 新增功能先补服务层测试，再接 UI。
+- 需要准备 git 提交说明、GitHub 提交说明或软件版本更新说明时，先阅读根目录 `CHANGELOG.md`，再结合 `git diff` 汇总；不要只根据当前对话记忆生成说明。
+- `CHANGELOG.md` 的使用方式固定为：平时每个对话只维护按时间倒序排列的“待提交改动”；准备 git 提交时，把最近一批待提交改动整理成一个提交标题，提交完成后删除这些待提交项，并在“提交记录”顶部改写为 `## 提交标题（commit_hash）` 加原始改动列表；准备软件版本更新时，再把多个提交记录提炼成放在文件最上方的 `# [版本号] - YYYY-MM-DD` 版本说明，其中只强调更重要的更新点，小改动只顺带归纳。
 

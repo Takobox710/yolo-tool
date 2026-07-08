@@ -44,6 +44,8 @@ python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=..
 
 打包后训练/导出命令通过 `YOLOTool.exe --yolo-train ...` 或 `YOLOTool.exe --yolo-export ...` 进入 `src/train_cli.py`，目标机器不需要安装 Python、pixi 或 Ultralytics CLI。不要把训练命令恢复为依赖 `pixi run yolo ...` 的形式。
 
+开发态通过 `python -m src.main --yolo-train ...` 启动隐藏 CLI 时，子进程工作目录必须保持在仓库根目录，不能切到项目目录或 `src/` 目录；否则 Python 会因找不到顶层 `src` 包而启动失败。
+
 模型目录约定：
 
 - `data/models/` 是统一的基础模型目录。
