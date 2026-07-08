@@ -12,14 +12,14 @@
 
 ## 不可违反约束
 
-- 所有项目代码放在 `scr/` 目录下。
-- 测试代码放在 `scr/tests/` 目录下。
+- 所有项目代码放在 `src/` 目录下。
+- 测试代码放在 `src/tests/` 目录下。
+- UI 测试按 `src/tests/ui/<domain>/` 分目录维护；服务层测试按 `src/tests/services/<domain>/` 分目录维护；结构围栏测试放在 `src/tests/architecture/`。
 - 不要把 `.pixi/`、`dist/`、`build/`、缓存目录、模型训练产物加入 git。
 - 需要提交 git 时，必须完成所有任务后再做一次总提交，不要中途零散提交。
 - 如果编译或测试错误连续出现 5 次仍未解决，必须立即停止并向人类报告，严禁盲猜死循环。
-- 不改变公开入口：`pixi run app`、`pixi run test`、`pixi run check`、`python -m scr.main`。
-- 打包后训练/导出/验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `scr/train_cli.py`。
-- 当前目录名是 `scr/`，不要改成 `src/`，避免破坏入口、测试和打包脚本。
+- 不改变公开入口：`pixi run app`、`pixi run test`、`pixi run check`、`python -m src.main`。
+- 打包后训练/导出/验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py`。
 
 ## 目录职责地图
 
@@ -32,14 +32,14 @@ yolo_tool/
 │   ├── packaging-windows.md   # Windows 打包说明
 │   └── spec/                  # 页面与功能规格
 ├── installer/                 # PyInstaller / Inno Setup 打包脚本
-└── scr/
+└── src/
     ├── main.py                # GUI 与隐藏 CLI 统一入口
     ├── train_cli.py           # 打包后训练、导出、验证入口
     ├── services/              # 可测试业务逻辑
     ├── ui/                    # Qt UI、页面、控件和 worker
     ├── runtime/               # 源码内默认配置参考
     ├── assets/                # 应用图标资源
-    └── tests/                 # pytest 测试
+    └── tests/                 # pytest 测试（architecture / services / ui / integration）
 ```
 
 ## 文档索引
@@ -66,19 +66,21 @@ yolo_tool/
 
 ## 分层规则
 
-- `scr/services/` 不得导入 `scr/ui/`。服务层只能依赖标准库、第三方库、其他服务或独立模型模块。
+- `src/services/` 不得导入 `src/ui/`。服务层只能依赖标准库、第三方库、其他服务或独立模型模块。
 - UI 页面负责布局、控件状态和用户交互；复杂业务规则、文件读写、数据转换应放到服务层。
-- `scr/ui/views/` 中页面文件超过约 `800` 行时，优先拆到页面专属子模块或 `scr/ui/widgets/`。
-- `scr/ui/page_base.py` 只保留真正跨页面复用的基础能力，不要塞入页面专属逻辑。
-- 后台子进程必须通过 `scr/services/process_utils.py` / `runtime_service.py` 的隐藏窗口参数启动，避免 Windows GUI 程序弹出终端窗口。
+- `src/ui/features/*/page.py` 只做页面装配；页面专属复杂逻辑继续拆到对应功能包子模块。
+- `src/ui/features/annotation/canvas/widget.py` 只保留 Qt 入口、信号与状态挂接；交互、渲染、几何、编辑、右键菜单继续拆到 `canvas/` 子模块。
+- `src/ui/shared/page_base.py` 只保留真正跨页面复用的基础能力，不要塞入页面专属逻辑。
+- 后台子进程必须通过 `src/services/runtime/` 中的统一入口与隐藏窗口参数启动，避免 Windows GUI 程序弹出终端窗口。
 - 训练与检测只允许一次启动，运行期间按钮禁用，任务结束后恢复。
 - GUI 日志写入前必须清洗 ANSI/控制字符。
+- `src/services/<domain>/__init__.py` 只能做轻量导出，不得塞实现。
 
 ## 设置与路径规则
 
 - 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
 - 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
-- `scr/runtime/settings.json` 只作为源码内默认配置参考，不作为当前项目唯一落点。
+- `src/runtime/settings.json` 只作为源码内默认配置参考，不作为当前项目唯一落点。
 - 程序启动默认进入主页，不按 `last_page` 自动恢复页面。
 - `data/models/` 是统一基础模型目录；训练和验证模型列表优先使用该目录。
 - UI 中项目文件夹显示绝对路径，其他项目内路径尽量显示相对路径。
@@ -89,7 +91,7 @@ yolo_tool/
 pixi run app
 pixi run test
 pixi run check
-pixi run python -m scr.main
+pixi run python -m src.main
 ```
 
 Windows 绿色版打包：
@@ -125,3 +127,4 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 - 重构时保持导入兼容，优先做小步移动和 re-export，再逐步收紧边界。
 - 不为了清空 PyInstaller warning 恢复大包 `collect_all(...)` 全量扫描；只按真实运行缺失补依赖。
 - 新增功能先补服务层测试，再接 UI。
+

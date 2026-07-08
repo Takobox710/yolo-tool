@@ -6,10 +6,10 @@ platforms = ["win-64", { name = "gpu-win-64", platform = "win-64", cuda = "13.0"
 version = "0.1.0"
 
 [tasks]
-test = "pytest scr/tests -q"
-app = "python -m scr.main"
-app-qt = "python -m scr.main"
-check = "python -m compileall scr"
+test = "pytest src/tests -q"
+app = "python -m src.main"
+app-qt = "python -m src.main"
+check = "python -m compileall src"
 
 [dependencies]
 python = "3.12.*"
@@ -29,3 +29,4 @@ pytest = ">=9.1.1, <10"
 matplotlib = ">=3.11.0, <4"
 pyinstaller = ">=6.17.0, <7"
 lap = ">=0.5.13, <0.6"
+

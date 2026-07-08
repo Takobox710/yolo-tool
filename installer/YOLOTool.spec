@@ -6,7 +6,7 @@ from pathlib import Path
 SPEC_ROOT = Path(SPECPATH).resolve()
 ROOT = SPEC_ROOT.parent
 HOOKS_DIR = ROOT / "installer" / "hooks"
-ASSETS_DIR = ROOT / "scr" / "assets"
+ASSETS_DIR = ROOT / "src" / "assets"
 MODELS_DIR = ROOT / "data" / "models"
 ROOT_MODEL_FILES = [
     ROOT / "yolo26n.pt",
@@ -16,7 +16,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 BASE_EXCLUDES = [
     "pytest",
-    "scr.tests",
+    "src.tests",
     "PySide6.scripts.deploy_lib",
     "torch.utils.tensorboard",
     "tensorboard",
@@ -33,7 +33,7 @@ is_dev = mode == "dev"
 name = "YOLOTool-dev" if is_dev else "YOLOTool"
 
 datas = [
-    (str(ASSETS_DIR), "scr/assets"),
+    (str(ASSETS_DIR), "src/assets"),
     *collect_data_files("ultralytics"),
 ]
 if MODELS_DIR.exists():
@@ -62,7 +62,7 @@ if is_dev:
     excludes += DEV_EXCLUDES
 
 a = Analysis(
-    [str(ROOT / "scr/main.py")],
+    [str(ROOT / "src/main.py")],
     pathex=[str(ROOT)],
     binaries=binaries,
     datas=datas,
@@ -104,3 +104,4 @@ coll = COLLECT(
     upx_exclude=[],
     name=name,
 )
+

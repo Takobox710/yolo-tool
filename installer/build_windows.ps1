@@ -76,7 +76,7 @@ import json
 import sys
 from pathlib import Path
 
-from scr.services.settings_service import build_default_settings, save_last_project_root
+from src.services.settings import build_default_settings, save_last_project_root
 
 app_dir = Path(sys.argv[1]).resolve()
 settings_path = app_dir / "data" / "runtime" / "settings.json"
@@ -119,3 +119,4 @@ Write-Host "Mode: $Mode"
 Write-Host "Built: $AppDir"
 Write-Host "Packaged runtime settings: $RuntimeSettingsPath"
 Write-Host "Packaged app state: $RuntimeAppStatePath"
+

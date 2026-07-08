@@ -27,6 +27,8 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 - 正式版输出到 `dist/YOLOTool/`
 - 开发版输出到 `dist/YOLOTool-dev/`
 
-运行时配置使用项目内的 `data/runtime/settings.json`。
+打包入口统一来自 `src/main.py`，GUI 与 `--yolo-train`、`--yolo-export`、`--yolo-val` 等隐藏 CLI 子命令都通过同一可执行文件进入 `src/bootstrap/cli_dispatch.py`。
+
+运行时配置使用打包目录内的 `data/runtime/settings.json` 与 `data/runtime/app_state.json`。
 
 Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与单一的 PyInstaller spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。

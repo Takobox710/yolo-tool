@@ -4,205 +4,162 @@
 
 本项目是一个独立于 `yolo-weld` 的 Windows 本地可视化 YOLO 训练工作台，使用 **Python + PySide6 / Qt** 开发桌面 GUI。
 
-定位是"通用 YOLO 优先，同时兼容焊缝 OBB 项目"：
+定位是“通用 YOLO 优先，同时兼容焊缝 OBB 项目”：
 
-- 支持 YOLO `obb` 与普通 `detect` 两类任务。
-- 默认内置焊缝识别项目习惯配置，例如类别 `weld`、Labelme 转 YOLO-OBB、直线标注扩展为旋转矩形。
-- 不依赖原项目的 `YL` conda 环境，使用本项目本地 `pixi` 环境管理依赖。
+- 支持 YOLO `detect` 与 `obb` 两类任务。
+- 默认兼容焊缝识别习惯配置，例如类别 `weld`、Labelme 转 YOLO-OBB、直线标注扩展为旋转矩形。
+- 使用本项目本地 `pixi` 环境管理依赖，不依赖外部 conda 环境。
 
 ## 当前目录结构
 
 ```text
 yolo_tool/
+├── AGENTS.md
 ├── README.md
 ├── pixi.toml
-├── pixi.lock
-├── AGENTS.md
-├── 打包程序.bat
 ├── docs/
 │   ├── architecture.md
 │   ├── code-inventory.md
 │   ├── packaging-windows.md
 │   └── spec/
-│       ├── annotation.md
-│       ├── data-processing.md
-│       ├── home.md
-│       ├── settings.md
-│       ├── training.md
-│       └── validation.md
 ├── installer/
-│   ├── yolo_tool.iss
 │   ├── YOLOTool.spec
 │   ├── build_windows.ps1
-│   ├── package_windows.ps1
-│   ├── 打包程序.ps1
+│   ├── yolo_tool.iss
 │   └── hooks/
-│       ├── hook-PySide6.scripts.deploy_lib.py
-│       ├── hook-torch.py
-│       └── hook-torch.utils.tensorboard.py
-└── scr/
-    ├── __init__.py
+└── src/
     ├── main.py
     ├── app.py
-    ├── context.py
-    ├── open_yolo_tool.pyw
-    ├── paths.py
-    ├── theme.py
     ├── train_cli.py
-    ├── runtime/
-    │   └── settings.json
-    ├── assets/
-    │   ├── app_icon.png
-    │   └── app_icon.ico
-    ├── services/
-    │   ├── __init__.py
-    │   ├── settings_service.py
-    │   ├── conversion_service.py
-    │   ├── annotation_service.py
-    │   ├── rename_service.py
-    │   ├── resize_service.py
-    │   ├── training_service.py
-    │   ├── detection_service.py
-    │   ├── runtime_service.py
-    │   ├── process_utils.py
-    │   └── environment_service.py
-    ├── ui/
-    │   ├── __init__.py
-    │   ├── app.py
-    │   ├── forms.py
-    │   ├── window.py
+    ├── open_yolo_tool.pyw
+    ├── bootstrap/
+    │   ├── app_factory.py
+    │   ├── cli_dispatch.py
+    │   └── context.py
+    ├── shared/
+    │   ├── paths.py
     │   ├── qt.py
-    │   ├── page_base.py
-    │   ├── helpers.py
-    │   ├── workers.py
-    │   ├── dialogs.py
+    │   ├── theme.py
+    │   └── types.py
+    ├── services/
+    │   ├── annotation/
+    │   ├── conversion/
+    │   ├── data_ops/
+    │   ├── models/
+    │   ├── runtime/
+    │   ├── settings/
+    │   ├── training/
+    │   └── validation/
+    ├── ui/
+    │   ├── shell/
+    │   ├── shared/
     │   ├── widgets/
-    │   │   ├── __init__.py
-    │   │   ├── base.py
-    │   │   └── charts.py
-    │   └── views/
-    │       ├── __init__.py
-    │       ├── home.py
-    │       ├── data.py
-    │       ├── convert.py
-    │       ├── preview.py
-    │       ├── rename.py
-    │       ├── resize.py
-    │       ├── training.py
-    │       ├── training_form.py
-    │       ├── training_runtime.py
-    │       ├── training_state.py
-    │       ├── validation.py
-    │       ├── validation_dataset.py
-    │       ├── validation_helpers.py
-    │       ├── validation_layout.py
-    │       ├── validation_models.py
-    │       ├── validation_result_list.py
-    │       ├── validation_results.py
-    │       ├── validation_runtime.py
-    │       ├── validation_sources.py
-    │       ├── validation_state.py
-    │       └── settings.py
+    │   └── features/
+    ├── runtime/
+    ├── assets/
     └── tests/
-        ├── conftest.py
-        ├── helpers/
-        ├── test_app_entry.py
-        ├── test_architecture_boundaries.py
-        ├── test_services_*.py
-        └── test_ui_*.py
 ```
+
+## 分层边界
+
+- `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label` 等隐藏 CLI。
+- `src/app.py` 与 `src/bootstrap/app_factory.py` 负责 GUI 应用创建，不承载业务规则。
+- `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。
+- `src/shared/` 放跨层共享基础能力，例如路径、Qt 导出、主题和共享类型。
+- `src/services/<domain>/` 是唯一业务实现层。这里允许依赖标准库、第三方库、其他服务包和 `src/shared/`，不得依赖 `src/ui/`。
+- `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。
+- `src/ui/shared/` 负责跨页面 UI 复用能力，例如页面基类、共享表单、共享对话框和后台 worker。
+- `src/ui/features/<feature>/` 负责各页面真实实现；`page.py` 只做页面装配，复杂逻辑继续拆到该功能包子模块。
+- `src/ui/widgets/` 与 `src/ui/shared/widgets/` 放基础可复用控件与图表组件。
+- `src/tests/architecture/` 放结构约束、防退化围栏与文档一致性检查。
+- `src/tests/services/` 按领域分目录放服务层测试。
+- `src/tests/ui/` 按 feature / shell / shared / data 分目录放页面与交互回归。
+- `src/tests/integration/` 放入口和跨层集成回归。
 
 ## 服务层说明
 
-核心服务接口在 `scr/services/`：
+### `src/services/settings/`
 
-- `settings_service.py`：项目级设置文件加载、保存、默认值合并与恢复默认值；默认路径为当前项目目录 `data/runtime/settings.json`，并维护训练、验证、转换、重命名、压缩等页面的持久化默认值。当前包含 `paths.models_dir`、`training.optimizer`、`features.custom_command_dialog`、`features.distribution_multi_class_mode`、`features.show_last_training_models` 等字段。
-- `data/runtime/app_state.json`：应用级最近项目状态文件，当前保存 `last_project_root`，仅用于下次启动时恢复最近一次使用的项目目录。
-- `conversion_service.py`：Labelme 转 YOLO、已有 YOLO `.txt` 分组、自动识别类别、类别映射、自定义类别名校验、数据集划分、`data.yaml` 生成，以及转换产物备份。
-- `annotation_service.py`：YOLO 标注解析与图像预览绘制；预览时按标签内容自动识别 `detect/obb`，并使用更接近 YOLO 官方的框与标签样式。
-- `rename_service.py`：批量重命名预览与执行。
-- `resize_service.py`：图片备份、缩放、画布归一化。
-- `path_service.py`：项目内路径解析、相对路径显示、训练结果模型路径简化等纯路径逻辑。
-- `training_service.py`：训练与导出命令生成、模型扫描与解析、模型 YAML 列举、训练开始前自动修复 `data.yaml` 中未还原的 `val` 路径，以及从 `results.csv` 读取训练曲线数据。
-- `detection_service.py`：模型扫描、输入源自然排序、单文件/批量检测源收集、检测结果解析、推理流程、检测日志文案，以及结果图片对应 YOLO 标注文件导出。
-- 摄像头/视频流的结果图渲染必须显式以当前帧作为底图后再叠加检测结果，不能依赖模型结果对象内部的默认底图回退，避免无目标时出现黑屏。
-- `runtime_service.py`：子进程启动、日志转发、结构化事件转发、停止进程；Windows 下优先回收训练进程树，并在日志入队前清洗 ANSI/控制字符，避免 GUI 文本框出现终端转义符残留。
-- 模型验证（图片/视频/摄像头推理）与 AI 预标注应通过隐藏子进程执行，避免在 GUI 主进程常驻 `torch` / `ultralytics` 推理运行时；其中 AI 预标注可在单次对话框会话内复用同一个后台子进程，以减少重复加载模型运行时的开销，并在会话结束或任务停止后回收主要推理内存。
-- 验证页图片结果缓存只保留结果路径与轻量元数据，需要回看时再从磁盘重载图片，避免批量检测数百张图片时在 GUI 内存中长期堆积 `PIL.Image` / `QPixmap` 对象。
-- `process_utils.py`：Windows 后台子进程隐藏窗口参数，避免 PyInstaller GUI 程序反复弹出终端窗口。
-- `environment_service.py`：Python、关键依赖版本与 Torch 运行时状态检测；Torch 摘要默认通过短生命周期子进程获取，避免仅因打开系统设置或训练页就把 `torch` 运行时常驻到 GUI 主进程。
-- `WorkbenchWindow` 维护全局程序日志缓冲区；系统设置页下方只作为日志查看窗口，优先承载程序级运行信息与后台任务异常，不重复汇总训练页、验证页、AI 预标注、标注转换、图片压缩等页面已经各自展示的专属日志。
-- `WorkbenchWindow` 统一负责程序关闭前确认：若当前存在未保存标注，或训练任务尚未结束，则先弹出确认框，用户再次确认后才真正关闭程序。
+- `defaults.py` 提供默认设置构造。
+- `storage.py` 提供深合并与项目路径序列化 / 反序列化。
+- `project_settings.py` 负责项目级设置加载、保存与最近项目状态读写。
+- 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
+- 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
+- `src/runtime/settings.json` 仅作为源码内默认配置参考。
 
-## UI 分层约定
+### `src/services/runtime/`
 
-- `scr/ui/page_base.py` 只保留跨页面复用的页面基类能力，例如设置保存、状态栏提示、只读日志文本框处理。
-- 表单字段构建、帮助提示和通用文件选择集中在 `scr/ui/forms.py`，不要继续把页面专属逻辑塞回 `BasePage`。
-- `scr/ui/helpers.py` 只保留轻量 UI 纯函数，不再承接新的 service 转发逻辑。
-- 训练页拆分为：
-  - `training.py`：页面入口与事件装配
-  - `training_form.py`：表单与布局
-  - `training_state.py`：设置持久化、命令预览与状态收集
-  - `training_runtime.py`：训练启动、停止、日志轮询与恢复
-- 验证页拆分为：
-  - `validation.py`：页面入口与事件装配
-  - `validation_layout.py`：控件布局
-  - `validation_state.py`：模型/输入源状态与设置持久化
-  - `validation_runtime.py`：检测与数据集验证运行控制
-  - 其余 `validation_*` 模块：模型选项、结果展示、数据集流程和辅助逻辑
-- `scr/ui/workers.py` 中桥接子进程的 `QThread` 工作器只负责信号转发与停止控制；页面侧若持有 worker 引用，必须在线程原生 `finished` 信号后再清理，避免线程尚未完全结束时对象被销毁而触发 Qt 级异常退出。
+- `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程。
+- `windows_spawn.py` 提供 Windows 隐藏窗口参数，确保打包后的后台任务不弹终端。
+- `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测。
+- GUI 日志写入前必须通过这里的终端输出清洗逻辑去掉 ANSI/控制字符。
 
-## 维护阈值
+### `src/services/training/`
 
-- `scr/ui/views/` 中的页面文件建议超过 `500-600` 行时优先拆分，不要等到 `800` 行再处理。
-- 共享层文件若开始同时承担“页面基类 + 表单组件库 + 业务规则”多重职责，应优先拆分。
-- 新增业务逻辑优先进入 `scr/services/`；只有明确依赖 Qt 控件生命周期的逻辑才放在 `scr/ui/`。
+- `model_catalog.py` 负责训练模型目录、模型 YAML 与模型路径解析。
+- `commands.py` 负责训练 / 导出 / 验证命令构造与 `data.yaml` 的验证路径修复。
+- `results_reader.py` 负责 `results.csv` 曲线与指标摘要读取。
+- 基础模型目录统一是 `data/models/`。
 
-设置文件新增字段：
+### `src/services/validation/`
 
-- `paths.models_dir`：统一模型目录，默认指向 `data/models`。
-- `training.optimizer`：优化器选择（auto/SGD/Adam/AdamW/RMSProp）。
-- `training.hsv_s`、`training.hsv_v`：HSV 饱和度与明度增强参数，和 `training.hsv_h` 一起由训练页 HSV 勾选项控制。
-- `features.custom_command_dialog`：训练前是否弹出自定义命令框。
-- `features.distribution_multi_class_mode`：主页“各类别图片分布”是否切换为多类别统计模式。
-- `features.show_help_icons`：是否显示字段名后的 `ⓘ`；关闭时只隐藏 `ⓘ`，不移除字段名称上的 tooltip。
-- `features.show_last_training_models`：模型验证页“选择模型”下拉框是否额外显示训练结果中的 `last.pt`；默认 `False`，关闭时只显示 `best.pt`。
-- `annotation.show_yolo_save_in_context_menu`：标注页主画布与图片列表右键菜单是否按需分别显示 `保存Labelme标注` 与 `保存YOLO标注`；关闭时仅显示单个 `保存`，默认保存 Labelme。
-- 系统设置中不再提供“启动自动加载 torch”之类的常驻预热选项；GUI 默认不主动持有推理运行时，只有训练/验证/AI 预标注等实际任务启动后才在对应子进程中按需加载。
-- `conversion.use_labelme`：记录标注转换页当前是否启用 Labelme 转 YOLO。
-- `conversion.backup_yolo_files`：记录标注转换页是否备份本次转换生成的 YOLO 标注与 `data.yaml`。
-- `conversion.class_name_mappings`：记录 Labelme 类别名到 YOLO 类别名的映射关系。
-- `rename.prefix`、`rename.start_index`、`rename.padding`、`rename.include_labelme`、`rename.include_yolo`：记录批量重命名页当前配置。
-- `image_resize.backup_enabled`：记录图片压缩页是否备份原始图片。
-- `features.resize_output_mode`：记录图片压缩页的输出方式。
-- `validation.source_scope`：记录模型验证页当前选择的固定输入源/验证源（`全部图片`、`训练图片`、`验证图片`、`测试图片`）。
+- `model_catalog.py` 负责训练产物模型扫描、输入模式状态和结果计数 / 日志文案。
+- `source_collectors.py` 负责图片、视频与数据集来源收集。
+- `rendering.py` 负责推理结果对象标准化、结果图渲染与标签输出。
+- `runtime_cleanup.py` 负责短生命周期推理运行时释放。
+- `prediction_runner.py` 保留为推理总流程装配入口。
+- 图片/视频/摄像头推理通过隐藏子进程执行，完成后释放主要推理运行时。
+- 摄像头或视频流结果图必须显式以当前帧为底图，避免无目标时黑屏。
 
-## 与原 yolo-weld 项目的关系
+### `src/services/annotation/`
 
-原项目路径：
+- 负责 Labelme/YOLO 标注读写、可编辑标注模型、预览渲染和 AI 预标注业务逻辑。
+- AI 预标注结果优先写回页面内部标注对象并保存 Labelme；按设置决定是否同步导出 YOLO。
 
-```text
-D:\ruanjian\User\Python\yolo-weld
-```
+### `src/services/conversion/`
 
-本项目只参考原项目流程和脚本思想，不直接依赖原项目代码。
+- `types.py` 定义转换配置与结果模型。
+- `class_mapping.py` 负责类别识别、类别映射和映射表解析。
+- `labelme_parser.py` 负责 Labelme 形状解析与 Labelme -> YOLO 行转换。
+- `dataset_split.py` 负责输入收集、数据集划分和统计汇总。
+- `dataset_yaml.py` 负责 `data.yaml` 输出。
+- `backup.py` 负责旧产物清理与备份。
+- `formatting.py` 负责转换结果说明文本。
+- `execute.py` 保留为转换总流程装配入口。
 
-原项目关键兼容点：
+### `src/services/data_ops/`
 
-- Labelme 标注。
-- YOLOv8/YOLO11 OBB 训练。
-- 焊缝类别 `weld`。
-- `line` 标注扩展为窄长 OBB。
-- 自定义模型 YAML，例如：
+- 负责批量重命名、图片压缩和项目内路径显示转换。
 
-```text
-D:\ruanjian\User\Python\yolo-weld\data\yolov8m-obb.yaml
-```
+## UI 约定
 
-## 后续开发建议
+- `src/ui/shell/window.py` 中的 `WorkbenchWindow` 是唯一主窗口实现。
+- 页面创建与导航注册统一在 `src/ui/shell/page_registry.py` 与 `src/ui/shell/navigation.py`。
+- 程序级日志缓冲与设置页日志展示统一走 `src/ui/shell/program_log.py`。
+- 关闭确认统一由 `src/ui/shell/close_guard.py` 处理，包括未保存标注与训练运行中确认。
+- 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
+- worker 真实实现只放在 `src/ui/shared/workers/`，页面持有 worker 时必须在原生 `finished` 信号后再清理对象。
+- `src/ui/features/annotation/page.py` 与 `src/ui/features/annotation/canvas/widget.py` 都只保留页面 / 画布装配；交互、保存、菜单、快捷键、AI 与编辑细节继续拆在 feature 子模块。
 
-- 优先保持服务层可测试，不要把业务逻辑直接写死在 GUI 回调中。
-- Qt GUI 可以继续按 `scr/ui/views/`、`scr/ui/widgets/`、`scr/ui/forms.py` 和 `scr/ui/dialogs.py` 这一层次拆分，避免页面文件再次膨胀；主页图表模块保持在 `scr/ui/widgets/charts.py`。
-- 训练曲线已从 `results.csv` 读取数据绘制，当前只保留关键曲线与 Epoch 摘要；后续增加指标时不要让标题区重新拥挤。
-- GPU 利用率优先通过 `nvidia-smi` 获取；如果不可用，界面显示"待检测"即可。
-- 对任何会改文件的功能，继续坚持"先预览，再执行"。
+## 关键运行规则
+
+- 训练与检测都只允许一次启动；运行期间按钮禁用，任务结束后恢复。
+- 模型验证、AI 预标注和 Torch/CUDA 摘要读取都优先走短生命周期隐藏子进程，避免主 GUI 长驻推理运行时。
+- 对任何会修改用户文件的功能，坚持“先预览，再执行”。
+- UI 中项目文件夹显示绝对路径，其他项目内路径优先显示相对路径。
+- `data/models/` 是统一基础模型目录；训练与验证模型列表优先使用该目录。
+
+## 打包链路
+
+- PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
+- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json` 与 `app_state.json`。
+- 安装包脚本 `installer/yolo_tool.iss` 负责把 `dist/YOLOTool/` 封装为安装程序。
+- 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py` 与 `src/bootstrap/cli_dispatch.py`。
+
+## 维护建议
+
+- 新增业务逻辑优先进入 `src/services/`，只有明确依赖 Qt 生命周期的逻辑才放到 `src/ui/`。
+- 新增页面逻辑直接放入 `src/ui/features/<feature>/`，不要恢复任何 `views`、`legacy` 或顶层 UI 兼容壳。
+- `src/services/<domain>/__init__.py` 只做轻量导出，不塞入业务实现。
+- 修改结构后同步更新 `docs/spec/*.md`、`docs/packaging-windows.md` 和 `docs/code-inventory.md`。
+- 当前阶段的结构围栏由 `src/tests/architecture/test_structure_boundaries.py` 负责，包含页面 / worker / service 体量阈值、旧路径禁用和 inventory 新鲜度校验。

@@ -101,7 +101,7 @@
 训练命令示例：
 
 ```powershell
-python -m scr.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
+python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
 ```
 
 打包后的程序会通过 `YOLOTool.exe --yolo-train ...` 启动内部训练入口，不依赖目标机器上的 `pixi` 或 `yolo` 命令。
@@ -160,25 +160,26 @@ yolo_tool/
 │   ├── build_windows.ps1
 │   ├── 打包程序.ps1
 │   └── hooks/
-└── scr/
-    ├── open_yolo_tool.pyw
-    ├── app.py
+└── src/
     ├── main.py
-    ├── context.py
-    ├── paths.py
-    ├── theme.py
+    ├── app.py
     ├── train_cli.py
+    ├── open_yolo_tool.pyw
+    ├── bootstrap/
+    ├── shared/
     ├── runtime/
     │   └── settings.json
     ├── assets/
     ├── services/
     ├── ui/
+    │   ├── shell/
+    │   ├── shared/
     │   ├── widgets/
-    │   └── views/
+    │   └── features/
     └── tests/
 ```
 
-项目代码统一放在 `scr/` 目录下，测试代码放在 `scr/tests/`。
+项目代码统一放在 `src/` 目录下，测试代码放在 `src/tests/`。
 
 ## 环境准备
 
@@ -207,10 +208,10 @@ pixi run app
 等价入口：
 
 ```powershell
-pixi run python -m scr.main
+pixi run python -m src.main
 ```
 
-也可以双击 `scr/open_yolo_tool.pyw` 启动程序。
+也可以双击 `src/open_yolo_tool.pyw` 启动程序。
 
 ## Windows 绿色版打包
 
@@ -340,7 +341,7 @@ AI 智能预标注弹窗默认尺寸为 `700 x 620`，最小尺寸为 `650 x 520
 - 本项目当前面向 Windows 本地桌面环境。
 - `.pixi/` 不应提交到 git。
 - `data/`、`images/`、`labels/`、`result/` 属于本地工作数据目录，默认已在 `.gitignore` 中忽略。
-- 当前项目的配置文件位于 `data/runtime/settings.json`；`scr/runtime/settings.json` 仅保留为源码内历史/默认配置参考。
+- 当前项目的配置文件位于 `data/runtime/settings.json`；`src/runtime/settings.json` 仅保留为源码内历史/默认配置参考。
 - `data/runtime/app_state.json` 只保存应用级最近项目状态，不应用来替代各项目自己的 `data/runtime/settings.json`。
 - PyInstaller 生成的 `build/`、`dist/` 属于构建产物，默认已在 `.gitignore` 中忽略。
 - 如果编译或测试错误连续出现 5 次仍未解决，应停止并由人类介入排查。
@@ -354,3 +355,4 @@ D:\ruanjian\User\Python\yolo-weld
 ```
 
 本项目仅参考其流程与脚本思路，不直接依赖原项目代码或环境。
+

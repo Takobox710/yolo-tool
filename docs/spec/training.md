@@ -36,13 +36,13 @@
 
 不要显示"自动任务类型""训练控制""系统状态"这三个标题文字。训练控制和系统状态模块本体要保留但高度要紧凑；任务类型状态行本体也不要显示。
 
-训练命令由 `training_service.build_train_command()` 生成，格式类似：
+训练命令由 `src.services.training.build_train_command()` 生成，格式类似：
 
 ```powershell
-python -m scr.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
+python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
 ```
 
-打包后训练/导出命令通过 `YOLOTool.exe --yolo-train ...` 或 `YOLOTool.exe --yolo-export ...` 进入 `scr/train_cli.py`，目标机器不需要安装 Python、pixi 或 Ultralytics CLI。不要把训练命令恢复为依赖 `pixi run yolo ...` 的形式。
+打包后训练/导出命令通过 `YOLOTool.exe --yolo-train ...` 或 `YOLOTool.exe --yolo-export ...` 进入 `src/train_cli.py`，目标机器不需要安装 Python、pixi 或 Ultralytics CLI。不要把训练命令恢复为依赖 `pixi run yolo ...` 的形式。
 
 模型目录约定：
 
@@ -58,10 +58,11 @@ Qt 实现注意事项：
 - HSV 勾选项必须同时控制 `hsv_h`、`hsv_s`、`hsv_v` 三个训练参数；取消勾选时三者都传 `0`。
 - 开始训练、停止训练、查看模型报告按钮放在训练控制模块中，不放在训练日志标题栏中。
 - 系统状态检测必须后台执行，不得阻塞页面切换或窗口缩放，并且训练页 GPU/显存/CPU/内存状态需每 `0.5s` 自动刷新一次。
-- Windows 打包后的后台子进程不得弹出终端窗口；调用 `nvidia-smi`、训练/导出等后台进程时应通过 `scr/services/process_utils.py` 提供的隐藏窗口参数。
+- Windows 打包后的后台子进程不得弹出终端窗口；调用 `nvidia-smi`、训练/导出等后台进程时应通过 `src.services.runtime.hidden_subprocess_kwargs()` 及 `src.services.runtime` 下的统一进程入口启动。
 - 点击"开始训练"后，若自定义命令框功能开启，先弹出命令编辑对话框，可修改命令后再执行训练；若上一个训练任务未结束则不弹出也不启动新任务。
 - 训练命令编辑对话框当前默认尺寸为 `700 x 200`，最小尺寸为 `350 x 100`。
 - 训练和检测均只允许一次启动，按钮在运行期间禁用，任务结束后恢复。
 - 点击"停止训练"后，训练页应立即进入"停止中"状态，禁用停止按钮，待训练进程真正退出后再统一恢复"开始训练"按钮，避免出现已停止但开始按钮仍为灰色的状态不同步问题。
 - 训练停止后，若后台的 Windows `multiprocessing` dataloader 子进程继续抛出 `WinError 5` 等停止期噪声，不应继续污染 GUI 日志；训练页应优先呈现"已请求停止训练"和最终停止结果。
 - GUI 训练日志不得直接显示终端 ANSI 控制序列；像 `ESC[K`、`ESC[34m`、`ESC[1m` 这类进度刷新和颜色控制符必须在写入文本框前清洗掉，避免日志出现 `[K`、`[34m` 等乱码残留。
+
