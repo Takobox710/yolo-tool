@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from pathlib import Path
 
+from src.shared.paths import ICON_PNG
 from src.shared.theme import STYLE
 from src.services.runtime import stop_process
 from src.services.settings import SettingsService
@@ -34,9 +35,8 @@ class WorkbenchWindow(QMainWindow):
         self._page_warmup_timer = QTimer(self)
         self._page_warmup_timer.setSingleShot(True)
         self._page_warmup_timer.timeout.connect(self._warm_up_next_page)
-        icon_path = Path(__file__).resolve().parent.parent / "assets" / "app_icon.png"
-        if icon_path.exists():
-            app_icon = QIcon(str(icon_path))
+        if ICON_PNG.exists():
+            app_icon = QIcon(str(ICON_PNG))
             self.setWindowIcon(app_icon)
         self.setWindowTitle("YOLO 本地训练工作台")
         self.resize(1100, 740)

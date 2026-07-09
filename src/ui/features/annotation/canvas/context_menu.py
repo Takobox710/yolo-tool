@@ -8,7 +8,7 @@ class AnnotationCanvasContextMenuMixin:
     def _show_context_menu(self, global_pos) -> None:
         menu = QMenu(self)
         menu.setSeparatorsCollapsible(False)
-        select_action = QAction("选择", menu)
+        select_action = QAction("编辑", menu)
         select_action.setCheckable(True)
         select_action.setChecked(self.draw_shape == "select")
         select_action.setShortcut(QKeySequence("V"))

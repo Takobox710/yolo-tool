@@ -67,6 +67,7 @@ yolo_tool/
 - `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。
 - `src/shared/` 放跨层共享基础能力，例如路径、Qt 导出、主题和共享类型。
 - `src/shared/paths.py` 在开发态必须把 `ROOT` 解析到仓库根目录，而不是 `src/` 子目录；隐藏 CLI 与后台 worker 依赖这个根目录作为 `python -m src.main` 的工作目录。
+- `src/shared/paths.py` 同时维护应用图标资源路径；GUI 启动时 `QApplication` 和 `WorkbenchWindow` 都应通过这里的 `ICON_PNG` 读取 `src/assets/app_icon.png`，不要在 UI 层硬编码相对目录，避免开发态或打包态窗口/任务栏图标丢失。
 - `src/services/<domain>/` 是唯一业务实现层。这里允许依赖标准库、第三方库、其他服务包和 `src/shared/`，不得依赖 `src/ui/`。
 - `src/services/home/` 负责主页的大目录扫描、统计汇总与训练历史整理；这些逻辑必须通过后台 worker 调用，避免主线程同步 I/O 卡住首页。主页切回时若界面上已有上一轮统计值，应优先保留旧值，待新汇总返回后再替换，避免反复闪出“加载中”。
 - `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。

@@ -55,10 +55,10 @@ def test_project_path_helpers_display_relative_and_resolve_user_text(tmp_path):
 
 def test_qt_app_uses_project_local_icon_assets():
     src = _read_ui_bundle()
-    assert (
-        'icon_path = Path(__file__).resolve().parent.parent / "assets" / "app_icon.png"'
-        in src
-    )
+    app_src = APP.read_text(encoding="utf-8")
+    assert "from src.shared.paths import ICON_PNG" in src
+    assert "if ICON_PNG.exists():" in src
+    assert "app.setWindowIcon(QIcon(str(ICON_PNG)))" in app_src
     assert "self.setWindowIcon(app_icon)" in src
     assert ICON_PNG.exists()
     assert ICON_ICO.exists()

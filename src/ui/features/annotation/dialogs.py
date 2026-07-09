@@ -130,7 +130,7 @@ class DrawShapeDialog(QDialog):
     def __init__(self, line_expand_enabled: bool, parent=None):
         super().__init__(parent)
         self.setWindowTitle("选择标注类型")
-        self.resize(220, 330 if line_expand_enabled else 286)
+        self.resize(220, 386 if line_expand_enabled else 342)
         self.selected_shape = "rect"
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -138,6 +138,16 @@ class DrawShapeDialog(QDialog):
         title_label = QLabel("请选择要绘制的标注类型")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_label)
+        edit_button = QPushButton("编辑")
+        edit_button.setMinimumHeight(44)
+        edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_button.setObjectName("drawShapeEditOption")
+        edit_button.clicked.connect(lambda: self.choose_shape("select"))
+        layout.addWidget(edit_button)
+        divider = QFrame()
+        divider.setObjectName("drawShapeDivider")
+        divider.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(divider)
         options = [
             ("矩形框", "rect"),
             ("有向矩形", "obb_single"),
@@ -177,6 +187,21 @@ class DrawShapeDialog(QDialog):
                 background: #FFFFFF;
                 border: 1px solid #D9E3EC;
                 border-radius: 10px;
+            }
+            QFrame#drawShapeDivider {
+                color: #D9E3EC;
+            }
+            QPushButton#drawShapeEditOption {
+                background: #FFFFFF;
+                color: #14233A;
+                border: 1px solid #D9E3EC;
+                border-radius: 10px;
+                padding: 10px 14px;
+                text-align: center;
+                font-size: 15px;
+            }
+            QPushButton#drawShapeEditOption:hover {
+                background: #F5F8FB;
             }
             QPushButton#drawShapeOptionSingle,
             QPushButton#drawShapeOptionFirst,

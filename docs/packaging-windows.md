@@ -31,4 +31,6 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 
 运行时配置使用打包目录内的 `data/runtime/settings.json` 与 `data/runtime/app_state.json`。
 
+程序图标资源统一来自 `src/assets/app_icon.ico` 与 `src/assets/app_icon.png`：`.ico` 用于 PyInstaller/Inno Setup 的 EXE 与安装器图标，GUI 运行时窗口图标通过 `src/shared/paths.py` 中的 `ICON_PNG` 加载，避免目录结构调整后出现窗口或任务栏图标缺失。
+
 Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与单一的 PyInstaller spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。

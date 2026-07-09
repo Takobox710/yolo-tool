@@ -693,6 +693,39 @@ def test_annotation_canvas_delete_action_uses_native_shortcut():
     assert action.isShortcutVisibleInContextMenu() is True
 
 
+def test_draw_shape_dialog_shows_edit_option_above_divider():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication, QFrame, QPushButton
+    from src.ui.features.annotation.dialogs import DrawShapeDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = DrawShapeDialog(line_expand_enabled=True)
+    buttons = [button.text() for button in dialog.findChildren(QPushButton)]
+
+    assert buttons[0] == "编辑"
+    assert buttons[1:] == ["矩形框", "有向矩形", "镜像有向矩形", "多边形", "圆形", "直线扩展"]
+    assert dialog.findChild(QFrame, "drawShapeDivider") is not None
+
+
+def test_draw_shape_dialog_edit_option_returns_select_mode():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication, QPushButton
+    from src.ui.features.annotation.dialogs import DrawShapeDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = DrawShapeDialog(line_expand_enabled=False)
+    edit_button = next(
+        button for button in dialog.findChildren(QPushButton) if button.text() == "编辑"
+    )
+
+    edit_button.click()
+
+    assert dialog.selected_shape == "select"
+    assert dialog.result() == dialog.DialogCode.Accepted
+
+
 def test_annotation_canvas_continuous_draw_keeps_shape_after_finish():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
