@@ -24,4 +24,4 @@ def program_log_text(window) -> str:
 
 
 def should_log_background_kind(kind: str) -> bool:
-    return kind not in {"env", "env_auto", "train_status"}
+    return kind not in {"env", "env_auto", "home_summary", "train_status"}

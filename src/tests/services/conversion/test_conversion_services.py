@@ -171,6 +171,14 @@ def test_conversion_can_split_existing_yolo_labels_without_labelme(tmp_path):
     assert result.total_boxes == 3
     assert (tmp_path / "data" / "train" / "labels" / "1.txt").read_text(encoding="utf-8") == "0 0.5 0.5 0.2 0.2\n"
     assert (tmp_path / "labels" / "2.txt").exists()
+    assert not (tmp_path / "data" / "old").exists()
+    assert not (tmp_path / "data" / "val").exists()
+    assert not (tmp_path / "data" / "test").exists()
+
+    yaml_text = (tmp_path / "data" / "data.yaml").read_text(encoding="utf-8")
+    assert "train: data/train/images" in yaml_text
+    assert "val:" not in yaml_text
+    assert "test:" not in yaml_text
 
 
 def test_conversion_tracks_multi_class_stats_and_formats_result(tmp_path):
@@ -374,4 +382,51 @@ def test_conversion_supports_class_mapping_and_backup_folder(tmp_path):
     assert result.backup_dir is not None
     assert (result.backup_dir / "data.yaml").exists()
     assert (result.backup_dir / "labels" / "multi.txt").exists()
+
+
+def test_conversion_skips_empty_split_directories_even_when_ratio_is_nonzero(tmp_path):
+    from src.services.conversion import ConversionConfig, run_conversion
+
+    images = tmp_path / "images"
+    images.mkdir()
+    make_image(images / "one.jpg")
+    (images / "one.json").write_text(
+        json.dumps(
+            {
+                "imageWidth": 100,
+                "imageHeight": 100,
+                "shapes": [
+                    {"label": "weld", "shape_type": "rectangle", "points": [[10, 10], [30, 30]]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_conversion(
+        ConversionConfig(
+            task_mode="detect",
+            source_format="labelme",
+            images_dir=images,
+            annotations_dir=images,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels",
+            class_names=["weld"],
+            train_ratio=0.0,
+            val_ratio=1.0,
+            test_ratio=0.0,
+        )
+    )
+
+    assert result.labeled_train_count == 0
+    assert result.labeled_val_count == 1
+    assert result.labeled_test_count == 0
+    assert not (tmp_path / "data" / "train").exists()
+    assert (tmp_path / "data" / "val" / "labels" / "one.txt").exists()
+    assert not (tmp_path / "data" / "test").exists()
+
+    yaml_text = (tmp_path / "data" / "data.yaml").read_text(encoding="utf-8")
+    assert "train:" not in yaml_text
+    assert "val: data/val/images" in yaml_text
+    assert "test:" not in yaml_text
 

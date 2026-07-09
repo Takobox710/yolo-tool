@@ -68,6 +68,7 @@ yolo_tool/
 - `src/shared/` 放跨层共享基础能力，例如路径、Qt 导出、主题和共享类型。
 - `src/shared/paths.py` 在开发态必须把 `ROOT` 解析到仓库根目录，而不是 `src/` 子目录；隐藏 CLI 与后台 worker 依赖这个根目录作为 `python -m src.main` 的工作目录。
 - `src/services/<domain>/` 是唯一业务实现层。这里允许依赖标准库、第三方库、其他服务包和 `src/shared/`，不得依赖 `src/ui/`。
+- `src/services/home/` 负责主页的大目录扫描、统计汇总与训练历史整理；这些逻辑必须通过后台 worker 调用，避免主线程同步 I/O 卡住首页。主页切回时若界面上已有上一轮统计值，应优先保留旧值，待新汇总返回后再替换，避免反复闪出“加载中”。
 - `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。
 - `src/ui/shared/` 负责跨页面 UI 复用能力，例如页面基类、共享表单、共享对话框和后台 worker。
 - `src/ui/features/<feature>/` 负责各页面真实实现；`page.py` 只做页面装配，复杂逻辑继续拆到该功能包子模块。
@@ -115,6 +116,10 @@ yolo_tool/
 ### `src/services/annotation/`
 
 - 负责 Labelme/YOLO 标注读写、可编辑标注模型、预览渲染和 AI 预标注业务逻辑。
+- 标注页图片列表的大目录扫描、标注存在性判断与首屏批量渲染应尽量拆成“首批同步 + 后台分批补齐”，避免首次进入标注页时阻塞主线程；对大量不可见行不要同步创建整套行内 `QCheckBox`/`QWidget`。
+- 标注页首次进入时，应避免在 `AnnotationPage` 构造阶段直接触发整套图片扫描；首轮图片扫描应延后到页面首次显示后启动，先让导航切页完成，再逐步进入标注工作状态。
+- 若主窗口已在空闲阶段预热标注页，可提前准备首张图片与首批列表项，减少真正切入标注页时先见空画布的闪动；但后续批量渲染与后台标注状态扫描仍要继续补齐完整列表。
+- 标注页图片列表若改用 `setItemWidget(...)` 装配只读勾选框与文件名，底层 `QListWidgetItem` 本身应只保留数据角色，不再重复绘制同名文本，避免出现叠字；只读勾选框保持正常启用样式，不应做成禁用发灰控件。
 - AI 预标注结果优先写回页面内部标注对象并保存 Labelme；按设置决定是否同步导出 YOLO。
 
 ### `src/services/conversion/`
@@ -123,19 +128,21 @@ yolo_tool/
 - `class_mapping.py` 负责类别识别、类别映射和映射表解析。
 - `labelme_parser.py` 负责 Labelme 形状解析与 Labelme -> YOLO 行转换。
 - `dataset_split.py` 负责输入收集、数据集划分和统计汇总。
-- `dataset_yaml.py` 负责 `data.yaml` 输出。
-- `backup.py` 负责旧产物清理与备份。
+- `dataset_yaml.py` 负责 `data.yaml` 输出，并只写入本次实际产出的 split 条目。
+- `backup.py` 负责旧产物清理与备份；未启用备份时不主动创建 `old/` 目录。
 - `formatting.py` 负责转换结果说明文本。
 - `execute.py` 保留为转换总流程装配入口。
 
 ### `src/services/data_ops/`
 
 - 负责批量重命名、图片压缩和项目内路径显示转换。
+- 图片压缩页的“打开结果文件夹”属于页面层轻交互，直接基于当前“输出目录”字段解析后的路径打开目录，不额外下沉到服务层。
 
 ## UI 约定
 
 - `src/ui/shell/window.py` 中的 `WorkbenchWindow` 是唯一主窗口实现。
 - 页面创建与导航注册统一在 `src/ui/shell/page_registry.py` 与 `src/ui/shell/navigation.py`。
+- 主窗口页面采用“首屏懒加载 + 空闲分批预热”：启动时先创建当前页，窗口显示后再按空闲节奏补建其余页面，避免首页打开时连带触发重页面初始化，同时减少用户第一次切到任意页面时再同步吃到建页卡顿。
 - 程序级日志缓冲与设置页日志展示统一走 `src/ui/shell/program_log.py`。
 - 关闭确认统一由 `src/ui/shell/close_guard.py` 处理，包括未保存标注与训练运行中确认。
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。

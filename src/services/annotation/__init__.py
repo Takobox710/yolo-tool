@@ -4,7 +4,6 @@ from __future__ import annotations
 from src.services.annotation.ai_labeling import (
     AiLabelRange,
     AiLabelResult,
-    annotation_exists,
     apply_ai_labeling,
     available_ai_models,
     collect_ai_target_images,
@@ -23,6 +22,11 @@ from src.services.annotation.editable_document import (
     save_editable_annotations,
     save_labelme_annotations,
 )
+from src.services.annotation.file_index import (
+    annotation_exists,
+    collect_annotation_presence,
+    scan_annotation_image_items,
+)
 from src.services.annotation.preview_render import (
     Annotation,
     load_yolo_annotations,
@@ -38,6 +42,7 @@ __all__ = [
     "annotation_exists",
     "apply_ai_labeling",
     "available_ai_models",
+    "collect_annotation_presence",
     "collect_ai_target_images",
     "extract_model_labels",
     "load_editable_annotations",
@@ -49,6 +54,7 @@ __all__ = [
     "predict_annotations_for_image",
     "render_annotation_preview",
     "resolve_ai_model_path",
+    "scan_annotation_image_items",
     "save_editable_annotations",
     "save_labelme_annotations",
 ]

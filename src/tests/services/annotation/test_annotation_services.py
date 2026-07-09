@@ -46,6 +46,35 @@ def test_collect_ai_target_images_supports_following_and_custom_ranges(tmp_path)
     assert custom == [images[0], images[2]]
 
 
+def test_annotation_file_index_scans_images_and_detects_existing_annotations(tmp_path):
+    from src.services.annotation import collect_annotation_presence, scan_annotation_image_items
+
+    images_dir = tmp_path / "images"
+    annotations_dir = tmp_path / "annotations"
+    labels_dir = tmp_path / "labels"
+    images_dir.mkdir()
+    annotations_dir.mkdir()
+    labels_dir.mkdir()
+
+    make_image(images_dir / "2.jpg")
+    make_image(images_dir / "10.png")
+    make_image(images_dir / "1.bmp")
+    (annotations_dir / "2.json").write_text(
+        json.dumps({"shapes": [{"label": "weld"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (labels_dir / "10.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+    (labels_dir / "1.txt").write_text("\n", encoding="utf-8")
+
+    image_items = scan_annotation_image_items(images_dir)
+    statuses = collect_annotation_presence(image_items, annotations_dir, labels_dir)
+
+    assert [path.name for path in image_items] == ["1.bmp", "2.jpg", "10.png"]
+    assert statuses[str((images_dir / "1.bmp").resolve())] is False
+    assert statuses[str((images_dir / "2.jpg").resolve())] is True
+    assert statuses[str((images_dir / "10.png").resolve())] is True
+
+
 def test_normalize_ai_target_images_preserves_ui_selected_order_subset(tmp_path):
     from src.services.annotation import normalize_ai_target_images
 

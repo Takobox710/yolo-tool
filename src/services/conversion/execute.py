@@ -82,12 +82,17 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
     active.class_names = class_names
     split_map = split_labeled(labeled, active)
     backup_dir = _prepare_output_dirs(active)
+    active_splits = tuple(split for split, pairs in split_map.items() if pairs)
 
     stats = build_empty_stats()
     missing_labels: defaultdict[str, list[str]] = defaultdict(list)
     total_boxes = 0
     for split, pairs in split_map.items():
+        if not pairs:
+            continue
         split_dir = active.output_dir / split
+        (split_dir / "images").mkdir(parents=True, exist_ok=True)
+        (split_dir / "labels").mkdir(parents=True, exist_ok=True)
         for image_path, label_source_path in pairs:
             shutil.copy2(image_path, split_dir / "images" / image_path.name)
             lines = _read_output_lines(active, label_source_path, missing_labels)
@@ -104,7 +109,7 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
             )
             total_boxes += len(lines)
 
-    yaml_path = write_data_yaml(active)
+    yaml_path = write_data_yaml(active, active_splits)
     if active.backup_yolo_files:
         backup_dir = backup_converted_outputs(active, yaml_path)
     return ConversionResult(

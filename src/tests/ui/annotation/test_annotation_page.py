@@ -35,6 +35,13 @@ def _read_ui_bundle():
     return "\n".join(path.read_text(encoding="utf-8") for path in UI_BUNDLE_PATHS)
 
 
+def _show_annotation_page(page, app):
+    page.on_show()
+    app.processEvents()
+    app.processEvents()
+    return page
+
+
 def test_annotation_page_uses_picture_list_header_and_count(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -56,7 +63,7 @@ def test_annotation_page_uses_picture_list_header_and_count(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     labels = [label.text() for label in page.findChildren(QLabel)]
 
     assert "图片列表：" in labels
@@ -105,16 +112,54 @@ def test_annotation_page_picture_list_marks_annotated_images(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
-    first_widget = page.file_list.itemWidget(page.file_list.item(0))
-    second_widget = page.file_list.itemWidget(page.file_list.item(1))
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
+    first_item = page.file_list.item(0)
+    second_item = page.file_list.item(1)
+    first_widget = page.file_list.itemWidget(first_item)
+    second_widget = page.file_list.itemWidget(second_item)
 
     assert first_widget.__class__.__name__ == "AnnotationFileListItemWidget"
     assert second_widget.__class__.__name__ == "AnnotationFileListItemWidget"
     assert first_widget.text() == "1.jpg"
     assert second_widget.text() == "2.jpg"
+    assert first_item.text() == ""
+    assert second_item.text() == ""
+    assert first_widget.checkbox.isEnabled() is True
+    assert second_widget.checkbox.isEnabled() is True
     assert first_widget.isChecked() is True
     assert second_widget.isChecked() is False
+
+
+def test_annotation_page_prepare_for_first_show_keeps_followup_rendering(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.page import AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    for index in range(1, 26):
+        Image.new("RGB", (32, 32), "white").save(images_dir / f"{index}.jpg")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+
+    page.prepare_for_first_show()
+
+    assert len(page.image_items) == 25
+    assert page.current_index == 0
+    assert page.current_image_path == images_dir / "1.jpg"
+    assert page.file_list.count() == 20
+    assert page._file_list_render_timer.isActive() is True
 
 
 def test_annotation_page_delete_selected_updates_current_checkbox_without_full_refresh(tmp_path):
@@ -157,7 +202,7 @@ def test_annotation_page_delete_selected_updates_current_checkbox_without_full_r
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     first_item = page.file_list.item(0)
     first_widget = page.file_list.itemWidget(first_item)
 
@@ -235,7 +280,7 @@ def test_annotation_page_canvas_context_save_flags_follow_auto_save_settings(tmp
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     assert page.canvas.can_save_default is False
     assert page.canvas.can_save_labelme is True
     assert page.canvas.can_save_yolo is True
@@ -275,7 +320,7 @@ def test_annotation_page_canvas_context_uses_single_save_when_yolo_menu_disabled
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     assert page.canvas.can_save_default is True
     assert page.canvas.can_save_labelme is True
     assert page.canvas.can_save_yolo is False
@@ -302,7 +347,7 @@ def test_annotation_page_canvas_context_undo_flag_tracks_dirty_state(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     assert page.canvas.can_undo is False
 
     page.dirty = True
@@ -332,7 +377,7 @@ def test_annotation_page_marks_current_image_unsaved_when_labelme_auto_save_disa
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     widget = page.file_list.itemWidget(page.file_list.item(0))
     assert widget.isUnsaved() is False
 
@@ -381,7 +426,7 @@ def test_annotation_page_context_delete_annotations_removes_label_files(tmp_path
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     page.clear_annotations_for_image(image_path)
 
     assert (images_dir / "1.json").exists() is False
@@ -427,7 +472,7 @@ def test_annotation_page_context_delete_image_removes_image_and_labels(tmp_path)
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     page.delete_image_and_annotations(image_path)
 
     assert image_path.exists() is False
@@ -456,7 +501,7 @@ def test_ai_prelabel_dialog_uses_expected_range_count(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AiPrelabelDialog(page)
 
     assert dialog.range_count_label.text() == "已选择 1 张图片"
@@ -499,7 +544,7 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AnnotationSettingsDialog(
         enabled=True,
         pixels=10,
@@ -540,7 +585,7 @@ def test_annotation_settings_dialog_hides_symbol_but_keeps_tooltip_when_disabled
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AnnotationSettingsDialog(
         enabled=True,
         pixels=10,
@@ -583,7 +628,7 @@ def test_annotation_page_can_change_annotation_class_from_context_target(tmp_pat
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     page.canvas.annotations = [
         EditableAnnotation(0, "rect", [(1, 1), (10, 1), (10, 10), (1, 10)])
     ]
@@ -618,7 +663,7 @@ def test_annotation_page_annotation_list_context_delete_action_has_no_del_hint(t
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     menu = QMenu(page)
 
     action = page._add_danger_menu_action(menu, "删除标注")
@@ -786,7 +831,7 @@ def test_ai_prelabel_dialog_supports_following_and_custom_ranges(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     page.change_current_index(1)
     dialog = AiPrelabelDialog(page)
 
@@ -977,7 +1022,7 @@ def test_ai_prelabel_dialog_populates_mapping_from_project_classes(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AiPrelabelDialog(page)
     dialog.apply_model_labels(dialog.resolved_model_path(), ["weld", "person"])
 
@@ -1015,7 +1060,7 @@ def test_ai_prelabel_dialog_lists_trained_best_models_before_base_models(tmp_pat
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AiPrelabelDialog(page)
     items = [dialog.model_combo.itemText(i) for i in range(dialog.model_combo.count())]
 
@@ -1054,7 +1099,7 @@ def test_ai_prelabel_dialog_persists_preferences_on_close(tmp_path):
         settings_service=SimpleNamespace(save=save_settings),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     first_dialog = AiPrelabelDialog(page)
     first_dialog.model_combo.setCurrentText(str(model_path))
     first_dialog.conf_spin.setValue(0.65)
@@ -1103,7 +1148,7 @@ def test_ai_prelabel_dialog_ignores_stale_model_label_results_after_switch(tmp_p
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
 
-    page = AnnotationPage(fake_app)
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AiPrelabelDialog(page)
     dialog._model_display_paths = {
         str(first_model): first_model,

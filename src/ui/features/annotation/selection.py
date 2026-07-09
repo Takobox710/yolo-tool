@@ -21,6 +21,9 @@ class AnnotationSelectionMixin:
     def change_current_index(self, index: int) -> None:
         self.save_current()
         self.current_index = index
+        ensure_items = getattr(self, "_ensure_file_list_items", None)
+        if callable(ensure_items):
+            ensure_items(index + 1)
         self.file_list.blockSignals(True)
         self.file_list.setCurrentRow(index)
         self.file_list.blockSignals(False)

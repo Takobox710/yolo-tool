@@ -8,16 +8,12 @@ from src.services.conversion.types import ConversionConfig
 
 
 def prepare_output_dirs(config: ConversionConfig) -> Path | None:
+    config.output_dir.mkdir(parents=True, exist_ok=True)
     if config.output_dir.exists():
-        if config.backup_existing:
-            (config.output_dir / "old").mkdir(parents=True, exist_ok=True)
         for split in ("train", "val", "test"):
             split_path = config.output_dir / split
             if split_path.exists():
                 shutil.rmtree(split_path)
-    for split in ("train", "val", "test"):
-        (config.output_dir / split / "images").mkdir(parents=True, exist_ok=True)
-        (config.output_dir / split / "labels").mkdir(parents=True, exist_ok=True)
     if config.labels_dir.exists():
         shutil.rmtree(config.labels_dir)
     config.labels_dir.mkdir(parents=True, exist_ok=True)

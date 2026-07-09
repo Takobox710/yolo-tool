@@ -6,9 +6,9 @@ from pathlib import Path
 from src.shared.theme import STYLE
 from src.services.runtime import stop_process
 from src.services.settings import SettingsService
-from src.shared.qt import QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QIcon
+from src.shared.qt import QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QIcon, QTimer
 from src.ui.shell.close_guard import confirm_close_if_needed
-from src.ui.shell.navigation import preload_pages, reload_pages, show_page
+from src.ui.shell.navigation import ensure_page, reload_pages, show_page
 from src.ui.shell.page_registry import PAGE_ORDER, PAGE_TITLES, create_page
 from src.ui.shell.program_log import append_program_log, program_log_text, should_log_background_kind
 from src.ui.shared.widgets.base import load_nav_icon
@@ -30,6 +30,10 @@ class WorkbenchWindow(QMainWindow):
         self.current_page_key = "home"
         self.page_order = list(PAGE_ORDER)
         self.page_titles = dict(PAGE_TITLES)
+        self._warmup_page_queue: deque[str] = deque()
+        self._page_warmup_timer = QTimer(self)
+        self._page_warmup_timer.setSingleShot(True)
+        self._page_warmup_timer.timeout.connect(self._warm_up_next_page)
         icon_path = Path(__file__).resolve().parent.parent / "assets" / "app_icon.png"
         if icon_path.exists():
             app_icon = QIcon(str(icon_path))
@@ -80,11 +84,12 @@ class WorkbenchWindow(QMainWindow):
         self.stack.setObjectName("stack")
         root_layout.addWidget(self.stack, 1)
         self.setCentralWidget(root)
-        preload_pages(self)
         show_page(self, "home")
+        self._schedule_page_warmup()
 
     def reload_pages(self, current_page: str = "home"):
         reload_pages(self, current_page)
+        self._schedule_page_warmup()
 
     def switch_project_root(self, project_root: str | Path) -> None:
         self.settings_service = SettingsService(project_root=Path(project_root))
@@ -98,6 +103,9 @@ class WorkbenchWindow(QMainWindow):
 
     def create_page(self, key: str):
         return create_page(self, key)
+
+    def ensure_page(self, key: str):
+        return ensure_page(self, key)
 
     def run_background(self, kind: str, fn):
         if should_log_background_kind(kind):
@@ -155,6 +163,7 @@ class WorkbenchWindow(QMainWindow):
         return self.settings
 
     def closeEvent(self, event):
+        self._page_warmup_timer.stop()
         if not confirm_close_if_needed(self):
             event.ignore()
             return
@@ -177,6 +186,29 @@ class WorkbenchWindow(QMainWindow):
 
     def program_log_text(self) -> str:
         return program_log_text(self)
+
+    def _schedule_page_warmup(self) -> None:
+        self._page_warmup_timer.stop()
+        self._warmup_page_queue = deque(
+            key for key in self.page_order if key != "home" and key not in self.pages
+        )
+        if self._warmup_page_queue:
+            self._page_warmup_timer.start(0)
+
+    def _warm_up_next_page(self) -> None:
+        if not self.isVisible():
+            if self._warmup_page_queue:
+                self._page_warmup_timer.start(50)
+            return
+        while self._warmup_page_queue:
+            key = self._warmup_page_queue.popleft()
+            if key in self.pages:
+                continue
+            page = self.ensure_page(key)
+            self._invoke_page_hook(page, "prepare_for_first_show")
+            break
+        if self._warmup_page_queue:
+            self._page_warmup_timer.start(0)
 
 def build_style() -> str:
     return STYLE

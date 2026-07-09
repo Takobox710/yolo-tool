@@ -127,6 +127,33 @@ def test_home_page_can_be_constructed_and_refreshed(tmp_path):
     )
 
 
+def test_home_page_keeps_previous_counts_while_refreshing(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.home.page import HomePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+    )
+
+    page = HomePage(fake_app)
+    page._set_overview_stat("image_count", "12")
+    page._set_overview_stat("label_count", "7")
+
+    page.on_show()
+
+    assert page.overview_stats["image_count"].text() == "12"
+    assert page.overview_stats["label_count"].text() == "7"
+    assert page.overview_stats["image_count"].toolTip() == "12"
+    assert page.overview_stats["label_count"].toolTip() == "7"
+
+
 def test_main_pages_can_be_constructed(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -159,7 +186,7 @@ def test_main_pages_can_be_constructed(tmp_path):
     assert settings_page.help_icon_check.isChecked() is True
 
 
-def test_workbench_window_preloads_all_pages():
+def test_workbench_window_lazy_loads_pages():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from src.shared.qt import QApplication
@@ -168,8 +195,51 @@ def test_workbench_window_preloads_all_pages():
     app = QApplication.instance() or QApplication([])
     window = WorkbenchWindow()
 
-    assert list(window.pages.keys()) == window.page_order
-    assert window.stack.count() == len(window.page_order)
+    assert list(window.pages.keys()) == ["home"]
+    assert window.stack.count() == 1
+
+
+def test_workbench_window_creates_pages_on_demand():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.shell.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    window.show_page("annotation")
+    window.show_page("train")
+
+    assert list(window.pages.keys()) == ["home", "annotation", "train"]
+    assert window.stack.count() == 3
+
+
+def test_workbench_window_warms_remaining_pages_after_show(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PIL import Image
+    from src.shared.qt import QApplication
+    from src.ui.shell.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    project_root = tmp_path / "project-warmup"
+    images_dir = project_root / "images"
+    images_dir.mkdir(parents=True)
+    Image.new("RGB", (32, 32), "white").save(images_dir / "1.jpg")
+    window = WorkbenchWindow()
+    window.switch_project_root(project_root)
+    window.show()
+    for _ in range(8):
+        app.processEvents()
+
+    assert list(window.pages.keys()) == ["home", "annotation", "data", "train", "validate", "settings"]
+    assert window.stack.count() == 6
+    annotation_widget = window.pages["annotation"]
+    annotation_page = getattr(annotation_widget, "inner_page", annotation_widget)
+    assert len(annotation_page.image_items) == 1
+    assert annotation_page.current_index == 0
+    assert annotation_page.current_image_path == images_dir / "1.jpg"
 
 
 def test_workbench_window_switches_to_project_local_settings(tmp_path):
@@ -198,7 +268,7 @@ def test_workbench_window_switches_to_project_local_settings(tmp_path):
     assert window.settings["training"]["epochs"] == 77
     persisted = json.loads(settings_path.read_text(encoding="utf-8"))
     assert persisted["project"]["root"] == "."
-    assert list(window.pages.keys()) == window.page_order
+    assert list(window.pages.keys()) == ["home"]
 
 
 def test_workbench_window_can_reset_current_project_settings(tmp_path, monkeypatch):
@@ -507,7 +577,8 @@ def test_workbench_window_close_event_prompts_for_unsaved_annotations(monkeypatc
 
     app = QApplication.instance() or QApplication([])
     window = WorkbenchWindow()
-    annotation_page = getattr(window.pages["annotation"], "inner_page", window.pages["annotation"])
+    annotation_widget = window.ensure_page("annotation")
+    annotation_page = getattr(annotation_widget, "inner_page", annotation_widget)
     annotation_page.dirty = True
     asked = {"text": ""}
     save_calls = {"count": 0}
@@ -537,7 +608,8 @@ def test_workbench_window_close_event_prompts_for_running_training(monkeypatch):
 
     app = QApplication.instance() or QApplication([])
     window = WorkbenchWindow()
-    train_page = getattr(window.pages["train"], "inner_page", window.pages["train"])
+    train_widget = window.ensure_page("train")
+    train_page = getattr(train_widget, "inner_page", train_widget)
     train_page.is_training = True
     asked = {"text": ""}
     save_calls = {"count": 0}

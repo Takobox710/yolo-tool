@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
-from src.services.training import read_results_csv_for_curves, read_train_metrics
-from src.services.validation import scan_candidate_models
+from src.services.home import build_home_summary, collect_home_history_entries
 from src.ui.helpers import (
     _history_model_sort_key,
     _history_number_sort_key,
@@ -13,11 +11,15 @@ from src.ui.helpers import (
     _home_column_widths,
     _relative_path,
 )
-from src.ui.shared.page_base import _IMAGE_SUFFIXES, _SortItem
+from src.ui.shared.page_base import _SortItem
 from src.shared.qt import QFileDialog, QTimer, Qt
 
 
 class HomePageDataMixin:
+    def _has_overview_stat_value(self, key: str) -> bool:
+        value = getattr(self, "_overview_raw_values", {}).get(key)
+        return bool(value and str(value).strip() and str(value) != "-")
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._apply_home_column_widths()
@@ -60,152 +62,96 @@ class HomePageDataMixin:
                 self._elide_overview_text(text, self.overview_stats[key])
             )
 
+    def _set_overview_stat(
+        self, key: str, text: str, *, tooltip: str | None = None
+    ) -> None:
+        self._overview_raw_values[key] = text
+        self.overview_stats[key].setText(
+            self._elide_overview_text(text, self.overview_stats[key])
+        )
+        self.overview_stats[key].setToolTip(text if tooltip is None else tooltip)
+
     def on_show(self):
         paths = self.app.settings["paths"]
         project_root = self.app.settings["project"]["root"]
-        images = Path(paths["images_dir"])
-        image_count = (
-            len([p for p in images.glob("*") if p.suffix.lower() in _IMAGE_SUFFIXES])
-            if images.exists()
-            else 0
+        self._set_overview_stat("project", project_root)
+        self._set_overview_stat(
+            "images", _relative_path(paths["images_dir"], project_root)
         )
-        label_count = self._count_annotation_files(
-            Path(paths["annotations_dir"]), Path(paths["labels_dir"])
+        self._set_overview_stat(
+            "annotations", _relative_path(paths["annotations_dir"], project_root)
         )
-
-        def set_overview_stat(key: str, text: str):
-            self._overview_raw_values[key] = text
-            self.overview_stats[key].setText(
-                self._elide_overview_text(text, self.overview_stats[key])
-            )
-            self.overview_stats[key].setToolTip(text)
-
-        set_overview_stat("project", project_root)
-        set_overview_stat("images", _relative_path(paths["images_dir"], project_root))
-        set_overview_stat("annotations", _relative_path(paths["annotations_dir"], project_root))
-        set_overview_stat("result", _relative_path(paths["result_dir"], project_root))
-        set_overview_stat("image_count", str(image_count))
-        set_overview_stat("label_count", str(label_count))
-
-        single_counts, multi_counts, class_names = self._build_distribution_data(
-            Path(paths["dataset_dir"])
+        self._set_overview_stat(
+            "result", _relative_path(paths["result_dir"], project_root)
         )
-        if self.app.settings.get("features", {}).get("distribution_multi_class_mode", False) and len(multi_counts) > 1:
+        if not self._has_overview_stat_value("image_count"):
+            self._set_overview_stat("image_count", "加载中...")
+        if not self._has_overview_stat_value("label_count"):
+            self._set_overview_stat("label_count", "加载中...")
+        self._home_summary_request_id += 1
+        request_id = self._home_summary_request_id
+        payload_loader = lambda request_id=request_id: self._load_home_summary_payload(  # noqa: E731
+            request_id
+        )
+        run_background = getattr(self.app, "run_background", None)
+        if callable(run_background):
+            run_background("home_summary", payload_loader)
+            return
+        self.apply_home_summary(payload_loader())
+
+    def _load_home_summary_payload(self, request_id: int) -> dict:
+        paths = self.app.settings["paths"]
+        return {
+            "request_id": request_id,
+            "summary": build_home_summary(
+                images_dir=Path(paths["images_dir"]),
+                annotations_dir=Path(paths["annotations_dir"]),
+                labels_dir=Path(paths["labels_dir"]),
+                dataset_dir=Path(paths["dataset_dir"]),
+                result_dir=Path(paths["result_dir"]),
+                configured_class_names=self.app.settings.get("dataset", {}).get(
+                    "class_names", []
+                ),
+            ),
+        }
+
+    def apply_home_summary(self, payload: dict) -> None:
+        if payload.get("request_id") != self._home_summary_request_id:
+            return
+        summary = payload.get("summary") or {}
+        self._set_overview_stat("image_count", str(summary.get("image_count", 0)))
+        self._set_overview_stat("label_count", str(summary.get("label_count", 0)))
+        single_counts = summary.get("single_counts") or {}
+        multi_counts = summary.get("multi_counts") or {}
+        class_names = summary.get("class_names") or []
+        if self.app.settings.get("features", {}).get(
+            "distribution_multi_class_mode", False
+        ) and len(multi_counts) > 1:
             self.distribution_view.set_multi_class_counts(multi_counts)
         else:
             default_class = class_names[0] if class_names else "数据集"
-            self.distribution_view.set_single_class_counts(single_counts, default_class)
-        self.curve_view.set_curve_data(read_results_csv_for_curves(Path(paths["result_dir"])))
-        self.refresh_history()
-
-    def _build_distribution_data(
-        self, dataset_dir: Path
-    ) -> tuple[dict[str, int], dict[str, int], list[str]]:
-        class_names = self._resolve_dataset_class_names(dataset_dir)
-        split_class_counts: dict[str, dict[str, int]] = {
-            split: {name: 0 for name in class_names} for split in ("train", "val", "test")
-        }
-        for split in ("train", "val", "test"):
-            label_dir = dataset_dir / split / "labels"
-            if not label_dir.exists():
-                continue
-            for label_path in sorted(label_dir.glob("*.txt")):
-                present_ids = self._read_label_class_ids(label_path)
-                for class_id in present_ids:
-                    if 0 <= class_id < len(class_names):
-                        split_class_counts[split][class_names[class_id]] += 1
-        default_class = class_names[0] if class_names else "数据集"
-        single_counts = {
-            split: split_class_counts[split].get(default_class, 0)
-            for split in ("train", "val", "test")
-        }
-        multi_counts = {
-            name: sum(split_class_counts[split].get(name, 0) for split in ("train", "val", "test"))
-            for name in class_names
-        }
-        return single_counts, multi_counts, class_names
-
-    def _resolve_dataset_class_names(self, dataset_dir: Path) -> list[str]:
-        yaml_path = dataset_dir / "data.yaml"
-        if yaml_path.exists():
-            text = yaml_path.read_text(encoding="utf-8")
-            for line in text.splitlines():
-                if line.strip().startswith("names:"):
-                    _, raw_names = line.split(":", 1)
-                    raw_names = raw_names.strip()
-                    try:
-                        parsed = json.loads(raw_names.replace("'", '"'))
-                    except json.JSONDecodeError:
-                        parsed = []
-                    names = [str(name).strip() for name in parsed if str(name).strip()]
-                    if names:
-                        return names
-        names = [
-            str(name).strip()
-            for name in self.app.settings.get("dataset", {}).get("class_names", [])
-            if str(name).strip()
-        ]
-        return names or ["weld"]
-
-    @staticmethod
-    def _read_label_class_ids(label_path: Path) -> set[int]:
-        present_ids: set[int] = set()
-        for line in label_path.read_text(encoding="utf-8").splitlines():
-            parts = line.split()
-            if not parts:
-                continue
-            try:
-                present_ids.add(int(float(parts[0])))
-            except ValueError:
-                continue
-        return present_ids
-
-    def _count_annotation_files(self, annotations_dir: Path, labels_dir: Path) -> int:
-        json_count = self._count_labelme_annotation_files(annotations_dir)
-        if json_count:
-            return json_count
-        return self._count_yolo_annotation_files(labels_dir)
-
-    @staticmethod
-    def _count_labelme_annotation_files(annotations_dir: Path) -> int:
-        if not annotations_dir.exists():
-            return 0
-        total = 0
-        for label_path in annotations_dir.glob("*.json"):
-            try:
-                payload = json.loads(label_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-            if payload.get("shapes"):
-                total += 1
-        return total
-
-    @staticmethod
-    def _count_yolo_annotation_files(labels_dir: Path) -> int:
-        if not labels_dir.exists():
-            return 0
-        total = 0
-        for label_path in labels_dir.glob("*.txt"):
-            try:
-                has_label = any(line.strip() for line in label_path.read_text(encoding="utf-8").splitlines())
-            except OSError:
-                continue
-            if has_label:
-                total += 1
-        return total
+            self.distribution_view.set_single_class_counts(
+                single_counts, default_class
+            )
+        self.curve_view.set_curve_data(summary.get("curve_data") or {})
+        self._apply_history_entries(summary.get("history_entries") or [])
 
     def refresh_history(self):
-        result_dir = Path(self.app.settings["paths"]["result_dir"])
-        candidates = scan_candidate_models(result_dir)
+        self._apply_history_entries(
+            collect_home_history_entries(
+                Path(self.app.settings["paths"]["result_dir"])
+            )
+        )
+
+    def _apply_history_entries(self, entries: list[dict]) -> None:
         was_sorting = self.history_table.isSortingEnabled()
         self.history_table.setSortingEnabled(False)
         self.history_table.clearContents()
-        self.history_table.setRowCount(len(candidates[:8]))
-        for row, candidate in enumerate(candidates[:8]):
-            run_dir = candidate.parent.parent
-            train_id = run_dir.name
-            model_name = candidate.name
-            metrics = read_train_metrics(run_dir, model_name)
+        self.history_table.setRowCount(len(entries))
+        for row, entry in enumerate(entries):
+            train_id = str(entry.get("train_id") or "")
+            model_name = str(entry.get("model_name") or "")
+            metrics = entry.get("metrics") or {}
             model_id = f"{train_id}（{model_name.replace('.pt', '')}）"
             values = [
                 model_id,

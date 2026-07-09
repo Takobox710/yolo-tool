@@ -11,11 +11,14 @@ from src.services.annotation import (
 )
 from src.ui.shared.page_base import BasePage
 from src.shared.qt import (
+    QAbstractItemView,
+    QEvent,
     QFileDialog,
     QHBoxLayout,
     QListWidgetItem,
     QMessageBox,
     Qt,
+    QTimer,
 )
 from src.ui.features.annotation.actions import AnnotationActionsMixin
 from src.ui.features.annotation.ai.dialog import AiPrelabelDialog, CustomAiImageSelectionDialog
@@ -30,6 +33,7 @@ from src.ui.features.annotation.selection import AnnotationSelectionMixin
 from src.ui.features.annotation.settings_actions import AnnotationPageSettingsMixin
 from src.ui.features.annotation.shortcuts import register_annotation_shortcuts
 from src.ui.features.annotation.toolbar import build_toolbar
+from src.ui.shared.workers import Worker
 
 
 class AnnotationPage(
@@ -52,6 +56,15 @@ class AnnotationPage(
         self.current_image_path: Path | None = None
         self.output_mode = self.app.settings.get("task", {}).get("mode", "detect")
         self.current_class_id = 0
+        self._annotation_statuses: dict[str, bool] = {}
+        self._file_list_rendered_count = 0
+        self._file_list_batch_size = 20
+        self._annotation_status_request_id = 0
+        self._annotation_status_worker: Worker | None = None
+        self._initialized_once = False
+        self._file_list_render_timer = QTimer(self)
+        self._file_list_render_timer.setInterval(16)
+        self._file_list_render_timer.timeout.connect(self._render_next_file_list_batch)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(20, 14, 12, 12)
@@ -63,7 +76,6 @@ class AnnotationPage(
         self._refresh_class_state()
         self._refresh_path_labels()
         register_annotation_shortcuts(self)
-        self.scan_images(select_first=True)
 
     def _list_widget_item_factory(self, text: str | None = None) -> QListWidgetItem:
         return QListWidgetItem("" if text is None else text)
@@ -143,11 +155,38 @@ class AnnotationPage(
 
     def on_show(self) -> None:
         self._refresh_path_labels()
+        if not self._initialized_once:
+            self._initialized_once = True
+            if not self.image_items:
+                QTimer.singleShot(0, lambda: self.scan_images(select_first=True))
+                return
+        decorate_rows = getattr(self, "_decorate_visible_rows", None)
+        if callable(decorate_rows):
+            decorate_rows()
         if not self.image_items:
             self.scan_images(select_first=True)
 
+    def prepare_for_first_show(self) -> None:
+        if self.image_items:
+            return
+        prepare_initial_image = getattr(self, "prepare_initial_image", None)
+        if callable(prepare_initial_image):
+            prepare_initial_image()
+
     def has_unsaved_annotations(self) -> bool:
         return bool(self.dirty)
+
+    def eventFilter(self, watched, event):  # noqa: N802 - Qt API name
+        if watched is self.file_list.viewport():
+            if event.type() in {
+                QEvent.Type.Paint,
+                QEvent.Type.Resize,
+                QEvent.Type.Wheel,
+            }:
+                decorate_rows = getattr(self, "_decorate_visible_rows", None)
+                if callable(decorate_rows):
+                    QTimer.singleShot(0, decorate_rows)
+        return super().eventFilter(watched, event)
 
 
 __all__ = [

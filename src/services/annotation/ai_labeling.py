@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
+from src.services.annotation.file_index import annotation_exists
 from src.services.annotation.editable_document import (
     EditableAnnotation,
     load_labelme_annotations,
@@ -63,23 +64,6 @@ def load_model_labels(model_path: str) -> list[str]:
     finally:
         del model
         release_inference_runtime()
-
-
-def annotation_exists(json_path: Path, yolo_path: Path) -> bool:
-    if json_path.exists():
-        try:
-            payload = json.loads(json_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return False
-        return bool(payload.get("shapes"))
-    if yolo_path.exists():
-        try:
-            return any(line.strip() for line in yolo_path.read_text(encoding="utf-8").splitlines())
-        except OSError:
-            return False
-    return False
-
-
 def collect_ai_target_images(
     image_items: list[Path],
     current_image: Path | None,

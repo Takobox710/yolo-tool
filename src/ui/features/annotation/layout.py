@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.shared.qt import (
+    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -71,6 +72,9 @@ def build_right_panel(page) -> QFrame:
     file_header.addWidget(page.file_count_label)
     layout.addLayout(file_header)
     page.file_list = QListWidget()
+    page.file_list.setUniformItemSizes(True)
+    page.file_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    page.file_list.viewport().installEventFilter(page)
     page.file_list.currentRowChanged.connect(page.jump_to_file)
     page.file_list.setContextMenuPolicy(page._custom_context_menu_policy())
     page.file_list.customContextMenuRequested.connect(page.open_file_list_context_menu)
