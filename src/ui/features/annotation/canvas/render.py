@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF
+from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from src.shared.qt import Qt
+
+
+SHORT_CURSOR_CLEARANCE = 20.0
 
 
 def _class_color(class_id: int) -> QColor:
@@ -42,19 +45,20 @@ class AnnotationCanvasRenderMixin:
                 selected=index == self.selected_index,
                 hovered=index == self.hovered_index,
                 flashing=index == self.flash_index,
+                show_label=self.show_annotation_names,
             )
         if self.draw_shape == "line_expand" and self.quick_draw and self.drag_start and self.drag_current:
             preview = self._make_obb_annotation(self.drag_start, self.drag_current, None)
             if preview:
-                self._draw_annotation(painter, preview, selected=True)
+                self._draw_annotation(painter, preview, selected=True, show_label=False)
         elif self.drag_start and self.drag_current:
             preview = self._make_annotation(self.drag_start, self.drag_current)
             if preview:
-                self._draw_annotation(painter, preview, selected=True)
+                self._draw_annotation(painter, preview, selected=True, show_label=False)
         elif self.obb_first and self.obb_second and self.drag_current:
             preview = self._make_obb_annotation(self.obb_first, self.obb_second, self.drag_current)
             if preview:
-                self._draw_annotation(painter, preview, selected=True)
+                self._draw_annotation(painter, preview, selected=True, show_label=False)
         elif self.obb_first and self.preview_line_end:
             self._draw_preview_polyline(painter, [self.obb_first, self.preview_line_end], closed=False)
         if self.polygon_points:
@@ -67,6 +71,26 @@ class AnnotationCanvasRenderMixin:
                 closed=False,
                 handle_points=self.polygon_points,
             )
+        if self.draw_shape == "rect" and self.crosshair_position is not None:
+            self._draw_rect_crosshair(painter)
+
+    def _draw_rect_crosshair(self, painter: QPainter) -> None:
+        x_pos, y_pos = self.crosshair_position
+        pen = QPen(QColor("#000000"), 1, Qt.PenStyle.SolidLine)
+        painter.setPen(pen)
+        half_clearance = SHORT_CURSOR_CLEARANCE / 2
+        horizontal_left = max(0.0, x_pos - half_clearance)
+        horizontal_right = min(float(self.width()), x_pos + half_clearance)
+        vertical_top = max(0.0, y_pos - half_clearance)
+        vertical_bottom = min(float(self.height()), y_pos + half_clearance)
+        if horizontal_left > 0:
+            painter.drawLine(QPointF(0, y_pos), QPointF(horizontal_left, y_pos))
+        if horizontal_right < self.width():
+            painter.drawLine(QPointF(horizontal_right, y_pos), QPointF(float(self.width()), y_pos))
+        if vertical_top > 0:
+            painter.drawLine(QPointF(x_pos, 0), QPointF(x_pos, vertical_top))
+        if vertical_bottom < self.height():
+            painter.drawLine(QPointF(x_pos, vertical_bottom), QPointF(x_pos, float(self.height())))
 
     def _draw_annotation(
         self,
@@ -77,6 +101,7 @@ class AnnotationCanvasRenderMixin:
         hovered: bool = False,
         dashed: bool = False,
         flashing: bool = False,
+        show_label: bool = True,
     ) -> None:
         color = _class_color(annotation.class_id)
         pen = QPen(color, 2 if selected else 1)
@@ -101,19 +126,25 @@ class AnnotationCanvasRenderMixin:
             painter.drawPolygon(QPolygonF(points))
         else:
             painter.drawPolygon(QPolygonF(points))
-        label = (
-            self.class_names[annotation.class_id]
-            if 0 <= annotation.class_id < len(self.class_names)
-            else str(annotation.class_id)
-        )
-        if points:
-            anchor = points[0]
-            painter.setPen(QColor("#FFFFFF"))
-            painter.setBrush(color)
-            text_rect = painter.fontMetrics().boundingRect(label).adjusted(-6, -3, 6, 3)
-            label_rect = QRectF(anchor.x(), anchor.y() - text_rect.height() - 2, text_rect.width(), text_rect.height())
-            painter.drawRect(label_rect)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
+        if show_label:
+            label = (
+                self.class_names[annotation.class_id]
+                if 0 <= annotation.class_id < len(self.class_names)
+                else str(annotation.class_id)
+            )
+            if points:
+                anchor = points[0]
+                painter.setPen(QColor("#FFFFFF"))
+                painter.setBrush(color)
+                text_rect = painter.fontMetrics().boundingRect(label).adjusted(-6, -3, 6, 3)
+                label_rect = QRectF(
+                    anchor.x(),
+                    anchor.y() - text_rect.height() - 2,
+                    text_rect.width(),
+                    text_rect.height(),
+                )
+                painter.drawRect(label_rect)
+                painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         if selected:
             self._draw_handles(painter, annotation)

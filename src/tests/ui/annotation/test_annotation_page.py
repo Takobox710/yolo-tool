@@ -239,6 +239,106 @@ def test_annotation_canvas_cancel_action_only_shows_while_drawing():
     assert canvas._can_show_cancel_drawing_action() is True
 
 
+def test_annotation_canvas_escape_clears_selection_in_edit_mode():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import Qt
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.annotations = [
+        EditableAnnotation(0, "rect", [(1.0, 1.0), (10.0, 1.0), (10.0, 10.0), (1.0, 10.0)])
+    ]
+    canvas.selected_index = 0
+    canvas.hovered_index = 0
+
+    canvas.keyPressEvent(type("EscapeEvent", (), {"key": lambda self: Qt.Key.Key_Escape})())
+
+    assert canvas.selected_index == -1
+    assert canvas.hovered_index == -1
+
+
+def test_annotation_canvas_switching_from_edit_mode_clears_selection():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation import EditableAnnotation
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.annotations = [
+        EditableAnnotation(0, "rect", [(1.0, 1.0), (10.0, 1.0), (10.0, 10.0), (1.0, 10.0)])
+    ]
+    canvas.selected_index = 0
+
+    canvas.set_draw_shape("rect")
+
+    assert canvas.selected_index == -1
+
+
+def test_annotation_canvas_clicking_beside_annotation_clears_selection():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from types import SimpleNamespace
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import Qt, QPixmap
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.pixmap = QPixmap(100, 100)
+    canvas.image_size = (100, 100)
+    canvas.annotations = [
+        EditableAnnotation(0, "rect", [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)])
+    ]
+    canvas.selected_index = 0
+    canvas.hovered_index = 0
+    canvas._widget_to_image = lambda _point, clamp=False: (80.0, 80.0)
+    canvas._hit_handle = lambda _point: None
+    canvas._hit_test = lambda _point: -1
+
+    canvas.mousePressEvent(
+        SimpleNamespace(
+            button=lambda: Qt.MouseButton.LeftButton,
+            position=lambda: None,
+        )
+    )
+
+    assert canvas.selected_index == -1
+    assert canvas.hovered_index == -1
+
+
+def test_annotation_canvas_continuous_draw_clears_previous_selection_on_next_click():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from types import SimpleNamespace
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import Qt, QPixmap
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.pixmap = QPixmap(100, 100)
+    canvas.image_size = (100, 100)
+    canvas.set_interaction_config(True, False)
+    canvas.set_draw_shape("rect")
+    canvas.annotations = [
+        EditableAnnotation(0, "rect", [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)])
+    ]
+    canvas.selected_index = 0
+    canvas._widget_to_image = lambda _point, clamp=False: (70.0, 70.0)
+
+    canvas.mousePressEvent(
+        SimpleNamespace(
+            button=lambda: Qt.MouseButton.LeftButton,
+            position=lambda: None,
+        )
+    )
+
+    assert canvas.selected_index == -1
+    assert canvas.drag_start == (70.0, 70.0)
+
+
 def test_annotation_canvas_delete_action_only_available_when_annotation_selected():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -563,10 +663,53 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
     assert dialog.quick_draw_check.toolTip() == "开启后矩形框、圆形、直线扩展支持拖动后松开直接完成；关闭后改为通过多次点击确认。"
     assert dialog.show_yolo_context_check.text() == "右键显示保存YOLO标注 ⓘ"
     assert dialog.show_yolo_context_check.toolTip() == "开启后主界面右键菜单按需分别显示“保存Labelme标注”和“保存YOLO标注”；关闭后只显示“保存”，默认保存 Labelme 标注。"
+    assert dialog.show_annotation_names_check.text() == "显示标注名称"
+    assert dialog.show_annotation_names_check.isChecked() is False
     assert dialog.line_expand_label.text() == "直线标注 ⓘ"
     assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
     assert dialog.line_expand_pixels_label.text() == "直线扩展像素 ⓘ"
     assert dialog.line_expand_pixels_label.toolTip() == "设置直线扩展生成旋转矩形时，沿线段两侧扩展的像素宽度。"
+
+
+def test_annotation_canvas_name_visibility_is_configurable_in_rendering(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor, QPaintEvent
+
+    from src.services.annotation import EditableAnnotation
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, QPixmap, Qt
+    from src.ui.features.annotation.page import AnnotationPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+    page = AnnotationPage(fake_app)
+    page._refresh_class_state()
+
+    assert settings["annotation"]["show_annotation_names"] is False
+    assert page.canvas.show_annotation_names is False
+
+    calls = []
+    page.canvas.pixmap = QPixmap(32, 32)
+    page.canvas.image_size = (32, 32)
+    page.canvas.annotations = [
+        EditableAnnotation(0, "rect", [(2.0, 2.0), (20.0, 2.0), (20.0, 20.0), (2.0, 20.0)])
+    ]
+    page.canvas._draw_annotation = lambda painter, annotation, **kwargs: calls.append(kwargs)
+    page.canvas.paintEvent(QPaintEvent(page.canvas.rect()))
+    assert calls[0]["show_label"] is False
+
+    settings["annotation"]["show_annotation_names"] = True
+    page._refresh_class_state()
+    assert page.canvas.show_annotation_names is True
+    page.canvas.paintEvent(QPaintEvent(page.canvas.rect()))
+
+    assert calls[1]["show_label"] is True
 
 
 def test_annotation_settings_dialog_hides_symbol_but_keeps_tooltip_when_disabled(tmp_path):
@@ -740,8 +883,48 @@ def test_annotation_canvas_continuous_draw_keeps_shape_after_finish():
 
     assert len(canvas.annotations) == 1
     assert canvas.draw_shape == "rect"
+    assert canvas.selected_index == -1
     assert canvas.drag_start is None
     assert canvas.drag_current is None
+
+
+def test_annotation_canvas_two_click_rectangle_refreshes_after_second_click():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QPointF
+
+    from src.shared.qt import QApplication, QPixmap, Qt
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.set_interaction_config(False, False)
+    canvas.set_draw_shape("rect")
+    canvas.pixmap = QPixmap(100, 100)
+    canvas.image_size = (100, 100)
+    canvas._widget_to_image = lambda point, clamp=False: (point.x(), point.y())
+    updates = []
+    canvas.update = lambda: updates.append(True)
+
+    def click(x, y):
+        canvas.mousePressEvent(
+            SimpleNamespace(
+                button=lambda: Qt.MouseButton.LeftButton,
+                position=lambda: QPointF(x, y),
+            )
+        )
+
+    click(10.0, 10.0)
+    first_click_updates = len(updates)
+    click(30.0, 30.0)
+
+    assert len(canvas.annotations) == 1
+    assert canvas.draw_shape == "select"
+    assert canvas.drag_start is None
+    assert len(updates) > first_click_updates
+    del app
 
 
 def test_annotation_canvas_line_expand_finishes_on_second_click_when_quick_draw_disabled():
@@ -840,6 +1023,103 @@ def test_annotation_canvas_polygon_hover_on_closing_point_uses_pointing_hand_cur
 
     assert canvas.hovered_polygon_close_index == 0
     assert canvas.cursor().shape() == Qt.CursorShape.PointingHandCursor
+
+
+def test_annotation_canvas_drawing_mode_uses_crosshair_cursor():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import Qt
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.set_draw_shape("rect")
+
+    canvas._update_hover_cursor()
+
+    assert canvas.cursor().shape() == Qt.CursorShape.CrossCursor
+
+
+def test_annotation_canvas_rectangle_mode_draws_full_crosshair_overlay():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor, QPaintEvent
+
+    from src.shared.qt import QApplication, QPixmap, Qt
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.setMinimumSize(0, 0)
+    canvas.resize(100, 100)
+    canvas.pixmap = QPixmap(100, 100)
+    canvas.pixmap.fill(QColor("#FFFFFF"))
+    canvas.image_size = (100, 100)
+    canvas.set_draw_shape("rect")
+    canvas._widget_to_image = lambda point, clamp=False: (point.x(), point.y())
+    canvas.mouseMoveEvent(
+        SimpleNamespace(position=lambda: QPointF(25, 40))
+    )
+    lines = []
+
+    class Painter:
+        def setPen(self, pen):
+            self.pen = pen
+
+        def drawLine(self, start, end):
+            lines.append((start, end))
+
+    painter = Painter()
+    canvas._draw_rect_crosshair(painter)
+    assert painter.pen.color().name() == "#000000"
+    assert painter.pen.style() == Qt.PenStyle.SolidLine
+    assert [
+        ((line[0].x(), line[0].y()), (line[1].x(), line[1].y()))
+        for line in lines
+    ] == [
+        ((0.0, 40.0), (15.0, 40.0)),
+        ((35.0, 40.0), (float(canvas.width()), 40.0)),
+        ((25.0, 0.0), (25.0, 30.0)),
+        ((25.0, 50.0), (25.0, float(canvas.height()))),
+    ]
+
+    canvas.pixmap.fill(QColor("#000000"))
+    canvas._draw_rect_crosshair(painter)
+    assert painter.pen.color().name() == "#000000"
+
+    calls = []
+    canvas._draw_rect_crosshair = lambda painter: calls.append(canvas.crosshair_position)
+
+    canvas.paintEvent(QPaintEvent(canvas.rect()))
+
+    assert calls == [(25.0, 40.0)]
+
+    canvas.set_draw_shape("circle")
+    canvas.paintEvent(QPaintEvent(canvas.rect()))
+
+    assert calls == [(25.0, 40.0)]
+    del app
+
+
+def test_annotation_canvas_edit_mode_does_not_use_crosshair_for_selected_annotation():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import Qt
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    canvas = AnnotationCanvas()
+    canvas.annotations = [
+        EditableAnnotation(0, "rect", [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)])
+    ]
+    canvas.selected_index = 0
+    canvas.hovered_index = -1
+
+    canvas._update_hover_cursor()
+
+    assert canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
 
 
 def test_ai_prelabel_dialog_supports_following_and_custom_ranges(tmp_path):

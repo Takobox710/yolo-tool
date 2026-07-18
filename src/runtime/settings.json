@@ -73,6 +73,16 @@
   "conversion": {
     "use_labelme": true
   },
+  "annotation": {
+    "auto_save": true,
+    "auto_convert_yolo": false,
+    "show_yolo_save_in_context_menu": false,
+    "show_annotation_names": false,
+    "continuous_draw": false,
+    "quick_draw": true,
+    "line_expand_enabled": false,
+    "line_expand_pixels": 10
+  },
   "rename": {
     "prefix": "A",
     "start_index": 1,

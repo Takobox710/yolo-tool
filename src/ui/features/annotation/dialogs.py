@@ -32,6 +32,8 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
         quick_draw: bool,
         yolo_dir: str,
         parent=None,
+        *,
+        show_annotation_names: bool = False,
     ):
         super().__init__(parent)
         self.setWindowTitle("更多设置")
@@ -49,6 +51,9 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             help_text="开启后主界面右键菜单按需分别显示“保存Labelme标注”和“保存YOLO标注”；关闭后只显示“保存”，默认保存 Labelme 标注。",
         )
         layout.addWidget(show_yolo_box)
+        self.show_annotation_names_check = QCheckBox("显示标注名称")
+        self.show_annotation_names_check.setChecked(bool(show_annotation_names))
+        layout.addWidget(self.show_annotation_names_check)
         continuous_box, self.continuous_draw_check = self.checkbox_with_help(
             "开启连续标注",
             bool(continuous_draw),
@@ -113,7 +118,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
         if directory:
             self.yolo_dir_edit.setText(directory)
 
-    def values(self) -> tuple[bool, int, bool, bool, bool, bool, bool, str]:
+    def values(self) -> tuple[bool, int, bool, bool, bool, bool, bool, str, bool]:
         return (
             self.enable_combo.currentIndex() == 1,
             int(self.pixel_spin.value()),
@@ -123,6 +128,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             self.continuous_draw_check.isChecked(),
             self.quick_draw_check.isChecked(),
             self.yolo_dir_edit.text().strip(),
+            self.show_annotation_names_check.isChecked(),
         )
 
 

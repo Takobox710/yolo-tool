@@ -89,6 +89,7 @@ yolo_tool/
 - 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
 - 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
 - `src/runtime/settings.json` 仅作为源码内默认配置参考。
+- 标注页名称显示由项目设置 `annotation.show_annotation_names` 控制，默认值为 `false`。
 
 ### `src/services/runtime/`
 
@@ -149,6 +150,7 @@ yolo_tool/
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
 - worker 真实实现只放在 `src/ui/shared/workers/`，页面持有 worker 时必须在原生 `finished` 信号后再清理对象。
 - `src/ui/features/annotation/page.py` 与 `src/ui/features/annotation/canvas/widget.py` 都只保留页面 / 画布装配；交互、保存、菜单、快捷键、AI 与编辑细节继续拆在 feature 子模块。
+- 标注画布光标由 `src/ui/features/annotation/canvas/drawing.py` 统一根据交互状态刷新：除编辑模式外选择绘制模式后显示系统十字光标，矩形框模式额外在画布上绘制贯穿鼠标位置的纯黑色实线水平/垂直辅助线，并在短光标热点周围留出原始背景采样空隙，多边形封闭顶点优先显示小手，拖动时显示闭合手。
 
 ## 关键运行规则
 

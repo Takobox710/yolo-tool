@@ -4,16 +4,16 @@
 
 ## 目录摘要
 
-- `src`: 199 个文件，21393 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
-- `docs`: 9 个文件，777 行文本；架构、规格、打包与代码清单文档。
-- `installer`: 12 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
+- `src`: 199 个文件，21798 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `docs`: 9 个文件，789 行文本；架构、规格、打包与代码清单文档。
+- `installer`: 13 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
 
 | 路径 | 行数 | 说明 |
 | --- | ---: | --- |
 | `AGENTS.md` | 136 | 本仓库 AI 执行约束与开发规则。 |
-| `README.md` | 367 | 项目概览、命令入口与使用说明。 |
+| `README.md` | 373 | 项目概览、命令入口与使用说明。 |
 | `pixi.toml` | 32 | Pixi 环境、依赖与任务命令定义。 |
 | `src/__init__.py` | 1 | 仓库文件。 |
 | `src/app.py` | 8 | 仓库文件。 |
@@ -29,7 +29,7 @@
 | `src/devtools/generate_code_inventory.py` | 135 | 仓库文件。 |
 | `src/main.py` | 62 | 仓库文件。 |
 | `src/open_yolo_tool.pyw` | 32 | 仓库文件。 |
-| `src/runtime/settings.json` | 95 | 源码内默认配置参考。 |
+| `src/runtime/settings.json` | 105 | 源码内默认配置参考。 |
 | `src/services/__init__.py` | 2 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/__init__.py` | 60 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/ai_labeling.py` | 283 | 服务层与可测试业务逻辑实现。 |
@@ -57,7 +57,7 @@
 | `src/services/runtime/process_runner.py` | 204 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/windows_spawn.py` | 11 | 服务层与可测试业务逻辑实现。 |
 | `src/services/settings/__init__.py` | 28 | 服务层与可测试业务逻辑实现。 |
-| `src/services/settings/defaults.py` | 113 | 服务层与可测试业务逻辑实现。 |
+| `src/services/settings/defaults.py` | 114 | 服务层与可测试业务逻辑实现。 |
 | `src/services/settings/project_settings.py` | 89 | 服务层与可测试业务逻辑实现。 |
 | `src/services/settings/storage.py` | 145 | 服务层与可测试业务逻辑实现。 |
 | `src/services/training/__init__.py` | 44 | 服务层与可测试业务逻辑实现。 |
@@ -108,7 +108,7 @@
 | `src/tests/test_app_entry.py` | 229 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/annotation/test_annotation_page.py` | 1201 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/annotation/test_annotation_page.py` | 1481 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/test_convert_tab.py` | 94 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/test_resize_tab.py` | 108 | pytest 测试、结构约束与回归用例。 |
@@ -135,23 +135,23 @@
 | `src/ui/features/annotation/ai/preferences.py` | 82 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/context_menu.py` | 151 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/drawing.py` | 152 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/drawing.py` | 157 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/editing.py` | 50 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/geometry.py` | 133 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/hit_test.py` | 56 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/interaction.py` | 211 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/render.py` | 164 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/hit_test.py` | 59 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/interaction.py` | 231 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/render.py` | 195 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/state.py` | 26 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/widget.py` | 179 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/class_panel.py` | 68 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/dialogs.py` | 324 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/widget.py` | 222 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/class_panel.py` | 71 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/dialogs.py` | 330 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/file_browser.py` | 360 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/layout.py` | 82 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/menus.py` | 165 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/page.py` | 205 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/persistence.py` | 117 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/selection.py` | 57 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/settings_actions.py` | 81 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/settings_actions.py` | 84 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/shortcuts.py` | 22 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/toolbar.py` | 61 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/__init__.py` | 1 | 按功能分包的页面真实实现。 |
@@ -214,10 +214,10 @@
 | `src/ui/widgets/__init__.py` | 1 | 图表与基础复用控件。 |
 | `src/ui/widgets/base.py` | 90 | 图表与基础复用控件。 |
 | `src/ui/widgets/charts.py` | 332 | 图表与基础复用控件。 |
-| `docs/architecture.md` | 174 | 项目架构、打包与维护文档。 |
-| `docs/code-inventory.md` | 237 | 项目架构、打包与维护文档。 |
+| `docs/architecture.md` | 176 | 项目架构、打包与维护文档。 |
+| `docs/code-inventory.md` | 238 | 项目架构、打包与维护文档。 |
 | `docs/packaging-windows.md` | 36 | 项目架构、打包与维护文档。 |
-| `docs/spec/annotation.md` | 82 | 页面与功能规格说明。 |
+| `docs/spec/annotation.md` | 91 | 页面与功能规格说明。 |
 | `docs/spec/data-processing.md` | 57 | 页面与功能规格说明。 |
 | `docs/spec/home.md` | 39 | 页面与功能规格说明。 |
 | `docs/spec/settings.md` | 26 | 页面与功能规格说明。 |
@@ -227,6 +227,7 @@
 | `installer/hooks/hook-PySide6.scripts.deploy_lib.py` | 1 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-torch.py` | 26 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-torch.utils.tensorboard.py` | 1 | Windows 打包脚本与安装配置。 |
+| `installer/output/YOLOTool_Setup_1.0.0.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.1.0.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.2.0.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.2.1.exe` | 0 | Windows 打包脚本与安装配置。 |

@@ -42,6 +42,9 @@ class AnnotationClassPanelMixin:
                 annotation_settings.get("continuous_draw", False),
                 annotation_settings.get("quick_draw", True),
             )
+            self.canvas.set_show_annotation_names(
+                annotation_settings.get("show_annotation_names", False)
+            )
 
     def refresh_annotation_list(self) -> None:
         names = self.class_names()

@@ -34,6 +34,8 @@ class AnnotationCanvasDrawingMixin:
             self.setCursor(self._pointing_hand_cursor())
         elif self.draw_shape == "polygon" and self.hovered_polygon_close_index >= 0:
             self.setCursor(self._pointing_hand_cursor())
+        elif self.draw_shape != "select":
+            self.setCursor(self._crosshair_cursor())
         else:
             self.setCursor(self._arrow_cursor())
 
@@ -69,11 +71,14 @@ class AnnotationCanvasDrawingMixin:
 
     def _finish_annotation(self, annotation: EditableAnnotation, *, flash: bool = False) -> None:
         self.annotations.append(annotation)
-        self.selected_index = len(self.annotations) - 1
+        annotation_index = len(self.annotations) - 1
+        self.selected_index = -1
+        self.hovered_index = -1
+        self.hovered_handle = None
         self._emit_changed()
         self._emit_selection()
         if flash:
-            self._flash_annotation(self.selected_index)
+            self._flash_annotation(annotation_index)
         if self.continuous_draw:
             self._reset_transient_draw_state()
         else:

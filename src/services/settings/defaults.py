@@ -82,6 +82,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "auto_save": True,
             "auto_convert_yolo": False,
             "show_yolo_save_in_context_menu": False,
+            "show_annotation_names": False,
             "continuous_draw": False,
             "quick_draw": True,
             "line_expand_enabled": False,

@@ -9,19 +9,27 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
     def mousePressEvent(self, event):  # noqa: N802 - Qt API name
         if self.pixmap is None:
             return
+        self.set_crosshair_position(event.position())
         image_point = self._widget_to_image(event.position())
         if event.button() == Qt.MouseButton.RightButton:
             if image_point is not None:
                 hit_index = self._hit_test(image_point)
                 if hit_index >= 0:
                     self.selected_index = hit_index
+                    self.hovered_index = hit_index
                     self._emit_selection()
+                    self._update_hover_cursor()
                     self.update()
             self._show_context_menu(event.globalPosition().toPoint())
             return
-        if event.button() != Qt.MouseButton.LeftButton or image_point is None:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         if self.draw_shape == "select":
+            if image_point is None:
+                self._clear_selection()
+                self._update_hover_cursor()
+                self.update()
+                return
             handle = self._hit_handle(image_point)
             if handle is not None:
                 self.active_handle = handle
@@ -37,10 +45,15 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
                     self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self.update()
                 return
-            self.selected_index = -1
-            self._emit_selection()
+            self._clear_selection()
+            self._update_hover_cursor()
             self.update()
             return
+        if image_point is None:
+            self._clear_selection()
+            self.update()
+            return
+        self._clear_selection()
         if self.draw_shape in {"obb_mirror", "obb_single", "line_expand"}:
             if self.draw_shape == "line_expand" and self.quick_draw:
                 self.drag_start = image_point
@@ -67,8 +80,10 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
             self.drag_current = image_point
         else:
             self._handle_two_click_shape_click(image_point)
+        self.update()
 
     def mouseMoveEvent(self, event):  # noqa: N802 - Qt API name
+        self.set_crosshair_position(event.position())
         image_point = self._widget_to_image(event.position(), clamp=True)
         if self.draw_shape == "select":
             self._update_hover_state(image_point)
@@ -153,6 +168,7 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
 
     def leaveEvent(self, event):  # noqa: N802 - Qt API name
         super().leaveEvent(event)
+        self.crosshair_position = None
         self.hovered_index = -1
         self.hovered_handle = None
         self.hovered_polygon_close_index = -1
@@ -166,6 +182,10 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
             return
         if event.key() == Qt.Key.Key_Escape:
             if self._cancel_current_drawing():
+                self.update()
+                return
+            if self.draw_shape == "select" and self._clear_selection():
+                self._update_hover_cursor()
                 self.update()
                 return
         super().keyPressEvent(event)

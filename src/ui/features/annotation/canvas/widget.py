@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
-
 from src.services.annotation import EditableAnnotation, _detect_points_to_rect
 from src.shared.qt import QSizePolicy, Qt, QWidget
 from src.ui.features.annotation.canvas.context_menu import AnnotationCanvasContextMenuMixin
@@ -56,6 +55,7 @@ class AnnotationCanvas(
         self.hovered_handle: tuple[str, int] | None = None
         self.move_anchor: tuple[float, float] | None = None
         self.hovered_polygon_close_index = -1
+        self.crosshair_position: tuple[float, float] | None = None
         self.line_expand_enabled = False
         self.line_expand_pixels = 10
         self.continuous_draw = False
@@ -72,6 +72,7 @@ class AnnotationCanvas(
         self.can_undo = False
         self.can_save_default = False
         self.show_separate_yolo_save = False
+        self.show_annotation_names = False
         self._flash_timer = QTimer(self)
         self._flash_timer.setSingleShot(True)
         self._flash_timer.timeout.connect(self._clear_flash)
@@ -89,8 +90,10 @@ class AnnotationCanvas(
         reset_transient_draw_state(self)
         self.hovered_handle = None
         self.hovered_index = -1
+        self.crosshair_position = None
         self.flash_index = -1
         self._flash_timer.stop()
+        self._update_hover_cursor()
         if image_path is None:
             self.pixmap = None
             self.image_size = (0, 0)
@@ -108,10 +111,25 @@ class AnnotationCanvas(
         self.current_class_id = max(0, class_id)
 
     def set_draw_shape(self, shape: str) -> None:
+        was_editing = self.draw_shape == "select"
         self.draw_shape = shape
         reset_transient_draw_state(self)
         self.hovered_handle = None
+        if was_editing and shape != "select":
+            self._clear_selection()
+        self.crosshair_position = None
+        self._update_hover_cursor()
         self.update()
+
+    def _clear_selection(self) -> bool:
+        had_selection = self.selected_index >= 0
+        self.selected_index = -1
+        self.hovered_index = -1
+        self.hovered_handle = None
+        if had_selection:
+            self._emit_selection()
+            self._update_hover_cursor()
+        return had_selection
 
     def set_line_expand_config(self, enabled: bool, pixels: int) -> None:
         self.line_expand_enabled = bool(enabled)
@@ -121,12 +139,33 @@ class AnnotationCanvas(
         self.continuous_draw = bool(continuous_draw)
         self.quick_draw = bool(quick_draw)
 
+    def set_show_annotation_names(self, enabled: bool) -> None:
+        self.show_annotation_names = bool(enabled)
+        self.update()
+
+    def set_crosshair_position(self, point) -> None:
+        if point is None:
+            return
+        if self.draw_shape != "rect":
+            changed = self.crosshair_position is not None
+            self.crosshair_position = None
+            if changed:
+                self.update()
+            return
+        position = (float(point.x()), float(point.y()))
+        if position != self.crosshair_position:
+            self.crosshair_position = position
+            self.update()
+
     def delete_selected(self) -> bool:
         if 0 <= self.selected_index < len(self.annotations):
             del self.annotations[self.selected_index]
             self.selected_index = -1
+            self.hovered_index = -1
+            self.hovered_handle = None
             self._emit_changed()
             self._emit_selection()
+            self._update_hover_cursor()
             self.update()
             return True
         return False
@@ -162,6 +201,10 @@ class AnnotationCanvas(
     @staticmethod
     def _arrow_cursor():
         return Qt.CursorShape.ArrowCursor
+
+    @staticmethod
+    def _crosshair_cursor():
+        return Qt.CursorShape.CrossCursor
 
     @staticmethod
     def _polygon_contains_point(points: list[tuple[float, float]], point: tuple[float, float]) -> bool:

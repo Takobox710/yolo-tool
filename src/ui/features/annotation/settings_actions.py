@@ -35,6 +35,7 @@ class AnnotationPageSettingsMixin:
             current.get("quick_draw", True),
             str(self.path_from_setting("labels_dir")),
             self,
+            show_annotation_names=current.get("show_annotation_names", False),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -47,6 +48,7 @@ class AnnotationPageSettingsMixin:
             continuous_draw,
             quick_draw,
             yolo_dir,
+            show_annotation_names,
         ) = dialog.values()
         self.app.settings.setdefault("annotation", {})["line_expand_enabled"] = enabled
         self.app.settings["annotation"]["line_expand_pixels"] = pixels
@@ -57,6 +59,7 @@ class AnnotationPageSettingsMixin:
         )
         self.app.settings["annotation"]["continuous_draw"] = continuous_draw
         self.app.settings["annotation"]["quick_draw"] = quick_draw
+        self.app.settings["annotation"]["show_annotation_names"] = show_annotation_names
         if yolo_dir:
             self.app.settings.setdefault("paths", {})["labels_dir"] = yolo_dir
             Path(yolo_dir).mkdir(parents=True, exist_ok=True)

@@ -3,6 +3,9 @@ from __future__ import annotations
 from src.services.annotation import EditableAnnotation
 
 
+HANDLE_RADIUS = 5.0
+
+
 class AnnotationCanvasHitTestMixin:
     def _hit_test(self, point: tuple[float, float]) -> int:
         for index in reversed(range(len(self.annotations))):
@@ -28,7 +31,7 @@ class AnnotationCanvasHitTestMixin:
         return -1
 
     def _handle_radius(self) -> float:
-        return max(3.0, min(self.image_size or (200, 200)) * 0.006)
+        return HANDLE_RADIUS
 
     def _annotation_handles(self, annotation: EditableAnnotation) -> list[tuple[str, tuple[float, float]]]:
         if annotation.shape == "circle":
