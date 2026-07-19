@@ -235,7 +235,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
                 "Pillow": "12.2.0",
                 "psutil": "7.2.2",
             },
-            "app_version": "1.2.1",
+            "app_version": "1.2.3",
         }
     )
 
@@ -246,7 +246,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
     assert page.status_cards["OpenCV"].text() == "4.13.0：可用"
     assert page.status_cards["Pillow"].text() == "12.2.0：可用"
     assert page.status_cards["psutil"].text() == "7.2.2：可用"
-    assert page.status_cards["程序版本"].text() == "1.2.1"
+    assert page.status_cards["程序版本"].text() == "1.2.3"
 
 
 def test_settings_page_marks_torch_without_cuda_as_cuda_unavailable(tmp_path):
@@ -272,7 +272,7 @@ def test_settings_page_marks_torch_without_cuda_as_cuda_unavailable(tmp_path):
             "python": "3.12.10",
             "cuda": {"torch": "2.12.1+cu130", "cuda": "未知", "gpu": "不可用"},
             "dependencies": {},
-            "app_version": "1.2.1",
+            "app_version": "1.2.3",
         }
     )
 
@@ -345,7 +345,7 @@ def test_settings_page_shows_program_log_instead_of_env_json(tmp_path):
             "python": "3.12.10",
             "cuda": {"torch": "2.12.1+cu130", "cuda": "13.0"},
             "dependencies": {},
-            "app_version": "1.2.1",
+            "app_version": "1.2.3",
         }
     )
 

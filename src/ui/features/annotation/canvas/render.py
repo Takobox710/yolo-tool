@@ -6,6 +6,9 @@ from src.shared.qt import Qt
 
 
 SHORT_CURSOR_CLEARANCE = 20.0
+CROSSHAIR_MAX_GRAY = 72
+PREVIEW_COLOR = QColor(0, 255, 0, 128)
+PREVIEW_FILL_COLOR = QColor(0, 255, 0, 64)
 
 
 def _class_color(class_id: int) -> QColor:
@@ -44,21 +47,22 @@ class AnnotationCanvasRenderMixin:
                 annotation,
                 selected=index == self.selected_index,
                 hovered=index == self.hovered_index,
+                hovered_handle=self.hovered_handle if index == self.hovered_index else None,
                 flashing=index == self.flash_index,
                 show_label=self.show_annotation_names,
             )
         if self.draw_shape == "line_expand" and self.quick_draw and self.drag_start and self.drag_current:
             preview = self._make_obb_annotation(self.drag_start, self.drag_current, None)
             if preview:
-                self._draw_annotation(painter, preview, selected=True, show_label=False)
+                self._draw_annotation(painter, preview, preview=True, selected=True, show_label=False)
         elif self.drag_start and self.drag_current:
             preview = self._make_annotation(self.drag_start, self.drag_current)
             if preview:
-                self._draw_annotation(painter, preview, selected=True, show_label=False)
+                self._draw_annotation(painter, preview, preview=True, selected=True, show_label=False)
         elif self.obb_first and self.obb_second and self.drag_current:
             preview = self._make_obb_annotation(self.obb_first, self.obb_second, self.drag_current)
             if preview:
-                self._draw_annotation(painter, preview, selected=True, show_label=False)
+                self._draw_annotation(painter, preview, preview=True, selected=True, show_label=False)
         elif self.obb_first and self.preview_line_end:
             self._draw_preview_polyline(painter, [self.obb_first, self.preview_line_end], closed=False)
         if self.polygon_points:
@@ -70,13 +74,14 @@ class AnnotationCanvasRenderMixin:
                 preview_points,
                 closed=False,
                 handle_points=self.polygon_points,
+                fill=True,
             )
         if self.draw_shape == "rect" and self.crosshair_position is not None:
             self._draw_rect_crosshair(painter)
 
     def _draw_rect_crosshair(self, painter: QPainter) -> None:
         x_pos, y_pos = self.crosshair_position
-        pen = QPen(QColor("#000000"), 1, Qt.PenStyle.SolidLine)
+        pen = QPen(self._crosshair_color(), 1, Qt.PenStyle.SolidLine)
         painter.setPen(pen)
         half_clearance = SHORT_CURSOR_CLEARANCE / 2
         horizontal_left = max(0.0, x_pos - half_clearance)
@@ -92,6 +97,18 @@ class AnnotationCanvasRenderMixin:
         if vertical_bottom < self.height():
             painter.drawLine(QPointF(x_pos, vertical_bottom), QPointF(x_pos, float(self.height())))
 
+    def _crosshair_color(self) -> QColor:
+        if self.pixmap is None or self.crosshair_position is None:
+            return QColor("#404040")
+        image_point = self._widget_to_image(QPointF(*self.crosshair_position), clamp=True)
+        image = self.pixmap.toImage()
+        x_pos = min(max(round(image_point[0]), 0), image.width() - 1)
+        y_pos = min(max(round(image_point[1]), 0), image.height() - 1)
+        background = image.pixelColor(x_pos, y_pos)
+        luminance = 0.2126 * background.red() + 0.7152 * background.green() + 0.0722 * background.blue()
+        gray = round((255 - luminance) * CROSSHAIR_MAX_GRAY / 255)
+        return QColor(gray, gray, gray)
+
     def _draw_annotation(
         self,
         painter: QPainter,
@@ -99,11 +116,13 @@ class AnnotationCanvasRenderMixin:
         *,
         selected: bool = False,
         hovered: bool = False,
+        hovered_handle: tuple[str, int] | None = None,
         dashed: bool = False,
         flashing: bool = False,
+        preview: bool = False,
         show_label: bool = True,
     ) -> None:
-        color = _class_color(annotation.class_id)
+        color = PREVIEW_COLOR if preview else _class_color(annotation.class_id)
         pen = QPen(color, 2 if selected else 1)
         if dashed:
             pen.setStyle(Qt.PenStyle.DashLine)
@@ -111,8 +130,10 @@ class AnnotationCanvasRenderMixin:
         fill = QColor(color)
         if flashing:
             fill.setAlpha(90)
+        elif selected and not preview:
+            fill.setAlpha(90)
         elif hovered:
-            fill.setAlpha(45)
+            fill.setAlpha(90)
         else:
             fill.setAlpha(0)
         painter.setBrush(fill)
@@ -146,8 +167,12 @@ class AnnotationCanvasRenderMixin:
                 painter.drawRect(label_rect)
                 painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        if selected:
-            self._draw_handles(painter, annotation)
+        self._draw_handles(
+            painter,
+            annotation,
+            preview=preview,
+            hovered_handle=hovered_handle if self.draw_shape == "select" else None,
+        )
 
     def _draw_preview_polyline(
         self,
@@ -156,20 +181,24 @@ class AnnotationCanvasRenderMixin:
         *,
         closed: bool,
         handle_points: list[tuple[float, float]] | None = None,
+        fill: bool = False,
     ) -> None:
         if len(points) < 2:
             return
-        painter.setPen(QPen(QColor("#C62828"), 2))
+        painter.setPen(QPen(PREVIEW_COLOR, 2))
         widget_points = [self._image_to_widget(point) for point in points]
-        if closed:
+        if closed or (fill and len(points) >= 3):
+            if fill:
+                painter.setBrush(PREVIEW_FILL_COLOR)
             painter.drawPolygon(QPolygonF(widget_points))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
         else:
             painter.drawPolyline(QPolygonF(widget_points))
         if handle_points:
             self._draw_preview_points(painter, handle_points)
 
     def _draw_preview_points(self, painter: QPainter, points: list[tuple[float, float]]) -> None:
-        painter.setPen(QPen(QColor("#C62828"), 2))
+        painter.setPen(QPen(PREVIEW_COLOR, 2))
         painter.setBrush(QColor("#FFFFFF"))
         radius = self._handle_radius()
         for point in points:
@@ -179,17 +208,33 @@ class AnnotationCanvasRenderMixin:
             )
         painter.setBrush(Qt.BrushStyle.NoBrush)
 
-    def _draw_handles(self, painter: QPainter, annotation) -> None:
+    def _draw_handles(
+        self,
+        painter: QPainter,
+        annotation,
+        *,
+        preview: bool = False,
+        hovered_handle: tuple[str, int] | None = None,
+    ) -> None:
         radius = self._handle_radius()
         for handle_type, point in self._annotation_handles(annotation):
             widget_point = self._image_to_widget(point)
             fill = QColor("#FFFFFF")
             if annotation.shape == "circle" and handle_type == "center":
                 fill = QColor("#FFE3E3")
-            painter.setPen(QPen(QColor("#B91C1C"), 2))
+            handle_color = PREVIEW_COLOR if preview else QColor("#B91C1C")
+            painter.setPen(QPen(handle_color, 2))
             painter.setBrush(fill)
-            if self.hovered_index == self.selected_index:
+            if not preview and self._is_hovered_handle(handle_type, hovered_handle):
                 painter.drawRect(QRectF(widget_point.x() - radius, widget_point.y() - radius, radius * 2, radius * 2))
             else:
                 painter.drawEllipse(QRectF(widget_point.x() - radius, widget_point.y() - radius, radius * 2, radius * 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    @staticmethod
+    def _is_hovered_handle(handle_type: str, hovered_handle: tuple[str, int] | None) -> bool:
+        if hovered_handle is None:
+            return False
+        if handle_type.startswith("point-"):
+            return hovered_handle == ("point", int(handle_type.split("-", 1)[1]))
+        return hovered_handle == (handle_type, 0)

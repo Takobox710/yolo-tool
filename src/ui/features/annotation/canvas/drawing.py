@@ -18,10 +18,11 @@ class AnnotationCanvasDrawingMixin:
             return
         previous_index = self.hovered_index
         previous_handle = self.hovered_handle
-        self.hovered_handle = self._hit_handle(point)
-        if self.hovered_handle is not None:
-            self.hovered_index = self.selected_index
+        handle_hit = self._find_handle(point)
+        if handle_hit is not None:
+            self.hovered_index, self.hovered_handle = handle_hit
         else:
+            self.hovered_handle = None
             self.hovered_index = self._hit_test(point)
         self._update_hover_cursor()
         if previous_index != self.hovered_index or previous_handle != self.hovered_handle:

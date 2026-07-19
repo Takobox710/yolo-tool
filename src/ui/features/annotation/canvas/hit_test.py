@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.services.annotation import EditableAnnotation
 
 
-HANDLE_RADIUS = 5.0
+HANDLE_RADIUS = 4.5
 
 
 class AnnotationCanvasHitTestMixin:
@@ -41,11 +41,11 @@ class AnnotationCanvasHitTestMixin:
             return [("center", center), ("radius", (center[0] + radius, center[1]))]
         return [(f"point-{index}", point) for index, point in enumerate(annotation.points)]
 
-    def _hit_handle(self, point: tuple[float, float]) -> tuple[str, int] | None:
-        if not (0 <= self.selected_index < len(self.annotations)):
+    def _hit_annotation_handle(self, point: tuple[float, float], annotation_index: int) -> tuple[str, int] | None:
+        if not (0 <= annotation_index < len(self.annotations)):
             return None
         radius = self._handle_radius() * 1.6
-        annotation = self.annotations[self.selected_index]
+        annotation = self.annotations[annotation_index]
         for handle_type, handle_point in self._annotation_handles(annotation):
             dx = point[0] - handle_point[0]
             dy = point[1] - handle_point[1]
@@ -56,4 +56,16 @@ class AnnotationCanvasHitTestMixin:
                     return ("center", 0)
                 if handle_type == "radius":
                     return ("radius", 0)
+        return None
+
+    def _hit_handle(self, point: tuple[float, float]) -> tuple[str, int] | None:
+        if not (0 <= self.selected_index < len(self.annotations)):
+            return None
+        return self._hit_annotation_handle(point, self.selected_index)
+
+    def _find_handle(self, point: tuple[float, float]) -> tuple[int, tuple[str, int]] | None:
+        for index in reversed(range(len(self.annotations))):
+            handle = self._hit_annotation_handle(point, index)
+            if handle is not None:
+                return index, handle
         return None

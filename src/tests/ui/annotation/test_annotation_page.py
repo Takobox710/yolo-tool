@@ -712,6 +712,225 @@ def test_annotation_canvas_name_visibility_is_configurable_in_rendering(tmp_path
     assert calls[1]["show_label"] is True
 
 
+def test_annotation_canvas_drawing_preview_uses_green_and_only_polygon_has_light_green_fill():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor, QImage, QPainter, QPaintEvent
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication, QPixmap
+    from src.ui.features.annotation.canvas.render import PREVIEW_COLOR, PREVIEW_FILL_COLOR
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.pixmap = QPixmap(32, 32)
+    canvas.pixmap.fill(QColor("#FFFFFF"))
+    canvas.image_size = (32, 32)
+    canvas.set_draw_shape("rect")
+    canvas.drag_start = (2.0, 2.0)
+    canvas.drag_current = (20.0, 20.0)
+    canvas._image_to_widget = lambda point: QPointF(*point)
+    image = QImage(32, 32, QImage.Format.Format_RGB32)
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    rectangle = EditableAnnotation(0, "rect", [(2.0, 2.0), (20.0, 2.0), (20.0, 20.0), (2.0, 20.0)])
+    canvas._draw_annotation(
+        painter,
+        rectangle,
+        selected=True,
+        show_label=False,
+    )
+    painter.end()
+    selected_rectangle_color = image.pixelColor(10, 10)
+
+    assert selected_rectangle_color.red() == 255
+    assert selected_rectangle_color.green() < 230
+    assert selected_rectangle_color.blue() < 230
+
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_annotation(painter, rectangle, preview=True, show_label=False)
+    painter.end()
+    rectangle_outline_color = image.pixelColor(2, 10)
+
+    assert rectangle_outline_color == QColor(127, 255, 127)
+    assert PREVIEW_COLOR == QColor(0, 255, 0, 128)
+
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_preview_polyline(
+        painter,
+        [(2.0, 2.0), (20.0, 2.0), (20.0, 20.0)],
+        closed=False,
+        fill=True,
+    )
+    painter.end()
+    polygon_fill_color = image.pixelColor(12, 10)
+
+    assert polygon_fill_color == QColor(191, 255, 191)
+    assert PREVIEW_FILL_COLOR == QColor(0, 255, 0, 64)
+
+    calls = []
+    canvas._draw_annotation = lambda painter, annotation, **kwargs: calls.append(kwargs)
+
+    canvas.paintEvent(QPaintEvent(canvas.rect()))
+
+    assert calls == [{"preview": True, "selected": True, "show_label": False}]
+
+    polygon_calls = []
+    canvas.set_draw_shape("polygon")
+    canvas.drag_start = None
+    canvas.drag_current = None
+    canvas.polygon_points = [(2.0, 2.0), (20.0, 2.0), (20.0, 20.0)]
+    canvas.preview_line_end = None
+    canvas._draw_preview_polyline = lambda painter, points, **kwargs: polygon_calls.append(kwargs)
+    canvas.paintEvent(QPaintEvent(canvas.rect()))
+
+    assert polygon_calls == [{"closed": False, "handle_points": canvas.polygon_points, "fill": True}]
+
+
+def test_annotation_canvas_handle_diameter_is_nine_pixels():
+    from src.ui.features.annotation.canvas.hit_test import HANDLE_RADIUS
+
+    assert HANDLE_RADIUS == 4.5
+    assert HANDLE_RADIUS * 2 == 9
+
+
+def test_annotation_canvas_handle_shapes_distinguish_preview_hover_and_selection():
+    from PySide6.QtCore import QPointF
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.selected_index = 0
+    canvas._image_to_widget = lambda point: QPointF(*point)
+    annotation = EditableAnnotation(
+        0,
+        "rect",
+        [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0), (4.0, 28.0)],
+    )
+
+    class Painter:
+        def __init__(self):
+            self.shapes = []
+
+        def setPen(self, _pen):
+            pass
+
+        def setBrush(self, _brush):
+            pass
+
+        def drawRect(self, _rect):
+            self.shapes.append("rect")
+
+        def drawEllipse(self, _ellipse):
+            self.shapes.append("ellipse")
+
+    canvas.hovered_index = 0
+    hovered_painter = Painter()
+    canvas._draw_handles(hovered_painter, annotation, hovered_handle=("point", 1))
+    assert hovered_painter.shapes == ["ellipse", "rect", "ellipse", "ellipse"]
+
+    selected_painter = Painter()
+    canvas._draw_handles(selected_painter, annotation)
+    assert selected_painter.shapes == ["ellipse"] * 4
+
+    preview_painter = Painter()
+    canvas._draw_handles(preview_painter, annotation, preview=True)
+    assert preview_painter.shapes == ["ellipse"] * 4
+
+
+def test_annotation_canvas_hovered_point_is_the_only_square_and_starts_direct_edit():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QPointF
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication, QPixmap, Qt
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.pixmap = QPixmap(64, 64)
+    canvas.image_size = (64, 64)
+    canvas.annotations = [
+        EditableAnnotation(
+            0,
+            "rect",
+            [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)],
+        )
+    ]
+    canvas._widget_to_image = lambda point, clamp=False: (point.x(), point.y())
+    canvas._update_hover_state((10.0, 10.0))
+
+    assert canvas.hovered_index == 0
+    assert canvas.hovered_handle == ("point", 0)
+
+    canvas.mousePressEvent(
+        SimpleNamespace(
+            button=lambda: Qt.MouseButton.LeftButton,
+            position=lambda: QPointF(10.0, 10.0),
+        )
+    )
+
+    assert canvas.selected_index == 0
+    assert canvas.active_handle == ("point", 0)
+    del app
+
+
+def test_annotation_canvas_unselected_edit_annotations_show_points_without_fill():
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor, QImage, QPainter
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.draw_shape = "select"
+    canvas._image_to_widget = lambda point: QPointF(*point)
+    annotation = EditableAnnotation(
+        0,
+        "rect",
+        [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0), (4.0, 28.0)],
+    )
+    image = QImage(32, 32, QImage.Format.Format_RGB32)
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_annotation(painter, annotation, hovered=False, selected=False, show_label=False)
+    painter.end()
+
+    assert image.pixelColor(16, 16) == QColor("#FFFFFF")
+
+    handle_calls = []
+    canvas._draw_handles = lambda painter, annotation, **kwargs: handle_calls.append(kwargs)
+    canvas.draw_shape = "rect"
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_annotation(painter, annotation, hovered=True, selected=False, show_label=False)
+    painter.end()
+
+    assert handle_calls == [{"preview": False, "hovered_handle": None}]
+
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_annotation(painter, annotation, hovered=True, selected=False, show_label=False)
+    painter.end()
+
+    hovered_color = image.pixelColor(16, 16)
+    assert hovered_color != QColor("#FFFFFF")
+    assert hovered_color.red() > hovered_color.green()
+    assert hovered_color == QColor(255, 185, 185)
+
+
 def test_annotation_settings_dialog_hides_symbol_but_keeps_tooltip_when_disabled(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -1044,8 +1263,8 @@ def test_annotation_canvas_rectangle_mode_draws_full_crosshair_overlay():
 
     from types import SimpleNamespace
 
-    from PySide6.QtCore import QPointF
-    from PySide6.QtGui import QColor, QPaintEvent
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QColor, QEnterEvent, QImage, QPainter, QPaintEvent
 
     from src.shared.qt import QApplication, QPixmap, Qt
     from src.ui.features.annotation.canvas.widget import AnnotationCanvas
@@ -1062,6 +1281,19 @@ def test_annotation_canvas_rectangle_mode_draws_full_crosshair_overlay():
     canvas.mouseMoveEvent(
         SimpleNamespace(position=lambda: QPointF(25, 40))
     )
+
+    canvas.leaveEvent(QEvent(QEvent.Type.Leave))
+    assert canvas.crosshair_position is None
+    canvas.enterEvent(
+        QEnterEvent(
+            QPointF(25, 40),
+            QPointF(25, 40),
+            QPointF(25, 40),
+        )
+    )
+    assert canvas.crosshair_position == (25.0, 40.0)
+    assert canvas.cursor().shape() == Qt.CursorShape.CrossCursor
+
     lines = []
 
     class Painter:
@@ -1085,9 +1317,19 @@ def test_annotation_canvas_rectangle_mode_draws_full_crosshair_overlay():
         ((25.0, 50.0), (25.0, float(canvas.height()))),
     ]
 
+    image = QImage(100, 100, QImage.Format.Format_RGB32)
+    image.fill(QColor("#FFFFFF"))
+    image_painter = QPainter(image)
+    canvas._draw_rect_crosshair(image_painter)
+    image_painter.end()
+    assert image.pixelColor(5, 40) == QColor("#000000")
+
     canvas.pixmap.fill(QColor("#000000"))
-    canvas._draw_rect_crosshair(painter)
-    assert painter.pen.color().name() == "#000000"
+    image.fill(QColor("#000000"))
+    image_painter = QPainter(image)
+    canvas._draw_rect_crosshair(image_painter)
+    image_painter.end()
+    assert image.pixelColor(5, 40) == QColor("#484848")
 
     calls = []
     canvas._draw_rect_crosshair = lambda painter: calls.append(canvas.crosshair_position)

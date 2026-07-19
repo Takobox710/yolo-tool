@@ -30,8 +30,13 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
                 self._update_hover_cursor()
                 self.update()
                 return
-            handle = self._hit_handle(image_point)
-            if handle is not None:
+            handle_hit = self._find_handle(image_point)
+            if handle_hit is not None:
+                annotation_index, handle = handle_hit
+                self.selected_index = annotation_index
+                self.hovered_index = annotation_index
+                self.hovered_handle = handle
+                self._emit_selection()
                 self.active_handle = handle
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self.update()
@@ -174,6 +179,12 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
         self.hovered_polygon_close_index = -1
         if self.active_handle is None and self.move_anchor is None:
             self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.update()
+
+    def enterEvent(self, event):  # noqa: N802 - Qt API name
+        super().enterEvent(event)
+        self.set_crosshair_position(event.position())
+        self._update_hover_cursor()
         self.update()
 
     def keyPressEvent(self, event):  # noqa: N802 - Qt API name

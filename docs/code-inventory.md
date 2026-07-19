@@ -4,8 +4,8 @@
 
 ## 目录摘要
 
-- `src`: 199 个文件，21798 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
-- `docs`: 9 个文件，789 行文本；架构、规格、打包与代码清单文档。
+- `src`: 199 个文件，22109 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `docs`: 9 个文件，792 行文本；架构、规格、打包与代码清单文档。
 - `installer`: 13 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
@@ -13,7 +13,7 @@
 | 路径 | 行数 | 说明 |
 | --- | ---: | --- |
 | `AGENTS.md` | 136 | 本仓库 AI 执行约束与开发规则。 |
-| `README.md` | 373 | 项目概览、命令入口与使用说明。 |
+| `README.md` | 376 | 项目概览、命令入口与使用说明。 |
 | `pixi.toml` | 32 | Pixi 环境、依赖与任务命令定义。 |
 | `src/__init__.py` | 1 | 仓库文件。 |
 | `src/app.py` | 8 | 仓库文件。 |
@@ -108,7 +108,7 @@
 | `src/tests/test_app_entry.py` | 229 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/annotation/test_annotation_page.py` | 1481 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/annotation/test_annotation_page.py` | 1723 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/test_convert_tab.py` | 94 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/test_resize_tab.py` | 108 | pytest 测试、结构约束与回归用例。 |
@@ -135,12 +135,12 @@
 | `src/ui/features/annotation/ai/preferences.py` | 82 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/context_menu.py` | 151 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/drawing.py` | 157 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/drawing.py` | 158 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/editing.py` | 50 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/geometry.py` | 133 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/hit_test.py` | 59 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/interaction.py` | 231 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/render.py` | 195 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/hit_test.py` | 71 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/interaction.py` | 242 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/render.py` | 240 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/state.py` | 26 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/widget.py` | 222 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/class_panel.py` | 71 | 按功能分包的页面真实实现。 |
@@ -214,7 +214,7 @@
 | `src/ui/widgets/__init__.py` | 1 | 图表与基础复用控件。 |
 | `src/ui/widgets/base.py` | 90 | 图表与基础复用控件。 |
 | `src/ui/widgets/charts.py` | 332 | 图表与基础复用控件。 |
-| `docs/architecture.md` | 176 | 项目架构、打包与维护文档。 |
+| `docs/architecture.md` | 179 | 项目架构、打包与维护文档。 |
 | `docs/code-inventory.md` | 238 | 项目架构、打包与维护文档。 |
 | `docs/packaging-windows.md` | 36 | 项目架构、打包与维护文档。 |
 | `docs/spec/annotation.md` | 91 | 页面与功能规格说明。 |
