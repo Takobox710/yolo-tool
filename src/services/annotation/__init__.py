@@ -22,6 +22,7 @@ from src.services.annotation.editable_document import (
     save_editable_annotations,
     save_labelme_annotations,
 )
+from src.services.annotation.circle_geometry import circle_bounds
 from src.services.annotation.file_index import (
     annotation_exists,
     collect_annotation_presence,
@@ -38,6 +39,7 @@ __all__ = [
     "AiLabelResult",
     "Annotation",
     "EditableAnnotation",
+    "circle_bounds",
     "_detect_points_to_rect",
     "annotation_exists",
     "apply_ai_labeling",

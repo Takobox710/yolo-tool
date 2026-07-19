@@ -178,7 +178,7 @@ class HomePageDataMixin:
         self.history_table.setSortingEnabled(was_sorting)
         self.history_table.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._apply_history_column_widths()
-        QTimer.singleShot(50, self._apply_history_column_widths)
+        QTimer.singleShot(50, self, self._apply_history_column_widths)
 
     def pick_project_root(self):
         path = QFileDialog.getExistingDirectory(

@@ -4,12 +4,15 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.services.annotation.circle_geometry import circle_bounds
+
 
 @dataclass
 class EditableAnnotation:
     class_id: int
     shape: str
     points: list[tuple[float, float]]
+    radius_point: tuple[float, float] | None = None
 
 
 def _detect_points_to_rect(points: list[tuple[float, float]]) -> tuple[float, float, float, float]:
@@ -141,6 +144,7 @@ def load_labelme_annotations(
                         (center[0] + radius, center[1] + radius),
                         (center[0] - radius, center[1] + radius),
                     ],
+                    radius_point=edge,
                 )
             )
         elif shape_type == "line":
@@ -191,10 +195,11 @@ def save_labelme_annotations(
             x1, y1, x2, y2 = _detect_points_to_rect(points)
             center = ((x1 + x2) / 2, (y1 + y2) / 2)
             radius = max(abs(x2 - x1), abs(y2 - y1)) / 2
+            radius_point = annotation.radius_point or (center[0] + radius, center[1])
             shape_type = "circle"
             labelme_points = [
                 [float(center[0]), float(center[1])],
-                [float(center[0] + radius), float(center[1])],
+                [float(radius_point[0]), float(radius_point[1])],
             ]
         elif annotation.shape in {"obb", "obb_mirror", "obb_single", "line_expand"}:
             shape_type = "oriented_rectangle"
@@ -256,7 +261,10 @@ def save_editable_annotations(
                 + " ".join(f"{value:.6f}" for value in values)
             )
         else:
-            x1, y1, x2, y2 = _detect_points_to_rect(annotation.points)
+            if annotation.shape == "circle":
+                x1, y1, x2, y2 = circle_bounds(annotation.points)
+            else:
+                x1, y1, x2, y2 = _detect_points_to_rect(annotation.points)
             x1 = max(0.0, min(float(width), x1))
             x2 = max(0.0, min(float(width), x2))
             y1 = max(0.0, min(float(height), y1))

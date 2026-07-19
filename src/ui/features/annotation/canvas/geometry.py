@@ -80,7 +80,12 @@ def make_annotation(
     else:
         shape = "rect"
     points = [(left, top), (right, top), (right, bottom), (left, bottom)]
-    return EditableAnnotation(canvas.current_class_id, shape, points)
+    return EditableAnnotation(
+        canvas.current_class_id,
+        shape,
+        points,
+        radius_point=(x2, y2) if shape == "circle" else None,
+    )
 
 
 def make_obb_annotation(

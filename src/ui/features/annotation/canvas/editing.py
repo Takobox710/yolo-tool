@@ -29,22 +29,33 @@ class AnnotationCanvasEditingMixin:
         center_x = (x1 + x2) / 2
         center_y = (y1 + y2) / 2
         radius = max((x2 - x1) / 2, (y2 - y1) / 2)
+        radius_point = annotation.radius_point or (center_x + radius, center_y)
         if handle_type == "center":
+            dx = point[0] - center_x
+            dy = point[1] - center_y
             center_x, center_y = point
+            radius_point = (radius_point[0] + dx, radius_point[1] + dy)
         elif handle_type == "radius":
             radius = max(
                 3.0,
                 ((point[0] - center_x) ** 2 + (point[1] - center_y) ** 2) ** 0.5,
             )
+            radius_point = point
         annotation.points = [
             (center_x - radius, center_y - radius),
             (center_x + radius, center_y - radius),
             (center_x + radius, center_y + radius),
             (center_x - radius, center_y + radius),
         ]
+        annotation.radius_point = radius_point
 
     def _move_selected_annotation(self, dx: float, dy: float) -> None:
         if not (0 <= self.selected_index < len(self.annotations)):
             return
         annotation = self.annotations[self.selected_index]
         annotation.points = [(x_pos + dx, y_pos + dy) for x_pos, y_pos in annotation.points]
+        if annotation.shape == "circle" and annotation.radius_point is not None:
+            annotation.radius_point = (
+                annotation.radius_point[0] + dx,
+                annotation.radius_point[1] + dy,
+            )

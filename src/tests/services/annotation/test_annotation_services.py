@@ -155,3 +155,33 @@ def test_annotation_page_labelme_json_roundtrip_and_yolo_export(tmp_path):
     assert yolo_path.read_text(encoding="utf-8").splitlines()[0].startswith("0 0.100000")
 
 
+def test_circle_labelme_roundtrip_preserves_radius_point_direction(tmp_path):
+    from src.services.annotation import (
+        EditableAnnotation,
+        load_labelme_annotations,
+        save_labelme_annotations,
+    )
+
+    image_path = tmp_path / "circle.jpg"
+    make_image(image_path)
+    json_path = tmp_path / "circle.json"
+    circle = EditableAnnotation(
+        0,
+        "circle",
+        [
+            (30.20101012677667, 30.20101012677667),
+            (69.79898987322333, 30.20101012677667),
+            (69.79898987322333, 69.79898987322333),
+            (30.20101012677667, 69.79898987322333),
+        ],
+        radius_point=(64.0, 64.0),
+    )
+
+    save_labelme_annotations((100, 100), json_path, image_path, [circle], ["weld"])
+    loaded, _ = load_labelme_annotations((100, 100), json_path, ["weld"])
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+
+    assert payload["shapes"][0]["points"] == [[50.0, 50.0], [64.0, 64.0]]
+    assert loaded[0].radius_point == (64.0, 64.0)
+
+

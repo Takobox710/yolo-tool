@@ -720,7 +720,11 @@ def test_annotation_canvas_drawing_preview_uses_green_and_only_polygon_has_light
 
     from src.services.annotation import EditableAnnotation
     from src.shared.qt import QApplication, QPixmap
-    from src.ui.features.annotation.canvas.render import PREVIEW_COLOR, PREVIEW_FILL_COLOR
+    from src.ui.features.annotation.canvas.render import (
+        PREVIEW_COLOR,
+        PREVIEW_FILL_COLOR,
+        PREVIEW_POINT_COLOR,
+    )
     from src.ui.features.annotation.canvas.widget import AnnotationCanvas
 
     app = QApplication.instance() or QApplication([])
@@ -772,6 +776,13 @@ def test_annotation_canvas_drawing_preview_uses_green_and_only_polygon_has_light
     assert polygon_fill_color == QColor(191, 255, 191)
     assert PREVIEW_FILL_COLOR == QColor(0, 255, 0, 64)
 
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_preview_points(painter, [(10.0, 10.0)])
+    painter.end()
+    assert image.pixelColor(10, 10) == QColor(0, 255, 0)
+    assert PREVIEW_POINT_COLOR == QColor(0, 255, 0)
+
     calls = []
     canvas._draw_annotation = lambda painter, annotation, **kwargs: calls.append(kwargs)
 
@@ -792,10 +803,100 @@ def test_annotation_canvas_drawing_preview_uses_green_and_only_polygon_has_light
 
 
 def test_annotation_canvas_handle_diameter_is_nine_pixels():
-    from src.ui.features.annotation.canvas.hit_test import HANDLE_RADIUS
+    from src.ui.features.annotation.canvas.hit_test import HANDLE_HIT_RADIUS_FACTOR, HANDLE_RADIUS
+    from src.ui.features.annotation.canvas.render import SOLID_HANDLE_RADIUS
 
     assert HANDLE_RADIUS == 4.5
     assert HANDLE_RADIUS * 2 == 9
+    assert HANDLE_HIT_RADIUS_FACTOR == 2.0
+    assert SOLID_HANDLE_RADIUS == 3.5
+    assert SOLID_HANDLE_RADIUS * 2 == 7
+
+
+def test_annotation_canvas_circle_radius_handle_follows_reference_direction():
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    circle = EditableAnnotation(
+        0,
+        "circle",
+        [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)],
+    )
+
+    assert canvas._annotation_handles(circle, reference_point=(30.0, 20.0)) == [
+        ("center", (20.0, 20.0)),
+        ("radius", (30.0, 20.0)),
+    ]
+    assert canvas._annotation_handles(circle, reference_point=(20.0, 10.0)) == [
+        ("center", (20.0, 20.0)),
+        ("radius", (20.0, 10.0)),
+    ]
+
+    circle.radius_point = (20.0, 10.0)
+    canvas.annotations = [circle]
+    assert canvas._hit_annotation_handle((20.0, 10.0), 0) == ("radius", 0)
+    del app
+
+
+def test_annotation_canvas_circle_radius_handle_uses_saved_radius_point():
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.annotations = [
+        EditableAnnotation(
+            0,
+            "circle",
+            [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)],
+            radius_point=(20.0, 10.0),
+        )
+    ]
+
+    assert canvas._annotation_handles(canvas.annotations[0]) == [
+        ("center", (20.0, 20.0)),
+        ("radius", (20.0, 10.0)),
+    ]
+    del app
+
+
+def test_annotation_canvas_circle_preview_radius_handle_uses_drag_position():
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QImage, QPainter
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas._image_to_widget = lambda point: QPointF(*point)
+    canvas.drag_current = (20.0, 10.0)
+    circle = EditableAnnotation(
+        0,
+        "circle",
+        [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)],
+    )
+    handle_calls = []
+    canvas._draw_handles = lambda painter, annotation, **kwargs: handle_calls.append(kwargs)
+
+    image = QImage(40, 40, QImage.Format.Format_RGB32)
+    painter = QPainter(image)
+    canvas._draw_annotation(painter, circle, preview=True, show_label=False)
+    painter.end()
+
+    assert handle_calls == [
+        {
+            "preview": True,
+            "hovered_handle": None,
+            "handle_reference_point": (20.0, 10.0),
+        }
+    ]
+    del app
 
 
 def test_annotation_canvas_handle_shapes_distinguish_preview_hover_and_selection():
@@ -843,6 +944,40 @@ def test_annotation_canvas_handle_shapes_distinguish_preview_hover_and_selection
     preview_painter = Painter()
     canvas._draw_handles(preview_painter, annotation, preview=True)
     assert preview_painter.shapes == ["ellipse"] * 4
+
+
+def test_annotation_canvas_completed_handles_are_solid_until_one_is_hovered():
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor, QImage, QPainter
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas._image_to_widget = lambda point: QPointF(*point)
+    annotation = EditableAnnotation(
+        0,
+        "rect",
+        [(6.0, 6.0), (26.0, 6.0), (26.0, 26.0), (6.0, 26.0)],
+    )
+
+    image = QImage(32, 32, QImage.Format.Format_RGB32)
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_handles(painter, annotation)
+    painter.end()
+    assert image.pixelColor(6, 6) == QColor("#B91C1C")
+    assert image.pixelColor(26, 6) == QColor("#B91C1C")
+
+    image.fill(QColor("#FFFFFF"))
+    painter = QPainter(image)
+    canvas._draw_handles(painter, annotation, hovered_handle=("point", 0))
+    painter.end()
+    assert image.pixelColor(6, 6) == QColor("#FFFFFF")
+    assert image.pixelColor(26, 6) == QColor("#FFFFFF")
+    del app
 
 
 def test_annotation_canvas_hovered_point_is_the_only_square_and_starts_direct_edit():

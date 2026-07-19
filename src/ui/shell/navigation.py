@@ -44,5 +44,5 @@ def show_page(window, key: str) -> None:
     for name, button in window.nav_buttons.items():
         button.setChecked(name == key)
     window.settings["ui"]["last_page"] = key
-    QTimer.singleShot(0, lambda page=page: window._invoke_page_hook(page, "on_show"))
+    QTimer.singleShot(0, window, lambda page=page: window._invoke_page_hook(page, "on_show"))
 

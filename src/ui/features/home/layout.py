@@ -110,5 +110,5 @@ def build_home_layout(page) -> None:
     page._home_right_cards = [distribution, history]
     page._overview_raw_values = {}
     page._apply_home_column_widths()
-    QTimer.singleShot(0, page._apply_history_column_widths)
-    QTimer.singleShot(50, page._apply_history_column_widths)
+    QTimer.singleShot(0, page, page._apply_history_column_widths)
+    QTimer.singleShot(50, page, page._apply_history_column_widths)

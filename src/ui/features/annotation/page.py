@@ -158,7 +158,7 @@ class AnnotationPage(
         if not self._initialized_once:
             self._initialized_once = True
             if not self.image_items:
-                QTimer.singleShot(0, lambda: self.scan_images(select_first=True))
+                QTimer.singleShot(0, self, lambda: self.scan_images(select_first=True))
                 return
         decorate_rows = getattr(self, "_decorate_visible_rows", None)
         if callable(decorate_rows):
@@ -185,7 +185,7 @@ class AnnotationPage(
             }:
                 decorate_rows = getattr(self, "_decorate_visible_rows", None)
                 if callable(decorate_rows):
-                    QTimer.singleShot(0, decorate_rows)
+                    QTimer.singleShot(0, self, decorate_rows)
         return super().eventFilter(watched, event)
 
 

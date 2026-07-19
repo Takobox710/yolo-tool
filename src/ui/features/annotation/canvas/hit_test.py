@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from math import hypot
+
 from src.services.annotation import EditableAnnotation
 
 
 HANDLE_RADIUS = 4.5
+HANDLE_HIT_RADIUS_FACTOR = 2.0
 
 
 class AnnotationCanvasHitTestMixin:
@@ -33,18 +36,34 @@ class AnnotationCanvasHitTestMixin:
     def _handle_radius(self) -> float:
         return HANDLE_RADIUS
 
-    def _annotation_handles(self, annotation: EditableAnnotation) -> list[tuple[str, tuple[float, float]]]:
+    def _annotation_handles(
+        self,
+        annotation: EditableAnnotation,
+        reference_point: tuple[float, float] | None = None,
+    ) -> list[tuple[str, tuple[float, float]]]:
         if annotation.shape == "circle":
             x1, y1, x2, y2 = self._detect_points_to_rect(annotation.points)
             center = ((x1 + x2) / 2, (y1 + y2) / 2)
             radius = max((x2 - x1) / 2, (y2 - y1) / 2)
-            return [("center", center), ("radius", (center[0] + radius, center[1]))]
+            radius_point = annotation.radius_point or (center[0] + radius, center[1])
+            if reference_point is not None:
+                direction = (
+                    reference_point[0] - center[0],
+                    reference_point[1] - center[1],
+                )
+                distance = hypot(*direction)
+                if distance > 1e-6:
+                    radius_point = (
+                        center[0] + direction[0] / distance * radius,
+                        center[1] + direction[1] / distance * radius,
+                    )
+            return [("center", center), ("radius", radius_point)]
         return [(f"point-{index}", point) for index, point in enumerate(annotation.points)]
 
     def _hit_annotation_handle(self, point: tuple[float, float], annotation_index: int) -> tuple[str, int] | None:
         if not (0 <= annotation_index < len(self.annotations)):
             return None
-        radius = self._handle_radius() * 1.6
+        radius = self._handle_radius() * HANDLE_HIT_RADIUS_FACTOR
         annotation = self.annotations[annotation_index]
         for handle_type, handle_point in self._annotation_handles(annotation):
             dx = point[0] - handle_point[0]
