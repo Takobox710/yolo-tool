@@ -78,6 +78,7 @@
     "auto_convert_yolo": false,
     "show_yolo_save_in_context_menu": false,
     "show_annotation_names": false,
+    "show_canvas_status": true,
     "continuous_draw": false,
     "quick_draw": true,
     "line_expand_enabled": false,

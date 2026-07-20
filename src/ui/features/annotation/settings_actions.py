@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from src.shared.qt import QDialog
 from src.ui.features.annotation.ai.dialog import AiPrelabelDialog
 from src.ui.features.annotation.dialogs import (
@@ -33,9 +31,9 @@ class AnnotationPageSettingsMixin:
             current.get("show_yolo_save_in_context_menu", False),
             current.get("continuous_draw", False),
             current.get("quick_draw", True),
-            str(self.path_from_setting("labels_dir")),
             self,
             show_annotation_names=current.get("show_annotation_names", False),
+            show_canvas_status=current.get("show_canvas_status", True),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -47,8 +45,8 @@ class AnnotationPageSettingsMixin:
             show_yolo_save_in_context_menu,
             continuous_draw,
             quick_draw,
-            yolo_dir,
             show_annotation_names,
+            show_canvas_status,
         ) = dialog.values()
         self.app.settings.setdefault("annotation", {})["line_expand_enabled"] = enabled
         self.app.settings["annotation"]["line_expand_pixels"] = pixels
@@ -60,9 +58,7 @@ class AnnotationPageSettingsMixin:
         self.app.settings["annotation"]["continuous_draw"] = continuous_draw
         self.app.settings["annotation"]["quick_draw"] = quick_draw
         self.app.settings["annotation"]["show_annotation_names"] = show_annotation_names
-        if yolo_dir:
-            self.app.settings.setdefault("paths", {})["labels_dir"] = yolo_dir
-            Path(yolo_dir).mkdir(parents=True, exist_ok=True)
+        self.app.settings["annotation"]["show_canvas_status"] = show_canvas_status
         self.save_settings()
         self._refresh_class_state()
         self._refresh_manual_action_buttons()

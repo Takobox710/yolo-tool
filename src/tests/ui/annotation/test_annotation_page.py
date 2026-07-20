@@ -633,7 +633,7 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from src.services.settings import build_default_settings
-    from src.shared.qt import QApplication
+    from src.shared.qt import QApplication, QDialogButtonBox
     from src.ui.features.annotation.page import AnnotationPage
     from src.ui.features.annotation.dialogs import AnnotationSettingsDialog
 
@@ -653,7 +653,6 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
         show_yolo_save_in_context_menu=False,
         continuous_draw=False,
         quick_draw=True,
-        yolo_dir=str(tmp_path / "labels"),
         parent=page,
     )
 
@@ -665,10 +664,17 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
     assert dialog.show_yolo_context_check.toolTip() == "开启后主界面右键菜单按需分别显示“保存Labelme标注”和“保存YOLO标注”；关闭后只显示“保存”，默认保存 Labelme 标注。"
     assert dialog.show_annotation_names_check.text() == "显示标注名称"
     assert dialog.show_annotation_names_check.isChecked() is False
-    assert dialog.line_expand_label.text() == "直线标注 ⓘ"
+    assert dialog.show_canvas_status_check.text() == "显示当前状态"
+    assert dialog.show_canvas_status_check.isChecked() is True
+    assert dialog.line_expand_label.text() == "开启直线扩展标注 ⓘ"
+    assert dialog.line_expand_check.isChecked() is True
     assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
     assert dialog.line_expand_pixels_label.text() == "直线扩展像素 ⓘ"
     assert dialog.line_expand_pixels_label.toolTip() == "设置直线扩展生成旋转矩形时，沿线段两侧扩展的像素宽度。"
+    assert not hasattr(dialog, "yolo_dir_edit")
+    button_box = dialog.findChild(QDialogButtonBox)
+    assert button_box.button(QDialogButtonBox.StandardButton.Ok).text() == "确定"
+    assert button_box.button(QDialogButtonBox.StandardButton.Cancel).text() == "取消"
 
 
 def test_annotation_canvas_name_visibility_is_configurable_in_rendering(tmp_path):
@@ -710,6 +716,59 @@ def test_annotation_canvas_name_visibility_is_configurable_in_rendering(tmp_path
     page.canvas.paintEvent(QPaintEvent(page.canvas.rect()))
 
     assert calls[1]["show_label"] is True
+
+
+def test_annotation_canvas_status_visibility_is_configurable(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtGui import QPaintEvent
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, QPixmap
+    from src.ui.features.annotation.page import AnnotationPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+    page = AnnotationPage(fake_app)
+    page.canvas.pixmap = QPixmap(32, 32)
+    page.canvas.image_size = (32, 32)
+    status_calls = []
+    page.canvas._draw_canvas_status = lambda painter: status_calls.append(True)
+
+    page.canvas.paintEvent(QPaintEvent(page.canvas.rect()))
+    assert status_calls == [True]
+
+    settings["annotation"]["show_canvas_status"] = False
+    page._refresh_class_state()
+    page.canvas.paintEvent(QPaintEvent(page.canvas.rect()))
+    assert status_calls == [True]
+
+
+def test_annotation_canvas_status_text_follows_draw_mode():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    expected = {
+        "select": "编辑",
+        "rect": "矩形框",
+        "obb_single": "有向矩形",
+        "obb_mirror": "镜像有向矩形",
+        "polygon": "多边形",
+        "circle": "圆形",
+        "line_expand": "直线扩展",
+    }
+
+    for shape, label in expected.items():
+        canvas.set_draw_shape(shape)
+        assert canvas._canvas_status_text() == label
 
 
 def test_annotation_canvas_drawing_preview_uses_green_and_only_polygon_has_light_green_fill():
@@ -1091,15 +1150,47 @@ def test_annotation_settings_dialog_hides_symbol_but_keeps_tooltip_when_disabled
         show_yolo_save_in_context_menu=False,
         continuous_draw=False,
         quick_draw=True,
-        yolo_dir=str(tmp_path / "labels"),
         parent=page,
     )
 
     assert dialog.continuous_draw_check.text() == "开启连续标注"
     assert dialog.continuous_draw_check.toolTip() == "开启后完成一个标注会继续保持当前绘制类型；关闭后每次完成标注都会自动回到选择模式。"
     assert dialog.show_yolo_context_check.text() == "右键显示保存YOLO标注"
-    assert dialog.line_expand_label.text() == "直线标注"
+    assert dialog.line_expand_label.text() == "开启直线扩展标注"
+    assert dialog.line_expand_check.isChecked() is True
     assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
+
+
+def test_annotation_settings_dialog_distributes_extra_height_evenly(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.dialogs import AnnotationSettingsDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = AnnotationSettingsDialog(
+        enabled=True,
+        pixels=10,
+        auto_save=True,
+        auto_convert_yolo=False,
+        show_yolo_save_in_context_menu=False,
+        continuous_draw=False,
+        quick_draw=True,
+    )
+    assert dialog.size().width() == 300
+    assert dialog.size().height() == 380
+    dialog.resize(420, 700)
+    dialog.show()
+    app.processEvents()
+
+    gaps = [
+        next_row.geometry().top()
+        - (current_row.geometry().top() + current_row.geometry().height())
+        for current_row, next_row in zip(dialog._setting_rows, dialog._setting_rows[1:])
+    ]
+
+    assert max(gaps) - min(gaps) <= 1
+    dialog.close()
 
 
 def test_annotation_page_can_change_annotation_class_from_context_target(tmp_path):
@@ -1190,6 +1281,75 @@ def test_annotation_canvas_delete_action_uses_native_shortcut():
     assert action.isShortcutVisibleInContextMenu() is True
 
 
+def test_annotation_page_w_shortcut_opens_draw_shape_dialog(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, QDialog, Qt
+    from src.ui.features.annotation.page import AnnotationPage
+    import src.ui.features.annotation.settings_actions as settings_actions
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+    calls = []
+
+    class FakeDrawShapeDialog:
+        def __init__(self, line_expand_enabled, parent):
+            calls.append((line_expand_enabled, parent))
+
+        def exec(self):
+            return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(settings_actions, "DrawShapeDialog", FakeDrawShapeDialog)
+    page = AnnotationPage(fake_app)
+
+    page._draw_shortcut.activated.emit()
+
+    assert page._draw_shortcut.key().toString() == "W"
+    assert page._draw_shortcut.context() == Qt.ShortcutContext.WidgetWithChildrenShortcut
+    assert calls == [(False, page)]
+
+
+def test_annotation_page_shape_shortcuts_switch_canvas_modes(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.page import AnnotationPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+    page = AnnotationPage(fake_app)
+
+    expected_shapes = {
+        "V": "select",
+        "R": "rect",
+        "O": "obb_single",
+        "M": "obb_mirror",
+        "P": "polygon",
+        "C": "circle",
+    }
+    for key, shape in expected_shapes.items():
+        shortcut = page._shape_shortcuts[key]
+        assert shortcut.key().toString() == key
+        shortcut.activated.emit()
+        assert page.canvas.draw_shape == shape
+
+    page._shape_shortcuts["L"].activated.emit()
+    assert page.canvas.draw_shape == "circle"
+    page.canvas.set_line_expand_config(True, 10)
+    page._shape_shortcuts["L"].activated.emit()
+    assert page.canvas.draw_shape == "line_expand"
+
+
 def test_draw_shape_dialog_shows_edit_option_above_divider():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -1202,7 +1362,15 @@ def test_draw_shape_dialog_shows_edit_option_above_divider():
 
     assert buttons[0] == "编辑"
     assert buttons[1:] == ["矩形框", "有向矩形", "镜像有向矩形", "多边形", "圆形", "直线扩展"]
-    assert dialog.findChild(QFrame, "drawShapeDivider") is not None
+    list_frame = dialog.findChild(QFrame, "drawShapeList")
+    divider = dialog.findChild(QFrame, "drawShapeDivider")
+    edit_button = next(button for button in dialog.findChildren(QPushButton) if button.text() == "编辑")
+    assert list_frame is not None
+    assert divider is not None
+    assert edit_button.parentWidget() is list_frame
+    assert divider.minimumHeight() == 2
+    assert divider.maximumHeight() == 2
+    assert dialog.layout().spacing() == 0
 
 
 def test_draw_shape_dialog_edit_option_returns_select_mode():

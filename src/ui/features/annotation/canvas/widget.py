@@ -19,6 +19,7 @@ from src.ui.features.annotation.canvas.hit_test import AnnotationCanvasHitTestMi
 from src.ui.features.annotation.canvas.interaction import AnnotationCanvasInteractionMixin
 from src.ui.features.annotation.canvas.render import AnnotationCanvasRenderMixin
 from src.ui.features.annotation.canvas.state import reset_transient_draw_state
+from src.ui.features.annotation.canvas.status import AnnotationCanvasStatusMixin
 
 
 class AnnotationCanvas(
@@ -27,6 +28,7 @@ class AnnotationCanvas(
     AnnotationCanvasHitTestMixin,
     AnnotationCanvasInteractionMixin,
     AnnotationCanvasRenderMixin,
+    AnnotationCanvasStatusMixin,
     QWidget,
 ):
     def __init__(self):
@@ -73,6 +75,7 @@ class AnnotationCanvas(
         self.can_save_default = False
         self.show_separate_yolo_save = False
         self.show_annotation_names = False
+        self.show_canvas_status = True
         self._flash_timer = QTimer(self)
         self._flash_timer.setSingleShot(True)
         self._flash_timer.timeout.connect(self._clear_flash)
@@ -141,6 +144,10 @@ class AnnotationCanvas(
 
     def set_show_annotation_names(self, enabled: bool) -> None:
         self.show_annotation_names = bool(enabled)
+        self.update()
+
+    def set_show_canvas_status(self, enabled: bool) -> None:
+        self.show_canvas_status = bool(enabled)
         self.update()
 
     def set_crosshair_position(self, point) -> None:
