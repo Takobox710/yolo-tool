@@ -14,6 +14,7 @@ PROJECT_PATH_FIELDS: dict[tuple[str, ...], dict[str, bool]] = {
     ("paths", "dataset_dir"): {},
     ("paths", "models_dir"): {},
     ("paths", "result_dir"): {},
+    ("image_resize", "source_dir"): {},
     ("image_resize", "output_dir"): {},
     ("image_resize", "backup_dir"): {},
     ("training", "data"): {},

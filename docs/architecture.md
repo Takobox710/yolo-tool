@@ -149,6 +149,8 @@ yolo_tool/
 - 程序级日志缓冲与设置页日志展示统一走 `src/ui/shell/program_log.py`。
 - 关闭确认统一由 `src/ui/shell/close_guard.py` 处理，包括未保存标注与训练运行中确认。
 - `WorkbenchWindow` 默认尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`；项目内路径在 UI 中优先显示为相对路径，写入文件时由设置存储层解析/序列化。
+- `BasePage.update_setting()` 保存项目设置后，通过 `WorkbenchWindow.notify_setting_changed()` 广播设置键路径；已创建页面必须立即刷新镜像路径控件，控件刷新期间阻断信号，避免重复保存。
+- 项目路径字段分为三组共享路径：`paths.images_dir`（标注转换、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、标注转换、批量重命名）和 `paths.labels_dir`（标注预览、标注转换）；图片压缩源目录单独使用 `image_resize.source_dir`。
 - 标注页“更多设置”使用等权垂直伸缩项承接窗口额外高度，保证各设置行之间的间隔一致；复合设置内部（如直线扩展像素标题与数值框）不参与外层间隔分配。
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
 - worker 真实实现只放在 `src/ui/shared/workers/`，页面持有 worker 时必须在原生 `finished` 信号后再清理对象。

@@ -69,6 +69,13 @@ class BasePage(FormPageMixin, QWidget):
             target = target.setdefault(key, {})
         target[keys[-1]] = value
         self.save_settings()
+        notify = getattr(self.app, "notify_setting_changed", None)
+        if callable(notify):
+            notify(tuple(keys), value, source=self)
+
+    def on_setting_changed(self, keys: tuple[str, ...], value: Any) -> None:
+        """Hook for controls that mirror shared project settings."""
+        return None
 
     def display_path(self, path: str | Path) -> str:
         return display_project_path(str(path), self.project_root())

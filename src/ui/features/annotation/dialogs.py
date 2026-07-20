@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from src.services.data_ops import display_project_path, resolve_project_path
 from src.ui.shared.forms import FormPageMixin
 from src.shared.qt import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -29,6 +33,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
         show_yolo_save_in_context_menu: bool,
         continuous_draw: bool,
         quick_draw: bool,
+        yolo_dir: str,
         parent=None,
         *,
         show_annotation_names: bool = False,
@@ -36,22 +41,31 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("更多设置")
-        self.resize(300, 380)
+        self.resize(300, 420)
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
         self.auto_save_check = QCheckBox("自动保存 Labelme JSON")
         self.auto_save_check.setChecked(bool(auto_save))
-        self.auto_convert_check = QCheckBox("自动转换为 YOLO 格式")
-        self.auto_convert_check.setChecked(bool(auto_convert_yolo))
+        auto_convert_box, self.auto_convert_check = self.checkbox_with_help(
+            "自动转换为 YOLO 格式",
+            bool(auto_convert_yolo),
+            help_text="开启后保存 Labelme 标注时同步生成或更新同名 YOLO .txt 文件；关闭后不自动转换。",
+        )
         show_yolo_box, self.show_yolo_context_check = self.checkbox_with_help(
             "右键显示保存YOLO标注",
             bool(show_yolo_save_in_context_menu),
             help_text="开启后主界面右键菜单按需分别显示“保存Labelme标注”和“保存YOLO标注”；关闭后只显示“保存”，默认保存 Labelme 标注。",
         )
-        self.show_annotation_names_check = QCheckBox("显示标注名称")
-        self.show_annotation_names_check.setChecked(bool(show_annotation_names))
-        self.show_canvas_status_check = QCheckBox("显示当前状态")
-        self.show_canvas_status_check.setChecked(bool(show_canvas_status))
+        show_annotation_names_box, self.show_annotation_names_check = self.checkbox_with_help(
+            "显示标注名称",
+            bool(show_annotation_names),
+            help_text="开启后在画布中显示已完成标注的类别名称；关闭后只显示标注图形。",
+        )
+        show_canvas_status_box, self.show_canvas_status_check = self.checkbox_with_help(
+            "显示当前状态",
+            bool(show_canvas_status),
+            help_text="开启后在画布左下角显示当前标注模式名称；关闭后隐藏当前状态文字。",
+        )
         continuous_box, self.continuous_draw_check = self.checkbox_with_help(
             "开启连续标注",
             bool(continuous_draw),
@@ -68,6 +82,27 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             help_text="开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。",
         )
         self.line_expand_label = self.line_expand_check
+
+        yolo_setting = QWidget()
+        yolo_layout = QVBoxLayout(yolo_setting)
+        yolo_layout.setContentsMargins(0, 0, 0, 0)
+        yolo_layout.setSpacing(4)
+        yolo_layout.addWidget(QLabel("YOLO 标注文件夹"))
+        yolo_row = QHBoxLayout()
+        yolo_row.setContentsMargins(0, 0, 0, 0)
+        project_root = self._project_root()
+        display_yolo_dir = (
+            display_project_path(yolo_dir, project_root)
+            if project_root is not None
+            else yolo_dir
+        )
+        self.yolo_dir_edit = QLineEdit(display_yolo_dir)
+        yolo_row.addWidget(self.yolo_dir_edit, 1)
+        choose_btn = QPushButton("选择")
+        choose_btn.clicked.connect(self.choose_yolo_dir)
+        yolo_row.addWidget(choose_btn)
+        yolo_layout.addLayout(yolo_row)
+
         self.pixel_spin = QSpinBox()
         self.pixel_spin.setRange(1, 200)
         self.pixel_spin.setValue(max(1, int(pixels)))
@@ -84,13 +119,14 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
 
         self._setting_rows = [
             self.auto_save_check,
-            self.auto_convert_check,
+            auto_convert_box,
             show_yolo_box,
-            self.show_annotation_names_check,
-            self.show_canvas_status_check,
+            show_annotation_names_box,
+            show_canvas_status_box,
             continuous_box,
             quick_box,
             line_label_box,
+            yolo_setting,
             pixel_setting,
         ]
         for index, setting in enumerate(self._setting_rows):
@@ -119,7 +155,29 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
         for check in self.findChildren(QCheckBox):
             self._refresh_help_target(check)
 
-    def values(self) -> tuple[bool, int, bool, bool, bool, bool, bool, bool, bool]:
+    def choose_yolo_dir(self) -> None:
+        project_root = self._project_root()
+        current = self.yolo_dir_edit.text().strip()
+        if project_root is not None:
+            current = resolve_project_path(current, project_root) if current else str(project_root)
+        directory = QFileDialog.getExistingDirectory(
+            self, "选择 YOLO 标注文件夹", current
+        )
+        if directory:
+            self.yolo_dir_edit.setText(
+                display_project_path(directory, project_root)
+                if project_root is not None
+                else directory
+            )
+
+    def _project_root(self) -> Path | None:
+        parent = self.parent()
+        getter = getattr(parent, "project_root", None)
+        if not callable(getter):
+            return None
+        return Path(getter())
+
+    def values(self) -> tuple[bool, int, bool, bool, bool, bool, bool, str, bool, bool]:
         return (
             self.line_expand_check.isChecked(),
             int(self.pixel_spin.value()),
@@ -128,6 +186,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             self.show_yolo_context_check.isChecked(),
             self.continuous_draw_check.isChecked(),
             self.quick_draw_check.isChecked(),
+            self.yolo_dir_edit.text().strip(),
             self.show_annotation_names_check.isChecked(),
             self.show_canvas_status_check.isChecked(),
         )

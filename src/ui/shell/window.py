@@ -12,6 +12,7 @@ from src.ui.shell.close_guard import confirm_close_if_needed
 from src.ui.shell.navigation import ensure_page, reload_pages, show_page
 from src.ui.shell.page_registry import PAGE_ORDER, PAGE_TITLES, create_page
 from src.ui.shell.program_log import append_program_log, program_log_text, should_log_background_kind
+from src.ui.shared.page_base import BasePage
 from src.ui.shared.widgets.base import load_nav_icon
 from src.ui.shared.workers import Worker
 
@@ -145,6 +146,18 @@ class WorkbenchWindow(QMainWindow):
             hook = getattr(target, "refresh_model_choices", None)
             if hook:
                 hook()
+
+    def notify_setting_changed(self, keys: tuple[str, ...], value, *, source=None):
+        """Refresh already-created pages after a setting is edited elsewhere."""
+        for page in self.pages.values():
+            target = getattr(page, "inner_page", page)
+            candidates = [target, *target.findChildren(BasePage)]
+            for candidate in candidates:
+                if candidate is source:
+                    continue
+                hook = getattr(candidate, "on_setting_changed", None)
+                if hook:
+                    hook(keys, value)
 
     def dismiss_help_bubbles(self):
         for page in self.pages.values():

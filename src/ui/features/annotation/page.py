@@ -129,6 +129,16 @@ class AnnotationPage(
     def _refresh_path_labels(self) -> None:
         return None
 
+    def on_setting_changed(self, keys, value):
+        if keys == ("paths", "images_dir"):
+            self.scan_images(select_first=True)
+        elif keys == ("paths", "annotations_dir"):
+            self.load_current()
+            self.refresh_file_list()
+        elif keys == ("paths", "labels_dir"):
+            self.load_current()
+            self.refresh_file_list()
+
     def change_output_mode(self, text: str) -> None:
         mode = text if text in {"detect", "obb"} else "detect"
         self.output_mode = mode

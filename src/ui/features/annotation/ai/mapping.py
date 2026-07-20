@@ -13,6 +13,13 @@ from src.shared.qt import (
 )
 
 
+class MappingComboBox(QComboBox):
+    """Keep wheel scrolling on the mapping table instead of changing the value."""
+
+    def wheelEvent(self, event):  # noqa: N802 - Qt API name
+        event.ignore()
+
+
 def configure_mapping_table(table: QTableWidget) -> None:
     table.setHorizontalHeaderLabels(["#", "模型类别", "标注类别", "状态"])
     table.verticalHeader().setVisible(False)
@@ -50,7 +57,7 @@ def populate_mapping_table(
     for row, model_label in enumerate(model_labels):
         index_item = QTableWidgetItem(str(row))
         label_item = QTableWidgetItem(model_label)
-        combo = QComboBox()
+        combo = MappingComboBox()
         combo.setMinimumHeight(28)
         combo.setStyleSheet("QComboBox { padding: 2px 6px; }")
         combo.addItem("-- 跳过 --", "")

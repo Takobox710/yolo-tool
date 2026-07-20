@@ -29,6 +29,7 @@
     "random_seed": 42
   },
   "image_resize": {
+    "source_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images",
     "long_edge": 960,
     "canvas_size": 960,
     "background": "white",
@@ -80,7 +81,7 @@
     "show_annotation_names": false,
     "show_canvas_status": true,
     "continuous_draw": false,
-    "quick_draw": true,
+    "quick_draw": false,
     "line_expand_enabled": false,
     "line_expand_pixels": 10
   },

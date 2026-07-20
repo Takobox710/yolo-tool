@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from src.services.data_ops import resolve_project_path
 from src.shared.qt import QDialog
 from src.ui.features.annotation.ai.dialog import AiPrelabelDialog
 from src.ui.features.annotation.dialogs import (
@@ -30,7 +33,8 @@ class AnnotationPageSettingsMixin:
             current.get("auto_convert_yolo", False),
             current.get("show_yolo_save_in_context_menu", False),
             current.get("continuous_draw", False),
-            current.get("quick_draw", True),
+            current.get("quick_draw", False),
+            self.display_path(self.path_from_setting("labels_dir")),
             self,
             show_annotation_names=current.get("show_annotation_names", False),
             show_canvas_status=current.get("show_canvas_status", True),
@@ -45,6 +49,7 @@ class AnnotationPageSettingsMixin:
             show_yolo_save_in_context_menu,
             continuous_draw,
             quick_draw,
+            yolo_dir,
             show_annotation_names,
             show_canvas_status,
         ) = dialog.values()
@@ -59,6 +64,10 @@ class AnnotationPageSettingsMixin:
         self.app.settings["annotation"]["quick_draw"] = quick_draw
         self.app.settings["annotation"]["show_annotation_names"] = show_annotation_names
         self.app.settings["annotation"]["show_canvas_status"] = show_canvas_status
+        if yolo_dir:
+            resolved_yolo_dir = Path(resolve_project_path(yolo_dir, self.project_root()))
+            self.app.settings.setdefault("paths", {})["labels_dir"] = str(resolved_yolo_dir)
+            resolved_yolo_dir.mkdir(parents=True, exist_ok=True)
         self.save_settings()
         self._refresh_class_state()
         self._refresh_manual_action_buttons()

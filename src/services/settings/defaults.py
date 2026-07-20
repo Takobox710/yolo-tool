@@ -28,6 +28,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "random_seed": 42,
         },
         "image_resize": {
+            "source_dir": str(project_root / "images"),
             "long_edge": 960,
             "canvas_size": 960,
             "background": "white",
@@ -85,7 +86,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "show_annotation_names": False,
             "show_canvas_status": True,
             "continuous_draw": False,
-            "quick_draw": True,
+            "quick_draw": False,
             "line_expand_enabled": False,
             "line_expand_pixels": 10,
             "ai_prelabel": {

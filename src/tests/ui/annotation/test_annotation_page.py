@@ -653,6 +653,7 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
         show_yolo_save_in_context_menu=False,
         continuous_draw=False,
         quick_draw=True,
+        yolo_dir=str(tmp_path / "labels"),
         parent=page,
     )
 
@@ -660,18 +661,23 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
     assert dialog.continuous_draw_check.toolTip() == "开启后完成一个标注会继续保持当前绘制类型；关闭后每次完成标注都会自动回到选择模式。"
     assert dialog.quick_draw_check.text() == "开启快捷标注 ⓘ"
     assert dialog.quick_draw_check.toolTip() == "开启后矩形框、圆形、直线扩展支持拖动后松开直接完成；关闭后改为通过多次点击确认。"
+    assert dialog.auto_convert_check.text() == "自动转换为 YOLO 格式 ⓘ"
+    assert dialog.auto_convert_check.toolTip() == "开启后保存 Labelme 标注时同步生成或更新同名 YOLO .txt 文件；关闭后不自动转换。"
     assert dialog.show_yolo_context_check.text() == "右键显示保存YOLO标注 ⓘ"
     assert dialog.show_yolo_context_check.toolTip() == "开启后主界面右键菜单按需分别显示“保存Labelme标注”和“保存YOLO标注”；关闭后只显示“保存”，默认保存 Labelme 标注。"
-    assert dialog.show_annotation_names_check.text() == "显示标注名称"
+    assert dialog.show_annotation_names_check.text() == "显示标注名称 ⓘ"
     assert dialog.show_annotation_names_check.isChecked() is False
-    assert dialog.show_canvas_status_check.text() == "显示当前状态"
+    assert dialog.show_annotation_names_check.toolTip() == "开启后在画布中显示已完成标注的类别名称；关闭后只显示标注图形。"
+    assert dialog.show_canvas_status_check.text() == "显示当前状态 ⓘ"
     assert dialog.show_canvas_status_check.isChecked() is True
+    assert dialog.show_canvas_status_check.toolTip() == "开启后在画布左下角显示当前标注模式名称；关闭后隐藏当前状态文字。"
     assert dialog.line_expand_label.text() == "开启直线扩展标注 ⓘ"
     assert dialog.line_expand_check.isChecked() is True
     assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
     assert dialog.line_expand_pixels_label.text() == "直线扩展像素 ⓘ"
     assert dialog.line_expand_pixels_label.toolTip() == "设置直线扩展生成旋转矩形时，沿线段两侧扩展的像素宽度。"
-    assert not hasattr(dialog, "yolo_dir_edit")
+    assert dialog.yolo_dir_edit.text() == "labels"
+    assert dialog.values()[7] == "labels"
     button_box = dialog.findChild(QDialogButtonBox)
     assert button_box.button(QDialogButtonBox.StandardButton.Ok).text() == "确定"
     assert button_box.button(QDialogButtonBox.StandardButton.Cancel).text() == "取消"
@@ -1150,12 +1156,19 @@ def test_annotation_settings_dialog_hides_symbol_but_keeps_tooltip_when_disabled
         show_yolo_save_in_context_menu=False,
         continuous_draw=False,
         quick_draw=True,
+        yolo_dir=str(tmp_path / "labels"),
         parent=page,
     )
 
     assert dialog.continuous_draw_check.text() == "开启连续标注"
     assert dialog.continuous_draw_check.toolTip() == "开启后完成一个标注会继续保持当前绘制类型；关闭后每次完成标注都会自动回到选择模式。"
+    assert dialog.auto_convert_check.text() == "自动转换为 YOLO 格式"
+    assert dialog.auto_convert_check.toolTip() == "开启后保存 Labelme 标注时同步生成或更新同名 YOLO .txt 文件；关闭后不自动转换。"
     assert dialog.show_yolo_context_check.text() == "右键显示保存YOLO标注"
+    assert dialog.show_annotation_names_check.text() == "显示标注名称"
+    assert dialog.show_annotation_names_check.toolTip() == "开启后在画布中显示已完成标注的类别名称；关闭后只显示标注图形。"
+    assert dialog.show_canvas_status_check.text() == "显示当前状态"
+    assert dialog.show_canvas_status_check.toolTip() == "开启后在画布左下角显示当前标注模式名称；关闭后隐藏当前状态文字。"
     assert dialog.line_expand_label.text() == "开启直线扩展标注"
     assert dialog.line_expand_check.isChecked() is True
     assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
@@ -1176,9 +1189,10 @@ def test_annotation_settings_dialog_distributes_extra_height_evenly(tmp_path):
         show_yolo_save_in_context_menu=False,
         continuous_draw=False,
         quick_draw=True,
+        yolo_dir=str(tmp_path / "labels"),
     )
     assert dialog.size().width() == 300
-    assert dialog.size().height() == 380
+    assert dialog.size().height() == 420
     dialog.resize(420, 700)
     dialog.show()
     app.processEvents()
@@ -1889,6 +1903,18 @@ def test_ai_prelabel_dialog_populates_mapping_from_project_classes(tmp_path):
     second_combo = dialog.mapping_table.cellWidget(1, 2)
     assert first_combo.currentText() == "weld"
     assert second_combo.currentText() == "-- 跳过 --"
+
+
+def test_ai_mapping_combo_ignores_wheel_events():
+    from types import SimpleNamespace
+
+    from src.ui.features.annotation.ai.mapping import MappingComboBox
+
+    ignored = []
+    combo = MappingComboBox()
+    combo.wheelEvent(SimpleNamespace(ignore=lambda: ignored.append(True)))
+
+    assert ignored == [True]
 
 
 def test_ai_prelabel_dialog_lists_trained_best_models_before_base_models(tmp_path):
