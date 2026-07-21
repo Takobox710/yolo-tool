@@ -80,6 +80,8 @@ def collect_prediction_sources(
             suffixes = VIDEO_SUFFIXES
         else:
             suffixes = SOURCE_SUFFIXES
+        if source is not None and source.is_file():
+            return [source.resolve()] if source.suffix.lower() in suffixes else []
         if source is not None and source.exists() and source.is_dir():
             return sorted(
                 (

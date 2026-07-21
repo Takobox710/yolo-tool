@@ -66,6 +66,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "model_path": "",
             "source_mode": "图片检测",
             "source_path": "",
+            "source_selection": "全部图片",
             "data": str(data_root / "data.yaml"),
             "source_scope": "全部图片",
             "camera_index": 0,

@@ -3,13 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.services.data_ops import relative_path_from_project
-from src.shared.qt import QComboBox, QFileDialog, QStyle
+from src.services.validation import IMAGE_SUFFIXES, VIDEO_SUFFIXES
+from src.shared.qt import QComboBox, QFileDialog, QEvent, QMediaPlayer, QStyle
 from src.ui.features.validation.helpers import ResultNavigator, ValidationYamlPatch
 from src.ui.features.validation.result_list import show_validation_result_list
 from src.ui.features.validation.results import (
     handle_detection_result,
     show_cached_source_result as show_cached_validation_source_result,
+    clear_validation_previews as clear_validation_preview_widgets,
     show_detection_payload as show_detection_result_payload,
+    show_source_preview as show_validation_source_preview,
 )
 from src.ui.features.validation.runtime import (
     apply_detect_done,
@@ -24,7 +27,10 @@ from src.ui.features.validation.runtime import (
     start_single_detection,
     stop_detection,
 )
-from src.ui.features.validation.sources import SOURCE_SCOPE_OPTIONS
+from src.ui.features.validation.sources import (
+    SINGLE_FILE_SOURCE_OPTIONS,
+    SOURCE_SCOPE_OPTIONS,
+)
 from src.ui.features.validation.state import (
     append_active_log,
     clear_active_log,
@@ -71,6 +77,9 @@ class ValidationPageActionsMixin:
     def update_source_mode(self, value):
         return update_source_mode(self, value)
 
+    def clear_validation_previews(self):
+        return clear_validation_preview_widgets(self)
+
     def is_video_detection_mode(self) -> bool:
         return is_video_detection_mode(self)
 
@@ -79,22 +88,96 @@ class ValidationPageActionsMixin:
 
     def toggle_video_playback(self, enabled: bool) -> None:
         if not self.is_video_detection_mode():
-            self.video_play_btn.blockSignals(True)
-            self.video_play_btn.setChecked(False)
-            self.video_play_btn.blockSignals(False)
+            self._set_video_playback_button(False)
             return
         if enabled:
             self.video_playback.play_pair()
-            self.video_play_btn.setIcon(
-                self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause)
-            )
-            self.video_play_btn.setToolTip("暂停视频")
+            self._set_video_playback_button(True)
         else:
             self.video_playback.pause_pair()
-            self.video_play_btn.setIcon(
-                self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
-            )
-            self.video_play_btn.setToolTip("播放视频")
+            self._set_video_playback_button(False)
+
+    def _set_video_playback_button(self, playing: bool) -> None:
+        self.video_play_btn.blockSignals(True)
+        self.video_play_btn.setChecked(playing)
+        self.video_play_btn.blockSignals(False)
+        icon = (
+            QStyle.StandardPixmap.SP_MediaPause
+            if playing
+            else QStyle.StandardPixmap.SP_MediaPlay
+        )
+        self.video_play_btn.setIcon(self.style().standardIcon(icon))
+        self.video_play_btn.setToolTip("暂停视频" if playing else "播放视频")
+
+    def handle_video_playback_state(self, state) -> None:
+        self._set_video_playback_button(
+            state == QMediaPlayer.PlaybackState.PlayingState
+        )
+
+    def handle_video_media_status(self, status) -> None:
+        if status != QMediaPlayer.MediaStatus.EndOfMedia:
+            return
+        self.video_playback.pause_pair()
+        self.video_progress.setValue(self.video_progress.maximum())
+        self._set_video_playback_button(False)
+
+    @staticmethod
+    def _drop_media_path(event) -> Path | None:
+        mime_data = event.mimeData()
+        if not mime_data.hasUrls():
+            return None
+        for url in mime_data.urls():
+            local_path = url.toLocalFile()
+            if not local_path:
+                continue
+            path = Path(local_path)
+            if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES | VIDEO_SUFFIXES:
+                return path.resolve()
+        return None
+
+    def dragEnterEvent(self, event):  # noqa: N802 - Qt API name
+        if self._drop_media_path(event) is not None:
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def _apply_dropped_media(self, path: Path) -> None:
+        mode = "视频检测" if path.suffix.lower() in VIDEO_SUFFIXES else "图片检测"
+        self.mode_combo.setCurrentText(mode)
+        self.source_combo.setCurrentText(
+            relative_path_from_project(str(path), self.project_root())
+        )
+        self._persist_validation_value("source_mode", mode)
+        self._persist_validation_value("source_path", str(path))
+        self._persist_validation_value(
+            "source_selection",
+            "单个视频" if mode == "视频检测" else "单张图片",
+        )
+        self.refresh_source_items()
+        self.update_video_mode_controls()
+        self.set_status_text(f"已载入{mode}文件：{path.name}")
+
+    def dropEvent(self, event):  # noqa: N802 - Qt API name
+        path = self._drop_media_path(event)
+        if path is None:
+            event.ignore()
+            return
+        self._apply_dropped_media(path)
+        event.acceptProposedAction()
+
+    def eventFilter(self, watched, event):  # noqa: N802 - Qt API name
+        if event.type() in {
+            QEvent.Type.DragEnter,
+            QEvent.Type.DragMove,
+            QEvent.Type.Drop,
+        }:
+            path = self._drop_media_path(event)
+            if path is not None:
+                if event.type() == QEvent.Type.Drop:
+                    self._apply_dropped_media(path)
+                event.acceptProposedAction()
+                return True
+        return super().eventFilter(watched, event)
 
     def is_val_mode(self, value: str | None = None) -> bool:
         return str(value or self.mode_combo.currentText()).strip() == "数据集验证"
@@ -128,17 +211,59 @@ class ValidationPageActionsMixin:
 
     def choose_detection_source(self, combo: QComboBox):
         current_text = combo.currentText().strip()
+        validation = self.app.settings.get("validation", {})
+        saved_selection = validation.get("source_selection", "")
         current = (
-            self.resolve_combo_path_text(current_text)
-            if current_text and current_text not in SOURCE_SCOPE_OPTIONS
-            else str(self.project_root())
+            validation.get("source_path")
+            if saved_selection in SINGLE_FILE_SOURCE_OPTIONS
+            else (
+                self.resolve_combo_path_text(current_text)
+                if current_text
+                and current_text not in SOURCE_SCOPE_OPTIONS
+                and current_text not in {"单张图片", "批量视频", "单个视频"}
+                else str(self.project_root())
+            )
         )
-        title = "选择视频文件夹" if self.mode_combo.currentText() == "视频检测" else "选择图片文件夹"
-        path = QFileDialog.getExistingDirectory(self, title, current)
-        if path:
-            combo.setCurrentText(relative_path_from_project(path, self.project_root()))
-            self.refresh_source_items()
-            self.update_video_mode_controls()
+        mode = self.mode_combo.currentText()
+        is_single = (
+            current_text in SINGLE_FILE_SOURCE_OPTIONS
+            or saved_selection in SINGLE_FILE_SOURCE_OPTIONS
+        )
+        if is_single:
+            suffixes = " ".join(
+                f"*{suffix}"
+                for suffix in sorted(
+                    VIDEO_SUFFIXES if mode == "视频检测" else IMAGE_SUFFIXES
+                )
+            )
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "选择视频文件" if mode == "视频检测" else "选择图片文件",
+                current or str(self.project_root()),
+                f"支持的文件 ({suffixes});;所有文件 (*)",
+            )
+        else:
+            path = QFileDialog.getExistingDirectory(
+                self,
+                "选择视频文件夹" if mode == "视频检测" else "选择图片文件夹",
+                current or str(self.project_root()),
+            )
+        if not path:
+            return
+        selected = Path(path).resolve()
+        if is_single:
+            if not selected.is_file():
+                return
+            selected_option = "单个视频" if mode == "视频检测" else "单张图片"
+        else:
+            if not selected.is_dir():
+                return
+            selected_option = "批量视频" if mode == "视频检测" else ""
+        combo.setCurrentText(relative_path_from_project(str(selected), self.project_root()))
+        self._persist_validation_value("source_path", str(selected))
+        self._persist_validation_value("source_selection", selected_option)
+        self.refresh_source_items()
+        self.update_video_mode_controls()
 
     def choose_dataset_yaml(self, edit):
         current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())
@@ -312,17 +437,44 @@ class ValidationPageActionsMixin:
     def show_detection_payload(self, payload):
         show_detection_result_payload(self, payload)
 
+    def show_source_preview(self, path: Path):
+        return show_validation_source_preview(self, path)
+
     def first_result(self):
+        if not self.detection_started_for_source and self._navigate_source_preview("first"):
+            return
         self.result_navigator.show_first()
 
     def last_result(self):
+        if not self.detection_started_for_source and self._navigate_source_preview("last"):
+            return
         self.result_navigator.show_last()
 
     def prev_result(self):
+        if not self.detection_started_for_source and self._navigate_source_preview("previous"):
+            return
         self.result_navigator.show_previous()
 
     def next_result(self):
+        if not self.detection_started_for_source and self._navigate_source_preview("next"):
+            return
         self.result_navigator.show_next()
+
+    def _navigate_source_preview(self, action: str) -> bool:
+        self.refresh_source_items()
+        if not self.source_items:
+            return False
+        if action == "first":
+            index = 0
+        elif action == "last":
+            index = len(self.source_items) - 1
+        elif action == "previous":
+            index = (self.source_index - 1) % len(self.source_items)
+        else:
+            index = (self.source_index + 1) % len(self.source_items)
+        self.source_index = index
+        self.show_source_preview(self.source_items[index])
+        return True
 
     def show_source_index(self, index: int):
         self.refresh_source_items()
@@ -339,6 +491,9 @@ class ValidationPageActionsMixin:
                 self.video_playback.load_result(result_path, autoplay=False)
                 return True
             return False
+        if not self.detection_started_for_source:
+            self.show_source_preview(path)
+            return True
         return show_cached_validation_source_result(self, path)
 
     def show_result_list(self):

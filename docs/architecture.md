@@ -117,6 +117,9 @@ yolo_tool/
 - 视频文件检测按输入后缀自动进入视频进度模式，后台每秒发送一次进度事件并写出 MP4 结果；视频检测不生成帧级 YOLO TXT 标注。
 - 验证页视频模式由 `src/ui/features/validation/video_player.py` 管理源视频与结果视频的 Qt 播放器，页面加载时暂停在当前视频第一帧；源视频作为播放时钟，顶部滑块同步拖动两侧视频，播放按钮与检测按钮状态分离，两个视频面板使用等权横向伸缩，后续批量视频事件不得替换当前预览。
 - 验证页在图片检测与视频检测间切换时，由 `src/ui/features/validation/state.py` 暂停页面绘制，完成所有模式控件和播放器状态更新后再统一刷新，避免视频切换为图片时出现中间画面闪动。
+- 验证页源视频播放器监听 `playbackStateChanged` 和 `mediaStatusChanged`；视频自然结束时由页面统一恢复播放按钮状态并暂停结果视频。
+- 验证页拖放由 `ValidationPageActionsMixin` 识别本地图片/视频文件并更新模式与输入源；输入源选项通过 `source_selection` 区分批量目录和单文件选择，`collect_prediction_sources()` 对图片检测/视频检测模式同时支持目录和单文件路径，复用同一检测 worker。
+- 验证页检测前预览由 `results.show_source_preview()` 负责加载图片源或暂停视频首帧；检测会话开始后由 `detection_started_for_source` 切回原有结果缓存与列表逻辑。
 
 验证页左侧布局将普通检测日志控件设为纵向伸缩项，使日志区域填满左侧面板的剩余高度；数据集验证模式则切换为顶部对齐和固定表单高度，避免右侧验证日志面板把左侧控件均匀拉开。页面专属布局代码位于 `src/ui/features/validation/layout.py`。
 

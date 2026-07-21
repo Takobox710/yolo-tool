@@ -60,6 +60,12 @@ class ImageView(QLabel):
         self._pixmap = pil_to_pixmap(image)
         self._rescale()
 
+    def clear_image(self, text: str = ""):
+        self._pixmap = None
+        self.clear()
+        if text:
+            self.setText(text)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._rescale()

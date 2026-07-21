@@ -19,7 +19,11 @@ from src.shared.qt import (
     QVBoxLayout,
     QWidget,
 )
-from src.ui.features.validation.sources import SOURCE_SCOPE_OPTIONS
+from src.ui.features.validation.sources import (
+    IMAGE_SOURCE_OPTIONS,
+    SOURCE_SCOPE_OPTIONS,
+    VIDEO_SOURCE_OPTIONS,
+)
 from src.ui.features.validation.video_player import VideoPlaybackController, VideoPlayer
 
 
@@ -113,12 +117,18 @@ def build_validation_layout(page, app) -> None:
     initial_source_text = (
         relative_path_from_project(validation["source_path"], page.project_root())
         if validation["source_path"]
-        else validation.get("source_scope", "全部图片")
+        else validation.get(
+            "source_selection",
+            validation.get("source_scope", "全部图片"),
+        )
+    )
+    initial_source_options = (
+        VIDEO_SOURCE_OPTIONS if stored_mode == "视频检测" else IMAGE_SOURCE_OPTIONS
     )
     page.source_box, page.source_combo = page.stacked_combo_field(
         "输入源",
         initial_source_text,
-        SOURCE_SCOPE_OPTIONS,
+        initial_source_options,
         browse=lambda combo: page.choose_detection_source(combo),
         placeholder="选择输入文件夹",
     )
@@ -257,16 +267,41 @@ def build_validation_layout(page, app) -> None:
     toolbar.addWidget(page.video_progress_widget, 1)
     right.addWidget(page.toolbar_widget)
     page.views_widget = QWidget()
+    page.views_widget.setMinimumWidth(0)
+    page.views_widget.setSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Expanding,
+    )
     views = QHBoxLayout(page.views_widget)
     views.setContentsMargins(0, 0, 0, 0)
-    source_panel = Card("源")
+    source_panel = Card()
+    source_panel.setMinimumWidth(0)
+    source_panel.setSizePolicy(
+        QSizePolicy.Policy.Ignored,
+        QSizePolicy.Policy.Expanding,
+    )
     page.source_view = ImageView("源图")
+    page.source_view.setMinimumWidth(0)
+    page.source_view.setSizePolicy(
+        QSizePolicy.Policy.Ignored,
+        QSizePolicy.Policy.Expanding,
+    )
     source_panel.layout.addWidget(page.source_view, 1)
     page.source_video_player = VideoPlayer("源视频")
     source_panel.layout.addWidget(page.source_video_player, 1)
     page.source_video_player.hide()
-    result_panel = Card("检测结果")
+    result_panel = Card()
+    result_panel.setMinimumWidth(0)
+    result_panel.setSizePolicy(
+        QSizePolicy.Policy.Ignored,
+        QSizePolicy.Policy.Expanding,
+    )
     page.result_view = ImageView("检测结果图")
+    page.result_view.setMinimumWidth(0)
+    page.result_view.setSizePolicy(
+        QSizePolicy.Policy.Ignored,
+        QSizePolicy.Policy.Expanding,
+    )
     result_panel.layout.addWidget(page.result_view, 1)
     page.result_video_player = VideoPlayer("检测后视频")
     result_panel.layout.addWidget(page.result_video_player, 1)
@@ -275,6 +310,12 @@ def build_validation_layout(page, app) -> None:
         page.source_video_player,
         page.result_video_player,
         page.video_progress,
+    )
+    page.source_video_player.player.playbackStateChanged.connect(
+        page.handle_video_playback_state
+    )
+    page.source_video_player.player.mediaStatusChanged.connect(
+        page.handle_video_media_status
     )
     page.source_panel = source_panel
     page.result_panel = result_panel

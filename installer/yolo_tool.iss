@@ -1,5 +1,5 @@
 #define MyAppName "YOLOTool"
-#define MyAppVersion "1.2.4"
+#define MyAppVersion "1.2.5"
 #define MyAppPublisher "Takobox"
 #define MyAppExeName "YOLOTool.exe"
 #define MyAppIdEscaped "{{AFD7B4C3-5B11-4F8D-8BA1-64D96FD3C4A1}"

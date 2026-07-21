@@ -12,6 +12,7 @@ SECTIONS = [
     ROOT / "installer",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".ps1", ".toml", ".json", ".iss", ".spec", ".txt", ".pyw"}
+IGNORED_DIR_NAMES = {"__pycache__", ".pixi", ".pytest_cache", "dist", "build"}
 
 
 @dataclass(slots=True)
@@ -30,11 +31,17 @@ def _count_lines(path: Path) -> int:
     return len(path.read_text(encoding="utf-8").splitlines())
 
 
+def _is_ignored_path(path: Path) -> bool:
+    return path.resolve() == OUTPUT.resolve() or any(
+        part in IGNORED_DIR_NAMES for part in path.parts
+    )
+
+
 def _collect_rows(base: Path) -> list[InventoryRow]:
     return [
         InventoryRow(path=path, lines=_count_lines(path))
         for path in sorted(base.rglob("*"))
-        if path.is_file() and "__pycache__" not in path.parts
+        if path.is_file() and not _is_ignored_path(path)
     ]
 
 
@@ -82,7 +89,11 @@ def _describe(path: Path) -> str:
 def _summary_rows() -> list[str]:
     rows: list[str] = []
     for base in SECTIONS:
-        files = [path for path in base.rglob("*") if path.is_file() and "__pycache__" not in path.parts]
+        files = [
+            path
+            for path in base.rglob("*")
+            if path.is_file() and not _is_ignored_path(path)
+        ]
         text_lines = sum(_count_lines(path) for path in files)
         rel = base.relative_to(ROOT).as_posix()
         if rel == "src":

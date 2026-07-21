@@ -12,7 +12,10 @@ from src.shared.qt import QMessageBox, Qt
 from src.ui.features.validation.helpers import dataset_yaml_root, validation_val_override
 from src.ui.features.validation.models import build_validation_model_choices
 from src.ui.features.validation.sources import (
+    CUSTOM_SOURCE_OPTIONS,
+    IMAGE_SOURCE_OPTIONS,
     SOURCE_SCOPE_OPTIONS,
+    VIDEO_SOURCE_OPTIONS,
     collect_validation_source_items,
     dataset_split_image_dir,
     folder_source_path_for_selection,
@@ -21,6 +24,8 @@ from src.ui.features.validation.sources import (
 
 
 def update_source_mode(page, value):
+    page.detection_started_for_source = False
+    page.clear_validation_previews()
     layouts = [
         getattr(page, name, None)
         for name in (
@@ -73,25 +78,35 @@ def update_source_mode(page, value):
             page.counter.setText("验证模式")
         elif not page.detect_results:
             page.counter.setText("0/0")
+        validation = page.app.settings.get("validation", {})
+        source_path = validation.get("source_path", "")
+        source_selection = validation.get("source_selection", "")
         if image_folder_mode:
-            source_path = page.app.settings.get("validation", {}).get("source_path", "")
+            current_source = source_selection
+            if current_source not in IMAGE_SOURCE_OPTIONS:
+                current_source = (
+                    relative_path_from_project(source_path, page.project_root())
+                    if source_path
+                    else validation.get("source_scope", "全部图片")
+                )
             page._configure_source_combo(
-                SOURCE_SCOPE_OPTIONS,
+                IMAGE_SOURCE_OPTIONS,
                 relative_path_from_project(source_path, page.project_root())
                 if source_path
-                else page.app.settings.get("validation", {}).get(
-                    "source_scope", "全部图片"
-                ),
-                "可选：选择自定义图片文件夹；也可直接选择固定来源",
+                else current_source,
+                "选择图片文件夹或图片文件",
             )
         elif video_folder_mode:
             page._configure_source_combo(
-                [],
-                relative_path_from_project(
-                    page.app.settings.get("validation", {}).get("source_path", ""),
-                    page.project_root(),
+                VIDEO_SOURCE_OPTIONS,
+                relative_path_from_project(source_path, page.project_root())
+                if source_path
+                else (
+                    source_selection
+                    if source_selection in VIDEO_SOURCE_OPTIONS
+                    else "批量视频"
                 ),
-                "选择视频文件夹",
+                "选择视频文件夹或视频文件",
             )
         page.update_detection_button_text()
         page.refresh_source_items()
@@ -143,12 +158,20 @@ def refresh_source_items(page):
         source_text=page.source_combo.currentText(),
         paths_settings=page.app.settings["paths"],
         resolve_text=page.resolve_combo_path_text,
+        selected_source_path=page.app.settings.get("validation", {}).get(
+            "source_path", ""
+        ),
     )
     if not page.source_items:
         page.source_index = -1
         return
     if page.source_index < 0 or page.source_index >= len(page.source_items):
         page.source_index = 0
+    if (
+        page.mode_combo.currentText() == "图片检测"
+        and not page.detection_started_for_source
+    ):
+        page.show_source_preview(page.source_items[page.source_index])
 
 
 def dataset_split_dir(page, split: str) -> Path:
@@ -164,6 +187,7 @@ def folder_source_path_for_page(page) -> str:
         page.source_combo.currentText(),
         page.app.settings["paths"],
         page.resolve_combo_path_text,
+        page.app.settings.get("validation", {}).get("source_path", ""),
     )
 
 
@@ -237,13 +261,19 @@ def persist_validation_value(page, key: str, value):
 
 def handle_source_input_changed(page):
     text = page.source_combo.currentText().strip()
-    if page.mode_combo.currentText() == "图片检测":
-        if text in SOURCE_SCOPE_OPTIONS:
+    page.detection_started_for_source = False
+    page.source_index = -1
+    page.clear_validation_previews()
+    if text in SOURCE_SCOPE_OPTIONS:
+        if page.mode_combo.currentText() == "图片检测":
             page._persist_validation_value("source_scope", text)
-            page._persist_validation_value("source_path", "")
-        else:
-            page._persist_validation_value("source_path", page.resolve_combo_path_text(text))
+        page._persist_validation_value("source_selection", "")
+        page._persist_validation_value("source_path", "")
+    elif text in CUSTOM_SOURCE_OPTIONS:
+        page._persist_validation_value("source_selection", text)
+        page._persist_validation_value("source_path", "")
     else:
+        page._persist_validation_value("source_selection", "")
         page._persist_validation_value("source_path", page.resolve_combo_path_text(text))
     page.refresh_source_items()
     update_video_mode_controls(page)

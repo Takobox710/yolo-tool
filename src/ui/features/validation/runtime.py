@@ -66,6 +66,7 @@ def start_detection(page):
             "请先选择有效的输入源，或确认所选来源下存在图片/视频。",
         )
         return
+    page.detection_started_for_source = True
     page.is_detecting = True
     page.start_det_btn.setEnabled(False)
     page.stop_det_btn.setEnabled(True)
@@ -134,6 +135,7 @@ def start_single_detection(page, path: Path):
         page.show_detection_payload(cached)
         return
     page.is_detecting = True
+    page.detection_started_for_source = True
     page.is_batch_detection = False
     page.start_det_btn.setEnabled(False)
     page.stop_det_btn.setEnabled(True)

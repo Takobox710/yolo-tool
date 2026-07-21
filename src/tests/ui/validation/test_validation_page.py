@@ -349,8 +349,65 @@ def test_validation_page_uses_dataset_scope_combo_for_folder_mode(tmp_path):
     assert page.open_val_save_btn.isHidden()
     assert (
         page.source_combo.lineEdit().placeholderText()
-        == "可选：选择自定义图片文件夹；也可直接选择固定来源"
+        == "选择图片文件夹或图片文件"
     )
+
+
+def test_validation_page_source_options_choose_single_media_files(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    image = tmp_path / "single.jpg"
+    video = tmp_path / "single.mp4"
+    image.write_bytes(b"image")
+    video.write_bytes(b"video")
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+    page = ValidatePage(fake_app)
+
+    assert [
+        page.source_combo.itemText(index)
+        for index in range(page.source_combo.count())
+    ][-1:] == ["单张图片"]
+
+    monkeypatch.setattr(
+        "src.ui.features.validation.page_actions.QFileDialog.getOpenFileName",
+        lambda *_args: (str(image), ""),
+    )
+    page.source_combo.setCurrentText("单张图片")
+    page.choose_detection_source(page.source_combo)
+
+    assert settings["validation"]["source_selection"] == "单张图片"
+    assert Path(settings["validation"]["source_path"]) == image.resolve()
+    assert page.source_items == [image.resolve()]
+
+    page.mode_combo.setCurrentText("视频检测")
+    assert [
+        page.source_combo.itemText(index)
+        for index in range(page.source_combo.count())
+    ] == ["批量视频", "单个视频"]
+    monkeypatch.setattr(
+        "src.ui.features.validation.page_actions.QFileDialog.getOpenFileName",
+        lambda *_args: (str(video), ""),
+    )
+    page.source_combo.setCurrentText("单个视频")
+    page.choose_detection_source(page.source_combo)
+
+    assert settings["validation"]["source_selection"] == "单个视频"
+    assert Path(settings["validation"]["source_path"]) == video.resolve()
+    assert page.source_items == [video.resolve()]
+    page.close()
 
 
 def test_validation_page_displays_custom_source_as_relative_path(monkeypatch, tmp_path):
@@ -373,12 +430,11 @@ def test_validation_page_displays_custom_source_as_relative_path(monkeypatch, tm
         training_handle=None,
         validation_handle=None,
     )
+    page = ValidatePage(fake_app)
     monkeypatch.setattr(
         "src.ui.features.validation.page_actions.QFileDialog.getExistingDirectory",
         lambda *_args: str(custom_source),
     )
-
-    page = ValidatePage(fake_app)
     expected_display = os.path.relpath(
         str(custom_source.resolve()), str(tmp_path.resolve())
     )
@@ -396,7 +452,7 @@ def test_validation_page_uses_video_controls_for_video_input(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from src.services.settings import build_default_settings
-    from src.shared.qt import QApplication
+    from src.shared.qt import QApplication, QMediaPlayer
     from src.ui.features.validation.page import ValidatePage
 
     app = QApplication.instance() or QApplication([])
@@ -442,6 +498,13 @@ def test_validation_page_uses_video_controls_for_video_input(tmp_path):
     first_video_path = page.source_items[0]
     second_video_path = page.source_items[1]
     assert page.current_video_source_path == first_video_path.resolve()
+    page.video_play_btn.blockSignals(True)
+    page.video_play_btn.setChecked(True)
+    page.video_play_btn.blockSignals(False)
+    page.handle_video_media_status(QMediaPlayer.MediaStatus.EndOfMedia)
+    assert not page.video_play_btn.isChecked()
+    assert page.video_play_btn.toolTip() == "播放视频"
+    assert page.video_progress.value() == page.video_progress.maximum()
     page.mode_combo.setCurrentText("图片检测")
     assert page.updatesEnabled()
     assert page.validation_layout.isEnabled()
@@ -489,6 +552,153 @@ def test_validation_page_uses_video_controls_for_video_input(tmp_path):
         == second_result_path.resolve()
     )
     assert "视频检测进度：42%（420/1000帧） | 上一秒：36帧" in page.detect_log.toPlainText()
+    page.close()
+
+
+def test_validation_page_image_previews_ignore_pixmap_width_for_layout(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, QSizePolicy
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+    page = ValidatePage(fake_app)
+    page.resize(1200, 900)
+    page.show()
+    app.processEvents()
+
+    assert page.source_view.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+    assert page.result_view.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+    assert page.source_panel.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+    assert page.result_panel.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+
+    source_width = page.source_panel.width()
+    result_width = page.result_panel.width()
+    assert abs(source_width - result_width) <= 1
+    page.close()
+
+
+def test_validation_page_previews_sources_before_detection(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    source_folder = tmp_path / "inputs"
+    source_folder.mkdir()
+    first = source_folder / "1.jpg"
+    second = source_folder / "2.jpg"
+    Image.new("RGB", (320, 180), "red").save(first)
+    Image.new("RGB", (180, 320), "blue").save(second)
+    settings["validation"]["source_path"] = str(source_folder)
+    settings["validation"]["source_selection"] = ""
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+
+    assert not page.detection_started_for_source
+    assert page.source_items == [first.resolve(), second.resolve()]
+    assert page.source_view._pixmap.size().width() == 320
+    assert page.source_view._pixmap.size().height() == 180
+
+    page.first_result()
+    assert page.source_index == 0
+    page.next_result()
+    assert page.source_index == 1
+    page.last_result()
+    assert page.source_index == 1
+    page.prev_result()
+    assert page.source_index == 0
+
+    page.source_index = 1
+    assert page.show_cached_source_result(second)
+    assert page.source_view._pixmap.size().width() == 180
+    assert page.source_view._pixmap.size().height() == 320
+
+    page.detection_started_for_source = True
+    page.source_index = 0
+    assert not page.show_cached_source_result(second)
+    assert page.source_view._pixmap.size().width() == 180
+
+    page.detection_started_for_source = False
+    page.mode_combo.setCurrentText("视频检测")
+    assert page.source_view._pixmap is None
+    assert page.result_view._pixmap is None
+    assert page.source_video_player.path is None
+    assert page.result_video_player.path is None
+    page.close()
+
+
+def test_validation_page_accepts_dropped_media_and_selects_single_source(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    image = tmp_path / "drop-image.jpg"
+    image.write_bytes(b"image")
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    class _MimeData:
+        def hasUrls(self):
+            return True
+
+        def urls(self):
+            return [SimpleNamespace(toLocalFile=lambda: str(image))]
+
+    class _DropEvent:
+        def __init__(self):
+            self.accepted = False
+
+        def mimeData(self):
+            return _MimeData()
+
+        def acceptProposedAction(self):
+            self.accepted = True
+
+        def ignore(self):
+            self.accepted = False
+
+    page = ValidatePage(fake_app)
+    event = _DropEvent()
+    page.dropEvent(event)
+
+    assert event.accepted
+    assert page.mode_combo.currentText() == "图片检测"
+    assert page.source_combo.currentText() == os.path.relpath(str(image), str(tmp_path))
+    assert page.source_items == [image.resolve()]
+    assert settings["validation"]["source_mode"] == "图片检测"
+    assert Path(settings["validation"]["source_path"]) == image.resolve()
     page.close()
 
 
