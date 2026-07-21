@@ -14,6 +14,8 @@ from src.services.validation import DetectionItem
 
 class DetectionWorker(QThread):
     progress = Signal(str)
+    video_progress = Signal(object)
+    video_completed = Signal(object)
     result_payload = Signal(object)
     finished_with_results = Signal(object)
     failed = Signal(str)
@@ -82,6 +84,10 @@ class DetectionWorker(QThread):
                     kind = str(payload.get("event") or "")
                     if kind == "progress":
                         self.progress.emit(str(payload.get("message") or ""))
+                    elif kind == "video_progress":
+                        self.video_progress.emit(dict(payload.get("payload") or {}))
+                    elif kind == "video_completed":
+                        self.video_completed.emit(dict(payload.get("payload") or {}))
                     elif kind == "result":
                         self.result_payload.emit(
                             self._deserialize_result_payload(

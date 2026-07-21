@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.services.data_ops import resolve_project_path, simplified_model_path
+from src.services.data_ops import (
+    relative_path_from_project,
+    resolve_project_path,
+    simplified_model_path,
+)
 from src.services.validation import is_live_source_mode
-from src.shared.qt import QMessageBox
+from src.shared.qt import QMessageBox, Qt
 from src.ui.features.validation.helpers import dataset_yaml_root, validation_val_override
 from src.ui.features.validation.models import build_validation_model_choices
 from src.ui.features.validation.sources import (
@@ -17,43 +21,119 @@ from src.ui.features.validation.sources import (
 
 
 def update_source_mode(page, value):
-    camera = value == "摄像头"
-    single_file_mode = value == "图片/视频"
-    dataset_source_mode = value == "图片/视频文件夹"
-    val_mode = page.is_val_mode(value)
-    page.source_box.setVisible(single_file_mode or dataset_source_mode)
-    page.data_box.setVisible(val_mode)
-    page.source_scope_box.setVisible(val_mode)
-    page.camera_box.setVisible(camera)
-    page.save_box.setVisible(True)
-    page.open_val_save_btn.setVisible(val_mode)
-    page.set_result_navigation_enabled((not camera) and (not val_mode))
-    page.detect_log.setVisible(not val_mode)
-    page.toolbar_widget.setVisible(not val_mode)
-    page.views_widget.setVisible(not val_mode)
-    page.table_panel.setVisible(not val_mode)
-    page.val_log_panel.setVisible(val_mode)
-    if camera:
-        page.counter.setText("实时预览")
-    elif val_mode:
-        page.counter.setText("验证模式")
-    elif not page.detect_results:
-        page.counter.setText("0/0")
-    if dataset_source_mode:
-        page._configure_source_combo(
-            SOURCE_SCOPE_OPTIONS,
-            page.app.settings.get("validation", {}).get("source_path")
-            or page.app.settings.get("validation", {}).get("source_scope", "全部图片"),
-            "可选：选择自定义图片文件夹；也可直接选择固定来源",
+    layouts = [
+        getattr(page, name, None)
+        for name in (
+            "validation_layout",
+            "validation_split_layout",
+            "left_column_layout",
+            "validation_right_layout",
+            "validation_views_layout",
         )
-    elif single_file_mode:
-        page._configure_source_combo(
-            [],
-            page.app.settings.get("validation", {}).get("source_path", ""),
-            "选择图片或视频",
+    ]
+    layouts.extend(
+        panel.layout
+        for panel in (
+            getattr(page, "source_panel", None),
+            getattr(page, "result_panel", None),
         )
-    page.update_detection_button_text()
-    page.refresh_source_items()
+        if panel is not None
+    )
+    layouts = [layout for layout in layouts if layout is not None]
+    page.setUpdatesEnabled(False)
+    for layout in layouts:
+        layout.setEnabled(False)
+    try:
+        camera = value == "摄像头"
+        image_folder_mode = value == "图片检测"
+        video_folder_mode = value == "视频检测"
+        folder_source_mode = image_folder_mode or video_folder_mode
+        val_mode = page.is_val_mode(value)
+        page.source_box.setVisible(folder_source_mode)
+        page.data_box.setVisible(val_mode)
+        page.source_scope_box.setVisible(val_mode)
+        page.camera_box.setVisible(camera)
+        page.save_box.setVisible(True)
+        page.open_val_save_btn.setVisible(val_mode)
+        page.set_result_navigation_enabled((not camera) and (not val_mode))
+        page.detect_log.setVisible(not val_mode)
+        log_index = page.left_column_layout.indexOf(page.detect_log)
+        if log_index >= 0:
+            page.left_column_layout.setStretch(log_index, 0 if val_mode else 1)
+        page.left_column_layout.setAlignment(
+            Qt.AlignmentFlag.AlignTop if val_mode else Qt.AlignmentFlag(0)
+        )
+        page.toolbar_widget.setVisible(not val_mode)
+        page.views_widget.setVisible(not val_mode)
+        page.table_panel.setVisible(not val_mode)
+        page.val_log_panel.setVisible(val_mode)
+        if camera:
+            page.counter.setText("实时预览")
+        elif val_mode:
+            page.counter.setText("验证模式")
+        elif not page.detect_results:
+            page.counter.setText("0/0")
+        if image_folder_mode:
+            source_path = page.app.settings.get("validation", {}).get("source_path", "")
+            page._configure_source_combo(
+                SOURCE_SCOPE_OPTIONS,
+                relative_path_from_project(source_path, page.project_root())
+                if source_path
+                else page.app.settings.get("validation", {}).get(
+                    "source_scope", "全部图片"
+                ),
+                "可选：选择自定义图片文件夹；也可直接选择固定来源",
+            )
+        elif video_folder_mode:
+            page._configure_source_combo(
+                [],
+                relative_path_from_project(
+                    page.app.settings.get("validation", {}).get("source_path", ""),
+                    page.project_root(),
+                ),
+                "选择视频文件夹",
+            )
+        page.update_detection_button_text()
+        page.refresh_source_items()
+        update_video_mode_controls(page)
+    finally:
+        for layout in reversed(layouts):
+            layout.setEnabled(True)
+        for layout in layouts:
+            layout.activate()
+        page.setUpdatesEnabled(True)
+        page.updateGeometry()
+        page.update()
+
+
+def is_video_detection_mode(page) -> bool:
+    mode = page.mode_combo.currentText()
+    return mode == "视频检测"
+
+
+def update_video_mode_controls(page) -> None:
+    video_mode = is_video_detection_mode(page)
+    normal_mode = not page.is_val_mode() and not is_live_source_mode(
+        page.mode_combo.currentText()
+    )
+    page.result_nav_widget.setVisible(normal_mode and not video_mode)
+    page.video_progress_widget.setVisible(normal_mode and video_mode)
+    page.start_det_btn.setVisible(normal_mode)
+    page.stop_det_btn.setVisible(normal_mode)
+    page.video_play_btn.setVisible(video_mode)
+    page.video_prev_btn.setVisible(video_mode)
+    page.video_next_btn.setVisible(video_mode)
+    page.source_view.setVisible(not video_mode)
+    page.result_view.setVisible(not video_mode)
+    page.source_video_player.setVisible(video_mode)
+    page.result_video_player.setVisible(video_mode)
+    if not video_mode:
+        page.video_play_btn.blockSignals(True)
+        page.video_play_btn.setChecked(False)
+        page.video_play_btn.blockSignals(False)
+        page.stop_video_playback()
+    elif page.source_items:
+        page.load_video_source(page.source_items[page.source_index])
 
 
 def refresh_source_items(page):
@@ -157,7 +237,7 @@ def persist_validation_value(page, key: str, value):
 
 def handle_source_input_changed(page):
     text = page.source_combo.currentText().strip()
-    if page.mode_combo.currentText() == "图片/视频文件夹":
+    if page.mode_combo.currentText() == "图片检测":
         if text in SOURCE_SCOPE_OPTIONS:
             page._persist_validation_value("source_scope", text)
             page._persist_validation_value("source_path", "")
@@ -166,6 +246,7 @@ def handle_source_input_changed(page):
     else:
         page._persist_validation_value("source_path", page.resolve_combo_path_text(text))
     page.refresh_source_items()
+    update_video_mode_controls(page)
 
 
 def handle_data_path_changed(page):
@@ -234,7 +315,7 @@ def config(page):
         "model_path": model_path,
         "source_mode": page.mode_combo.currentText(),
         "source_path": page._folder_source_path_for_selection()
-        if page.mode_combo.currentText() == "图片/视频文件夹"
+        if page.mode_combo.currentText() in {"图片检测", "视频检测"}
         else page.resolve_combo_path_text(page.source_combo.currentText()),
         "data": page.resolve_path_text(page.data_edit),
         "source_scope": page.source_scope_combo.currentText(),
@@ -302,5 +383,21 @@ def append_active_log(page, text: str):
         page.val_log.append(text)
         return
     page.detect_log.append(text)
+
+
+def handle_video_progress(page, payload: dict):
+    percent = max(0, min(100, int(payload.get("percent") or 0)))
+    frame = int(payload.get("frame") or 0)
+    total_frames = int(payload.get("total_frames") or 0)
+    frames_last_second = int(payload.get("frames_last_second") or 0)
+    if total_frames:
+        message = (
+            f"视频检测进度：{percent}%（{frame}/{total_frames}帧） | "
+            f"上一秒：{frames_last_second}帧"
+        )
+    else:
+        message = f"视频检测进度：{percent}% | 上一秒：{frames_last_second}帧"
+    page.append_active_log(message)
+    page.set_status_text(message)
 
 

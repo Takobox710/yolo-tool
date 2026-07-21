@@ -39,6 +39,9 @@ def _load_display_images(payload: dict) -> tuple[Image.Image, Image.Image]:
 
 
 def handle_detection_result(page, payload: dict) -> None:
+    if payload.get("video_mode"):
+        page.show_detection_payload(payload)
+        return
     if is_live_source_mode(page.mode_combo.currentText()):
         page.detect_index = 0
         page.show_detection_payload(payload)
@@ -71,6 +74,9 @@ def handle_detection_result(page, payload: dict) -> None:
 
 
 def show_detection_payload(page, payload: dict) -> None:
+    if payload.get("video_mode"):
+        show_video_payload(page, payload)
+        return
     source_image, result_image = _load_display_images(payload)
     page.source_view.set_pil_image(source_image)
     page.result_view.set_pil_image(result_image)
@@ -92,7 +98,35 @@ def show_detection_payload(page, payload: dict) -> None:
             len(page.detect_results),
         )
     )
-    page.append_active_log(build_detection_log_message(payload))
+    if not payload.get("video_mode"):
+        page.append_active_log(build_detection_log_message(payload))
+
+
+def show_video_payload(page, payload: dict) -> None:
+    source_path = payload.get("source_path")
+    if source_path and str(Path(source_path).resolve()) != str(page.current_video_source_path):
+        return
+    result_path = payload.get("result_path")
+    if (
+        result_path
+        and source_path
+        and str(Path(source_path).resolve())
+        == str(page.current_video_source_path)
+    ):
+        page.current_video_result_path = Path(result_path).resolve()
+    items = payload.get("items") or []
+    page.table.setRowCount(len(items))
+    for row, item in enumerate(items):
+        values = [
+            item.label,
+            f"{item.confidence:.3f}",
+            f"({item.center_x:.1f}, {item.center_y:.1f})",
+            f"{item.width:.1f}×{item.height:.1f}",
+            f"{item.angle:.1f}",
+        ]
+        for column, value in enumerate(values):
+            page.table.setItem(row, column, QTableWidgetItem(str(value)))
+    page.counter.setText("视频播放")
 
 
 def show_cached_source_result(page, path: Path) -> bool:

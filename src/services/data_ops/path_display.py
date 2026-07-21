@@ -31,6 +31,17 @@ def display_project_path(path_str: str, project_root: str | Path = ROOT) -> str:
     return str(resolved)
 
 
+def relative_path_from_project(path_str: str, project_root: str | Path = ROOT) -> str:
+    if not path_str:
+        return ""
+    root = Path(project_root).expanduser().resolve()
+    resolved = Path(resolve_project_path(path_str, root))
+    try:
+        return os.path.relpath(str(resolved), str(root))
+    except ValueError:
+        return str(resolved)
+
+
 def relative_project_path(path_str: str, project_root: str | Path = ROOT) -> str:
     return display_project_path(path_str, project_root)
 

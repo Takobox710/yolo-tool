@@ -52,7 +52,5 @@ def collect_validation_source_items(
         paths_settings,
         resolve_text,
     )
-    if mode == "图片/视频":
-        source_path = resolve_text(source_text)
     return collect_prediction_sources(mode, source_path)
 

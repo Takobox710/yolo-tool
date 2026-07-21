@@ -5,7 +5,12 @@ from typing import Any
 
 import yaml
 
-from src.services.validation.model_catalog import SOURCE_SUFFIXES, natural_sort_key
+from src.services.validation.model_catalog import (
+    IMAGE_SUFFIXES,
+    SOURCE_SUFFIXES,
+    VIDEO_SUFFIXES,
+    natural_sort_key,
+)
 
 
 def collect_dataset_prediction_sources(
@@ -62,13 +67,25 @@ def collect_prediction_sources(
 ) -> list[Path]:
     source_text = str(source_path or "").strip()
     source = Path(source_text) if source_text else None
-    if source_mode in {"图片文件夹", "图片/视频文件夹"}:
+    if source_mode in {
+        "图片检测",
+        "视频检测",
+        "图片文件夹",
+        "视频文件夹",
+        "图片/视频文件夹",
+    }:
+        if source_mode in {"图片检测", "图片文件夹"}:
+            suffixes = IMAGE_SUFFIXES
+        elif source_mode in {"视频检测", "视频文件夹"}:
+            suffixes = VIDEO_SUFFIXES
+        else:
+            suffixes = SOURCE_SUFFIXES
         if source is not None and source.exists() and source.is_dir():
             return sorted(
                 (
                     path
                     for path in source.iterdir()
-                    if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES
+                    if path.is_file() and path.suffix.lower() in suffixes
                 ),
                 key=natural_sort_key,
             )

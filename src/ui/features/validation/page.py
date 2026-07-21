@@ -25,6 +25,9 @@ class ValidatePage(ValidationPageActionsMixin, BasePage):
         self.source_items: list[Path] = []
         self.source_index = -1
         self.result_by_source: dict[str, dict] = {}
+        self.video_result_by_source: dict[str, Path] = {}
+        self.current_video_source_path: Path | None = None
+        self.current_video_result_path: Path | None = None
         self.user_selected_result = False
         self.result_nav_buttons: list[QPushButton] = []
         self.log_queue: Queue | None = None

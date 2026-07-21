@@ -157,7 +157,6 @@ def run_predict_cli(argv: list[str]) -> int:
         collect_prediction_sources,
         extract_detection_items,
         release_inference_runtime,
-        render_result_image_from_frame,
         save_detection_label_file,
     )
     from src.services.ultralytics_compat import ensure_cv2_highgui_compat
@@ -166,11 +165,11 @@ def run_predict_cli(argv: list[str]) -> int:
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
-    mode = config.get("source_mode", "图片文件夹")
+    mode = config.get("source_mode", "图片检测")
     model_path = str(config.get("model_path") or "").strip()
     if not model_path:
         raise SystemExit("请选择一个用于检测的模型。")
-    if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
+    if mode in {"图片检测", "视频检测", "图片文件夹", "视频文件夹", "图片/视频文件夹", "图片/视频"}:
         paths = collect_prediction_sources(
             mode,
             config.get("source_path", ""),
@@ -186,7 +185,10 @@ def run_predict_cli(argv: list[str]) -> int:
 
     _emit_structured("progress", message=f"正在加载模型：{Path(model_path).name}")
     model = YOLO(model_path)
-    save_dir = build_save_dir(Path(config.get("save_dir", "result/gui_predict")))
+    save_dir = build_save_dir(
+        Path(config.get("save_dir", "result/gui_predict")),
+        create_labels=any(path.suffix.lower() in IMAGE_SUFFIXES for path in paths),
+    )
     _emit_structured("progress", message=f"检测结果将保存到：{save_dir}")
 
     live_preview_dir = save_dir / "_live_preview"
@@ -254,8 +256,15 @@ def run_predict_cli(argv: list[str]) -> int:
             raise SystemExit(f"无法打开检测源：{source_name or video_source}")
         frame_index = 0
         stream_mode = isinstance(video_source, int)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        video_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
         source_frame_path = live_preview_dir / "source.jpg"
         result_frame_path = live_preview_dir / "result.jpg"
+        writer = None
+        result_path = None
+        last_report_time = time.perf_counter()
+        last_report_frame = 0
+        last_payload = None
         try:
             while cap.isOpened():
                 ok, frame = cap.read()
@@ -271,31 +280,93 @@ def run_predict_cli(argv: list[str]) -> int:
                     verbose=False,
                 )[0]
                 elapsed = time.perf_counter() - start
-                result_image = render_result_image_from_frame(result, frame)
-                cv2.imwrite(str(source_frame_path), frame)
-                result_image.save(result_frame_path)
+                plotted = result.plot(img=frame.copy())
+                if not stream_mode:
+                    if writer is None:
+                        result_path = save_dir / f"{Path(source_name).stem}_result.mp4"
+                        height, width = plotted.shape[:2]
+                        writer = cv2.VideoWriter(
+                            str(result_path),
+                            cv2.VideoWriter_fourcc(*"mp4v"),
+                            video_fps if video_fps > 0 else 25.0,
+                            (width, height),
+                        )
+                        if not writer.isOpened():
+                            raise SystemExit(f"无法创建视频结果文件：{result_path}")
+                    writer.write(plotted)
                 display_name = (
                     f"{source_name} #{frame_index}"
                     if source_name
                     else (f"摄像头 #{frame_index}" if stream_mode else f"frame {frame_index}")
                 )
-                emit_result(
-                    source_name=display_name,
-                    source_path=str(video_source),
-                    display_source_path=str(source_frame_path),
-                    result_path=str(result_frame_path),
-                    items=serialize_items(extract_detection_items(result)),
-                    status=display_name,
-                    elapsed=elapsed,
-                    fps=(1 / elapsed) if elapsed else 0.0,
-                    stream_mode=stream_mode,
-                    cacheable=False,
+                cv2.imwrite(str(source_frame_path), frame)
+                result_image = Image.fromarray(
+                    cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)
                 )
+                result_image.save(result_frame_path)
+                last_payload = {
+                    "source_name": display_name,
+                    "source_path": str(video_source),
+                    "display_source_path": str(source_frame_path),
+                    "result_path": str(result_path or result_frame_path),
+                    "items": serialize_items(extract_detection_items(result)),
+                    "status": display_name,
+                    "elapsed": elapsed,
+                    "fps": (1 / elapsed) if elapsed else 0.0,
+                    "stream_mode": stream_mode,
+                    "video_mode": not stream_mode,
+                    "cacheable": False,
+                }
+                now = time.perf_counter()
+                if stream_mode or now - last_report_time >= 1.0:
+                    frames_last_second = frame_index - last_report_frame
+                    percent = (
+                        min(100, int(frame_index * 100 / total_frames))
+                        if total_frames > 0
+                        else 0
+                    )
+                    if not stream_mode:
+                        _emit_structured(
+                            "video_progress",
+                            payload={
+                                "percent": percent,
+                                "frame": frame_index,
+                                "total_frames": total_frames,
+                                "frames_last_second": frames_last_second,
+                                "source_path": str(video_source),
+                            },
+                        )
+                    emit_result(**last_payload)
+                    last_report_time = now
+                    last_report_frame = frame_index
+            if not stream_mode and last_payload is not None:
+                _emit_structured(
+                    "video_progress",
+                    payload={
+                        "percent": 100,
+                        "frame": frame_index,
+                        "total_frames": total_frames,
+                        "frames_last_second": frame_index - last_report_frame,
+                        "source_path": str(video_source),
+                    },
+                )
+                if frame_index != last_report_frame:
+                    emit_result(**last_payload)
         finally:
             cap.release()
+            if writer is not None:
+                writer.release()
+        if not stream_mode and result_path is not None:
+            _emit_structured(
+                "video_completed",
+                payload={
+                    "source_path": str(video_source),
+                    "result_path": str(result_path),
+                },
+            )
 
     try:
-        if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
+        if mode in {"图片检测", "视频检测", "图片文件夹", "视频文件夹", "图片/视频文件夹", "图片/视频"}:
             total = len(paths)
             for index, image_path in enumerate(paths, start=1):
                 if image_path.suffix.lower() in IMAGE_SUFFIXES:

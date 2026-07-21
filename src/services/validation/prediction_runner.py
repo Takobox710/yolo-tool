@@ -46,11 +46,11 @@ def run_prediction(
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
-    mode = config.get("source_mode", "图片文件夹")
+    mode = config.get("source_mode", "图片检测")
     model_path = str(config.get("model_path") or "").strip()
     if not model_path:
         raise ValueError("请选择一个用于检测的模型。")
-    if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
+    if mode in {"图片检测", "视频检测", "图片文件夹", "视频文件夹", "图片/视频文件夹", "图片/视频"}:
         paths = collect_prediction_sources(
             mode,
             config.get("source_path", ""),
@@ -142,7 +142,7 @@ def run_prediction(
             cap.release()
 
     try:
-        if mode in {"图片文件夹", "图片/视频文件夹", "图片/视频"}:
+        if mode in {"图片检测", "视频检测", "图片文件夹", "视频文件夹", "图片/视频文件夹", "图片/视频"}:
             total = len(paths)
             for index, image_path in enumerate(paths, start=1):
                 if stop_event.is_set():

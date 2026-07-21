@@ -64,7 +64,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
         },
         "validation": {
             "model_path": "",
-            "source_mode": "图片/视频文件夹",
+            "source_mode": "图片检测",
             "source_path": "",
             "data": str(data_root / "data.yaml"),
             "source_scope": "全部图片",

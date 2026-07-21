@@ -256,6 +256,66 @@ def test_validation_page_supports_dataset_val_mode(tmp_path):
     assert page.save_edit.text() == str(Path("result") / "gui_val")
 
 
+def test_validation_page_compacts_left_panel_for_dataset_val_mode(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, Qt
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.resize(1200, 900)
+    page.mode_combo.setCurrentText("数据集验证")
+    page.show()
+    app.processEvents()
+
+    assert page.left_column_layout.alignment() == Qt.AlignmentFlag.AlignTop
+    assert page.model_combo.parentWidget().height() <= 50
+    assert page.data_edit.parentWidget().height() <= 50
+    page.close()
+
+
+def test_validation_page_expands_detection_log_to_left_panel_bottom(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.resize(1200, 900)
+    page.show()
+    app.processEvents()
+
+    assert page.detect_log.height() > page.detect_log.minimumHeight()
+    assert page.detect_log.geometry().bottom() >= (
+        page.detect_log.parentWidget().rect().bottom() - 20
+    )
+    page.close()
+
+
 def test_validation_page_uses_dataset_scope_combo_for_folder_mode(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -279,7 +339,8 @@ def test_validation_page_uses_dataset_scope_combo_for_folder_mode(tmp_path):
     )
 
     page = ValidatePage(fake_app)
-    page.mode_combo.setCurrentText("图片/视频文件夹")
+    assert page.mode_combo.currentText() == "图片检测"
+    page.mode_combo.setCurrentText("图片检测")
 
     assert not page.source_box.isHidden()
     assert page.data_box.isHidden()
@@ -290,6 +351,145 @@ def test_validation_page_uses_dataset_scope_combo_for_folder_mode(tmp_path):
         page.source_combo.lineEdit().placeholderText()
         == "可选：选择自定义图片文件夹；也可直接选择固定来源"
     )
+
+
+def test_validation_page_displays_custom_source_as_relative_path(monkeypatch, tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    custom_source = tmp_path.parent / "custom-source"
+    custom_source.mkdir()
+    settings["validation"]["source_path"] = str(custom_source)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+    monkeypatch.setattr(
+        "src.ui.features.validation.page_actions.QFileDialog.getExistingDirectory",
+        lambda *_args: str(custom_source),
+    )
+
+    page = ValidatePage(fake_app)
+    expected_display = os.path.relpath(
+        str(custom_source.resolve()), str(tmp_path.resolve())
+    )
+    assert page.source_combo.currentText() == expected_display
+
+    page.mode_combo.setCurrentText("图片检测")
+    page.choose_detection_source(page.source_combo)
+
+    assert page.source_combo.currentText() == expected_display
+    assert Path(page._folder_source_path_for_selection()) == custom_source.resolve()
+    page.close()
+
+
+def test_validation_page_uses_video_controls_for_video_input(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    video_folder = tmp_path / "videos"
+    video_folder.mkdir()
+    video_path = video_folder / "demo.mp4"
+    video_path.write_bytes(b"video")
+    second_video_path = video_folder / "demo-2.mp4"
+    second_video_path.write_bytes(b"video")
+    settings["validation"]["source_mode"] = "视频检测"
+    settings["validation"]["source_path"] = str(video_folder)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.resize(1200, 900)
+    page.show()
+    app.processEvents()
+
+    assert page.mode_combo.currentText() == "视频检测"
+    assert page.result_nav_widget.isHidden()
+    assert not page.video_progress_widget.isHidden()
+    assert not page.video_play_btn.isHidden()
+    assert not page.video_play_btn.isChecked()
+    assert not page.video_list_btn.isHidden()
+    assert not page.video_open_dir_btn.isHidden()
+    assert not page.video_prev_btn.isHidden()
+    assert not page.video_next_btn.isHidden()
+    assert page.video_progress.maximum() == 1000
+    assert not page.source_video_player.isHidden()
+    assert not page.result_video_player.isHidden()
+    assert abs(page.source_panel.width() - page.result_panel.width()) <= 1
+    assert not page.start_det_btn.isHidden()
+    assert not page.stop_det_btn.isHidden()
+    assert page.start_det_btn.text() == "开启检测"
+    first_video_path = page.source_items[0]
+    second_video_path = page.source_items[1]
+    assert page.current_video_source_path == first_video_path.resolve()
+    page.mode_combo.setCurrentText("图片检测")
+    assert page.updatesEnabled()
+    assert page.validation_layout.isEnabled()
+    assert page.validation_split_layout.isEnabled()
+    assert not page.source_view.isHidden()
+    assert page.source_video_player.isHidden()
+    assert page.result_video_player.isHidden()
+    assert page.video_progress_widget.isHidden()
+
+    page.mode_combo.setCurrentText("视频检测")
+    assert page.updatesEnabled()
+    assert page.validation_layout.isEnabled()
+    assert page.validation_split_layout.isEnabled()
+    assert page.source_view.isHidden()
+    assert not page.source_video_player.isHidden()
+    assert not page.result_video_player.isHidden()
+    assert not page.video_progress_widget.isHidden()
+    page.next_video()
+    assert page.source_index == 1
+    assert page.current_video_source_path == second_video_path.resolve()
+    page.previous_video()
+    assert page.source_index == 0
+    assert page.current_video_source_path == first_video_path.resolve()
+    page.handle_video_progress(
+        {
+            "percent": 42,
+            "frame": 420,
+            "total_frames": 1000,
+            "frames_last_second": 36,
+            "source_path": str(second_video_path),
+        }
+    )
+    assert page.video_progress.value() == 0
+    assert page.current_video_source_path == first_video_path.resolve()
+    second_result_path = tmp_path / "second-result.mp4"
+    page.handle_video_completed(
+        {
+            "source_path": str(second_video_path),
+            "result_path": str(second_result_path),
+        }
+    )
+    assert page.current_video_source_path == first_video_path.resolve()
+    assert (
+        page.video_result_by_source[str(second_video_path.resolve())]
+        == second_result_path.resolve()
+    )
+    assert "视频检测进度：42%（420/1000帧） | 上一秒：36帧" in page.detect_log.toPlainText()
+    page.close()
 
 
 def test_validation_page_uses_project_root_cwd_for_dataset_val(monkeypatch, tmp_path):
@@ -416,7 +616,7 @@ def test_validation_page_folder_mode_uses_batch_worker_not_single_start(tmp_path
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["validation"]["source_mode"] = "图片/视频文件夹"
+    settings["validation"]["source_mode"] = "图片检测"
     model_path = tmp_path / "data" / "models" / "alpha.pt"
     model_path.parent.mkdir(parents=True)
     model_path.write_text("model", encoding="utf-8")
@@ -455,7 +655,7 @@ def test_validation_page_folder_mode_uses_batch_worker_not_single_start(tmp_path
 
     monkeypatch.setattr("src.ui.features.validation.page.DetectionWorker", _FakeWorker)
 
-    page.mode_combo.setCurrentText("图片/视频文件夹")
+    page.mode_combo.setCurrentText("图片检测")
     page.start_detection()
 
     assert called["single"] is False
@@ -496,7 +696,7 @@ def test_validation_result_cache_drops_in_memory_images_for_saved_image_results(
     Image.new("RGB", (10, 10), "black").save(result_path)
     shown = {"count": 0}
     page = SimpleNamespace(
-        mode_combo=SimpleNamespace(currentText=lambda: "图片/视频文件夹"),
+        mode_combo=SimpleNamespace(currentText=lambda: "图片检测"),
         detect_results=[],
         result_by_source={},
         is_batch_detection=True,
@@ -532,7 +732,7 @@ def test_validation_result_without_saved_result_path_is_not_cached(tmp_path):
     source_path.write_bytes(b"video")
     shown = {"count": 0}
     page = SimpleNamespace(
-        mode_combo=SimpleNamespace(currentText=lambda: "图片/视频"),
+        mode_combo=SimpleNamespace(currentText=lambda: "视频检测"),
         detect_results=[],
         result_by_source={},
         is_batch_detection=False,

@@ -16,6 +16,74 @@ def make_image(path: Path, size=(100, 100), color="white"):
     Image.new("RGB", size, color).save(path)
 
 
+def test_video_prediction_writes_mp4_without_frame_labels(monkeypatch, tmp_path):
+    import cv2
+    import numpy as np
+    import types
+
+    from src.train_cli import run_predict_cli
+
+    input_path = tmp_path / "demo.avi"
+    writer = cv2.VideoWriter(
+        str(input_path), cv2.VideoWriter_fourcc(*"MJPG"), 5.0, (16, 12)
+    )
+    for value in (32, 64, 96):
+        writer.write(np.full((12, 16, 3), value, dtype=np.uint8))
+    writer.release()
+
+    class FakeResult:
+        names = {}
+        boxes = None
+        obb = None
+
+        def plot(self, img=None):
+            return img
+
+    class FakeYOLO:
+        def __init__(self, _model_path):
+            pass
+
+        def predict(self, **_kwargs):
+            return [FakeResult()]
+
+    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
+    events = []
+    monkeypatch.setattr(
+        "src.train_cli._emit_structured",
+        lambda event, **payload: events.append((event, payload)),
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "model_path": str(tmp_path / "model.pt"),
+                "source_mode": "视频检测",
+                "source_path": str(input_path.parent),
+                "save_dir": str(tmp_path / "results"),
+                "confidence": 0.25,
+                "iou": 0.45,
+                "imgsz": 32,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    assert run_predict_cli([str(config_path)]) == 0
+
+    result_dirs = list((tmp_path / "results").iterdir())
+    result_video = result_dirs[0] / "demo_result.mp4"
+    assert result_video.exists()
+    assert not (result_dirs[0] / "labels").exists()
+    capture = cv2.VideoCapture(str(result_video))
+    assert capture.isOpened()
+    assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == 3
+    capture.release()
+    completed = [payload for event, payload in events if event == "video_completed"]
+    assert completed
+    assert completed[-1]["payload"]["result_path"] == str(result_video)
+
+
 def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
     from src.services.validation import collect_prediction_sources
 
@@ -28,6 +96,8 @@ def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
     video.write_bytes(b"video")
     ignored.write_text("skip", encoding="utf-8")
 
+    assert collect_prediction_sources("图片检测", folder) == [image]
+    assert collect_prediction_sources("视频检测", folder) == [video]
     assert collect_prediction_sources("图片/视频文件夹", folder) == [image, video]
     assert collect_prediction_sources("图片/视频", image) == [image]
     assert collect_prediction_sources("图片/视频", video) == [video]
@@ -66,25 +136,25 @@ def test_detection_source_collection_supports_dataset_yaml_scopes(tmp_path):
     )
 
     assert collect_prediction_sources(
-        "图片/视频文件夹",
+        "图片检测",
         "",
         dataset_yaml=dataset_yaml,
         source_scope="全部图片",
     ) == [train_image.resolve(), val_image.resolve(), test_image.resolve()]
     assert collect_prediction_sources(
-        "图片/视频文件夹",
+        "图片检测",
         "",
         dataset_yaml=dataset_yaml,
         source_scope="训练图片",
     ) == [train_image.resolve()]
     assert collect_prediction_sources(
-        "图片/视频文件夹",
+        "图片检测",
         "",
         dataset_yaml=dataset_yaml,
         source_scope="验证图片",
     ) == [val_image.resolve()]
     assert collect_prediction_sources(
-        "图片/视频文件夹",
+        "图片检测",
         "",
         dataset_yaml=dataset_yaml,
         source_scope="测试图片",
@@ -110,7 +180,7 @@ def test_detection_source_collection_prefers_custom_folder_over_dataset_yaml(tmp
     )
 
     assert collect_prediction_sources(
-        "图片/视频文件夹",
+        "图片检测",
         custom_dir,
         dataset_yaml=dataset_yaml,
         source_scope="训练图片",
@@ -125,7 +195,7 @@ def test_detection_source_collection_uses_natural_numeric_sort(tmp_path):
     for name in ["1.jpg", "10.jpg", "100.jpg", "2.jpg", "3.jpg"]:
         (folder / name).write_bytes(b"image")
 
-    assert [path.name for path in collect_prediction_sources("图片/视频文件夹", folder)] == [
+    assert [path.name for path in collect_prediction_sources("图片检测", folder)] == [
         "1.jpg",
         "2.jpg",
         "3.jpg",

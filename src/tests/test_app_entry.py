@@ -180,7 +180,7 @@ def test_qt_app_matches_reference_ui_sections():
         "图片数量",
         "标注数量",
         "随机拼图",
-        "图片/视频文件夹",
+        "图片检测",
         "QComboBox",
         "tool_stack",
         "dataNavButton",

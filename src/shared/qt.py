@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QModelIndex, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QEvent, QModelIndex, QUrl, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QFont, QImage, QPixmap, QIcon, QKeySequence, QShortcut
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -28,6 +30,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QSlider,
     QStackedWidget,
     QStyle,
     QTableWidget,

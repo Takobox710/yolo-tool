@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from src.services.data_ops.path_display import (
     display_project_path,
+    relative_path_from_project,
     relative_project_path,
     resolve_project_path,
     simplified_model_path,
@@ -35,6 +36,7 @@ __all__ = [
     "natural_sort_key",
     "preview_rename",
     "preview_resize",
+    "relative_path_from_project",
     "relative_project_path",
     "resolve_project_path",
     "run_resize",

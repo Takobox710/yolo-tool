@@ -32,6 +32,12 @@ def _spawn_logged_process():
 
 def _connect_detection_worker(page, worker) -> None:
     worker.progress.connect(page.append_active_log)
+    video_progress = getattr(worker, "video_progress", None)
+    if video_progress is not None:
+        video_progress.connect(page.handle_video_progress)
+    video_completed = getattr(worker, "video_completed", None)
+    if video_completed is not None:
+        video_completed.connect(page.handle_video_completed)
     worker.result_payload.connect(page.handle_result)
     worker.finished_with_results.connect(page.apply_detect_done)
     worker.failed.connect(page.apply_detect_error)
@@ -60,17 +66,6 @@ def start_detection(page):
             "请先选择有效的输入源，或确认所选来源下存在图片/视频。",
         )
         return
-    if page.mode_combo.currentText() == "图片/视频":
-        if not page.source_items:
-            QMessageBox.information(
-                page,
-                "输入源为空",
-                "请先选择有效的输入源，或确认 data.yaml 中所选来源下存在图片/视频。",
-            )
-            return
-        page.source_index = max(0, min(page.source_index, len(page.source_items) - 1))
-        page.start_current_source_detection()
-        return
     page.is_detecting = True
     page.start_det_btn.setEnabled(False)
     page.stop_det_btn.setEnabled(True)
@@ -82,6 +77,15 @@ def start_detection(page):
     page.is_batch_detection = not is_live_source_mode(page.mode_combo.currentText())
     page.detect_index = -1
     page.clear_active_log()
+    if page.is_video_detection_mode():
+        page.video_result_by_source.clear()
+        page.current_video_result_path = None
+        if page.current_video_source_path is not None:
+            page.video_playback.load_source(
+                page.current_video_source_path,
+                autoplay=False,
+            )
+        page.video_progress.setValue(0)
     page.append_active_log(
         f"开始检测：模型 {Path(config['model_path']).name}，输入源 {config['source_mode']}。"
     )
@@ -134,6 +138,9 @@ def start_single_detection(page, path: Path):
     page.start_det_btn.setEnabled(False)
     page.stop_det_btn.setEnabled(True)
     page.detect_stop.clear()
+    if page.is_video_detection_mode():
+        page.video_progress.setValue(0)
+        page.clear_active_log()
     page.set_status_text("检测中")
     page.append_active_log(
         f"开始检测：模型 {Path(config['model_path']).name}，输入源 {path.name}。"
@@ -146,11 +153,15 @@ def start_single_detection(page, path: Path):
 
 
 def apply_detect_done(page, _results):
+    video_mode = bool(getattr(page, "is_video_detection_mode", lambda: False)())
     if page.detect_stop.is_set():
         page.append_active_log("检测已停止。")
         page.set_status_text("检测已停止")
     else:
-        page.append_active_log("检测任务结束。")
+        if video_mode:
+            page.append_active_log("检测完成，请开启下一个视频检测。")
+        else:
+            page.append_active_log("检测任务结束。")
         page.set_status_text("检测结束")
     page.is_detecting = False
     page.start_det_btn.setEnabled(True)

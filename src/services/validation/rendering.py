@@ -93,12 +93,13 @@ def extract_detection_items(result: Any) -> list[DetectionItem]:
     return items
 
 
-def build_save_dir(base_dir: Path) -> Path:
+def build_save_dir(base_dir: Path, *, create_labels: bool = True) -> Path:
     import time
 
     target = Path(base_dir) / time.strftime("%Y%m%d_%H%M%S")
     target.mkdir(parents=True, exist_ok=True)
-    (target / "labels").mkdir(parents=True, exist_ok=True)
+    if create_labels:
+        (target / "labels").mkdir(parents=True, exist_ok=True)
     return target
 
 

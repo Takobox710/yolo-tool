@@ -34,3 +34,5 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 程序图标资源统一来自 `src/assets/app_icon.ico` 与 `src/assets/app_icon.png`：`.ico` 用于 PyInstaller/Inno Setup 的 EXE 与安装器图标，GUI 运行时窗口图标通过 `src/shared/paths.py` 中的 `ICON_PNG` 加载，避免目录结构调整后出现窗口或任务栏图标缺失。
 
 Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与单一的 PyInstaller spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。
+
+验证页视频预览使用 PySide6 的 `QtMultimedia` 与 `QtMultimediaWidgets`；打包验证时需确认 `dist/YOLOTool/` 中包含对应 Qt 多媒体插件，Windows 播放后端才能正常打开源视频和 MP4 检测结果。
