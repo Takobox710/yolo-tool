@@ -6,7 +6,7 @@
 
 - `src`: 202 个文件，24210 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
 - `docs`: 2 个文件，234 行文本；架构、规格、打包与代码清单文档。
-- `installer`: 15 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
+- `installer`: 16 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
 
@@ -230,6 +230,7 @@
 | `installer/output/YOLOTool_Setup_1.2.2.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.2.3.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.2.4.exe` | 0 | Windows 打包脚本与安装配置。 |
+| `installer/output/YOLOTool_Setup_1.2.5.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/package_windows.ps1` | 79 | Windows 打包脚本与安装配置。 |
 | `installer/yolo_tool.iss` | 83 | Windows 打包脚本与安装配置。 |
 | `installer/YOLOTool.spec` | 107 | Windows 打包脚本与安装配置。 |
