@@ -49,7 +49,7 @@ def update_source_mode(page, value):
     for layout in layouts:
         layout.setEnabled(False)
     try:
-        camera = value == "摄像头"
+        camera = is_live_source_mode(value)
         image_folder_mode = value == "图片检测"
         video_folder_mode = value == "视频检测"
         folder_source_mode = image_folder_mode or video_folder_mode
@@ -68,7 +68,7 @@ def update_source_mode(page, value):
         page.left_column_layout.setAlignment(
             Qt.AlignmentFlag.AlignTop if val_mode else Qt.AlignmentFlag(0)
         )
-        page.toolbar_widget.setVisible(not val_mode)
+        page.toolbar_widget.setVisible(not val_mode and not camera)
         page.views_widget.setVisible(not val_mode)
         page.table_panel.setVisible(not val_mode)
         page.val_log_panel.setVisible(val_mode)
@@ -128,13 +128,12 @@ def is_video_detection_mode(page) -> bool:
 
 def update_video_mode_controls(page) -> None:
     video_mode = is_video_detection_mode(page)
-    normal_mode = not page.is_val_mode() and not is_live_source_mode(
-        page.mode_combo.currentText()
-    )
-    page.result_nav_widget.setVisible(normal_mode and not video_mode)
-    page.video_progress_widget.setVisible(normal_mode and video_mode)
-    page.start_det_btn.setVisible(normal_mode)
-    page.stop_det_btn.setVisible(normal_mode)
+    detection_mode = not page.is_val_mode()
+    live_mode = is_live_source_mode(page.mode_combo.currentText())
+    page.result_nav_widget.setVisible(detection_mode and not video_mode and not live_mode)
+    page.video_progress_widget.setVisible(detection_mode and video_mode)
+    page.start_det_btn.setVisible(True)
+    page.stop_det_btn.setVisible(True)
     page.video_play_btn.setVisible(video_mode)
     page.video_prev_btn.setVisible(video_mode)
     page.video_next_btn.setVisible(video_mode)
@@ -164,6 +163,11 @@ def refresh_source_items(page):
     )
     if not page.source_items:
         page.source_index = -1
+        if (
+            page.mode_combo.currentText() == "图片检测"
+            and not page.detection_started_for_source
+        ):
+            page.counter.setText("0/0")
         return
     if page.source_index < 0 or page.source_index >= len(page.source_items):
         page.source_index = 0
@@ -179,6 +183,8 @@ def dataset_split_dir(page, split: str) -> Path:
 
 
 def scope_target_path_for_page(page, scope: str) -> Path:
+    if str(scope).strip() not in SOURCE_SCOPE_OPTIONS:
+        return Path(page.resolve_combo_path_text(scope)).resolve()
     return scope_target_path(scope, page.app.settings["paths"])
 
 
@@ -367,7 +373,7 @@ def detection_config_or_warn(page) -> dict | None:
         QMessageBox.information(page, "模型为空", "请选择一个用于检测的模型。")
         return None
     if (
-        config_value.get("source_mode") != "摄像头"
+        not is_live_source_mode(config_value.get("source_mode", ""))
         and not str(config_value.get("source_path") or "").strip()
     ):
         QMessageBox.information(page, "输入源为空", "请先选择有效的输入源。")

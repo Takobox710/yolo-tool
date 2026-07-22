@@ -181,7 +181,7 @@ def test_main_pages_can_be_constructed(tmp_path):
 
     assert data_page.tool_stack.count() == 4
     assert train_page.start_btn.text() == "开始训练"
-    assert validate_page.start_det_btn.text() == "批量检测"
+    assert validate_page.start_det_btn.text() == "开始检测"
     assert "Torch" in settings_page.status_cards
     assert settings_page.help_icon_check.isChecked() is True
 

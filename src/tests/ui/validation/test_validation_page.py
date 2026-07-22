@@ -225,7 +225,7 @@ def test_validation_page_supports_dataset_val_mode(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from src.services.settings import build_default_settings
-    from src.shared.qt import QApplication
+    from src.shared.qt import QApplication, QPushButton
     from src.ui.features.validation.page import ValidatePage
 
     app = QApplication.instance() or QApplication([])
@@ -242,18 +242,116 @@ def test_validation_page_supports_dataset_val_mode(tmp_path):
     page = ValidatePage(fake_app)
     page.mode_combo.setCurrentText("数据集验证")
 
-    assert page.start_det_btn.text() == "开始验证"
+    assert page.start_det_btn.text() == "开始检测"
     assert not page.data_box.isHidden()
     assert not page.source_scope_box.isHidden()
     assert not page.save_box.isHidden()
     assert not page.open_val_save_btn.isHidden()
     assert page.source_box.isHidden()
+    assert not page.start_det_btn.isHidden()
+    assert not page.stop_det_btn.isHidden()
+    assert any(button.text() == "选择" for button in page.source_scope_box.findChildren(QPushButton))
     assert not page.val_log_panel.isHidden()
     assert page.toolbar_widget.isHidden()
     assert page.views_widget.isHidden()
     assert page.table_panel.isHidden()
     assert page.counter.text() == "验证模式"
     assert page.save_edit.text() == str(Path("result") / "gui_val")
+
+
+def test_validation_page_chooses_custom_dataset_validation_source(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    source_dir = tmp_path / "custom_val"
+    source_dir.mkdir()
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+    monkeypatch.setattr(
+        "src.ui.features.validation.page_actions.QFileDialog.getExistingDirectory",
+        lambda *_args: str(source_dir),
+    )
+
+    page = ValidatePage(fake_app)
+    page.mode_combo.setCurrentText("数据集验证")
+    page.choose_validation_source(page.source_scope_combo)
+
+    assert page.source_scope_combo.currentText() == "custom_val"
+    assert settings["validation"]["source_scope"] == "custom_val"
+    assert page._scope_target_path(page.source_scope_combo.currentText()) == source_dir.resolve()
+    page.close()
+
+
+def test_validation_page_hides_batch_toolbar_for_camera_mode(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    page.resize(1200, 900)
+    page.show()
+    page.mode_combo.setCurrentText("摄像头检测")
+    app.processEvents()
+
+    assert page.toolbar_widget.isHidden()
+    assert page.views_widget.isVisible()
+    assert page.views_widget.geometry().top() == 0
+    assert page.counter.text() == "实时预览"
+    assert page.start_det_btn.isVisible()
+    assert page.stop_det_btn.isVisible()
+    assert page.start_det_btn.text() == "开始检测"
+    assert page.stop_det_btn.text() == "停止"
+    page.close()
+
+
+def test_validation_page_migrates_legacy_camera_mode_label(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings["validation"]["source_mode"] = "摄像头"
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+
+    assert page.mode_combo.currentText() == "摄像头检测"
+    assert settings["validation"]["source_mode"] == "摄像头检测"
+    page.close()
 
 
 def test_validation_page_compacts_left_panel_for_dataset_val_mode(tmp_path):
@@ -283,6 +381,35 @@ def test_validation_page_compacts_left_panel_for_dataset_val_mode(tmp_path):
     assert page.left_column_layout.alignment() == Qt.AlignmentFlag.AlignTop
     assert page.model_combo.parentWidget().height() <= 50
     assert page.data_edit.parentWidget().height() <= 50
+    page.close()
+
+
+def test_validation_page_compensates_scrollbar_gutter_on_right(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+
+    page = ValidatePage(fake_app)
+    margins = page.layout().contentsMargins()
+
+    assert margins.left() == 16
+    assert margins.right() == 16
+    right_margins = page.validation_right_layout.contentsMargins()
+    assert right_margins.left() == 0
+    assert right_margins.right() == 0
     page.close()
 
 
@@ -494,7 +621,7 @@ def test_validation_page_uses_video_controls_for_video_input(tmp_path):
     assert abs(page.source_panel.width() - page.result_panel.width()) <= 1
     assert not page.start_det_btn.isHidden()
     assert not page.stop_det_btn.isHidden()
-    assert page.start_det_btn.text() == "开启检测"
+    assert page.start_det_btn.text() == "开始检测"
     first_video_path = page.source_items[0]
     second_video_path = page.source_items[1]
     assert page.current_video_source_path == first_video_path.resolve()
@@ -618,6 +745,7 @@ def test_validation_page_previews_sources_before_detection(tmp_path):
 
     assert not page.detection_started_for_source
     assert page.source_items == [first.resolve(), second.resolve()]
+    assert page.counter.text() == "1/2"
     assert page.source_view._pixmap.size().width() == 320
     assert page.source_view._pixmap.size().height() == 180
 
@@ -625,10 +753,12 @@ def test_validation_page_previews_sources_before_detection(tmp_path):
     assert page.source_index == 0
     page.next_result()
     assert page.source_index == 1
+    assert page.counter.text() == "2/2"
     page.last_result()
     assert page.source_index == 1
     page.prev_result()
     assert page.source_index == 0
+    assert page.counter.text() == "1/2"
 
     page.source_index = 1
     assert page.show_cached_source_result(second)

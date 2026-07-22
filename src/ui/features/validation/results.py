@@ -106,6 +106,9 @@ def show_source_preview(page, path: Path) -> None:
     if page.is_video_detection_mode():
         page.load_video_source(path)
         return
+    total = len(page.source_items)
+    current = page.source_index + 1 if 0 <= page.source_index < total else 0
+    page.counter.setText(f"{current}/{total}")
     page.source_view.clear_image("源图")
     page.result_view.clear_image("检测结果图")
     page.table.setRowCount(0)
@@ -115,7 +118,6 @@ def show_source_preview(page, path: Path) -> None:
     except (OSError, ValueError):
         return
     page.source_view.set_pil_image(source_image)
-    page.counter.setText("0/0")
 
 
 def clear_validation_previews(page) -> None:

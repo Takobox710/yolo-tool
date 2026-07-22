@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.services.data_ops import relative_path_from_project, resolve_project_path
-from src.services.validation import VIDEO_SUFFIXES
+from src.services.validation import VIDEO_SUFFIXES, is_live_source_mode
 from src.ui.shared.page_base import Card, ImageView
 from src.shared.qt import (
     Qt,
@@ -29,6 +29,8 @@ from src.ui.features.validation.video_player import VideoPlaybackController, Vid
 
 def build_validation_layout(page, app) -> None:
     layout = page.page_layout()
+    # Keep the page edge inset while removing the nested right-layout gutter.
+    layout.setContentsMargins(16, 16, 16, 16)
     page.validation_layout = layout
     split = QHBoxLayout()
     page.validation_split_layout = split
@@ -40,6 +42,9 @@ def build_validation_layout(page, app) -> None:
     page.left_column_layout = left_column
     validation = app.settings["validation"]
     stored_mode = validation.get("source_mode", "图片检测")
+    if is_live_source_mode(stored_mode):
+        stored_mode = "摄像头检测"
+        validation["source_mode"] = stored_mode
     stored_source_path = validation.get("source_path", "")
     if stored_mode in {
         "图片检测",
@@ -111,7 +116,7 @@ def build_validation_layout(page, app) -> None:
     page.mode_box, page.mode_combo = page.combo_field(
         "检测模式",
         stored_mode,
-        ["图片检测", "视频检测", "摄像头", "数据集验证"],
+        ["图片检测", "视频检测", "摄像头检测", "数据集验证"],
     )
     left_column.addWidget(page.mode_box)
     initial_source_text = (
@@ -140,10 +145,12 @@ def build_validation_layout(page, app) -> None:
         "选择 data.yaml",
     )
     left_column.addWidget(page.data_box)
-    page.source_scope_box, page.source_scope_combo = page.combo_field(
+    page.source_scope_box, page.source_scope_combo = page.stacked_combo_field(
         "选择验证源",
         validation.get("source_scope", "全部图片"),
         SOURCE_SCOPE_OPTIONS,
+        browse=lambda combo: page.choose_validation_source(combo),
+        placeholder="选择或输入验证文件夹",
     )
     left_column.addWidget(page.source_scope_box)
     page.camera_box, page.camera_combo = page.combo_field(
@@ -161,7 +168,7 @@ def build_validation_layout(page, app) -> None:
     left_column.addWidget(page.save_box)
 
     controls = QHBoxLayout()
-    page.start_det_btn = QPushButton("批量检测")
+    page.start_det_btn = QPushButton("开始检测")
     page.start_det_btn.clicked.connect(page.start_detection)
     page.stop_det_btn = QPushButton("停止")
     page.stop_det_btn.setObjectName("softButton")
@@ -198,6 +205,7 @@ def build_validation_layout(page, app) -> None:
     split.addWidget(left_shell)
 
     right = QVBoxLayout()
+    right.setContentsMargins(0, 0, 0, 0)
     page.toolbar_widget = QWidget()
     toolbar = QHBoxLayout(page.toolbar_widget)
     toolbar.setContentsMargins(0, 0, 0, 0)

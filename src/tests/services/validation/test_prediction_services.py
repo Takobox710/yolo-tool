@@ -104,6 +104,7 @@ def test_detection_source_collection_supports_folder_and_single_file(tmp_path):
     assert collect_prediction_sources("图片检测", image) == [image.resolve()]
     assert collect_prediction_sources("视频检测", video) == [video.resolve()]
     assert collect_prediction_sources("摄像头", folder) == []
+    assert collect_prediction_sources("摄像头检测", folder) == []
 
 
 def test_detection_source_collection_supports_dataset_yaml_scopes(tmp_path):

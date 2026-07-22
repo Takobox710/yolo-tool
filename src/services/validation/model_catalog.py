@@ -7,6 +7,7 @@ from pathlib import Path
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
 SOURCE_SUFFIXES = IMAGE_SUFFIXES | VIDEO_SUFFIXES
+LIVE_SOURCE_MODES = {"摄像头", "摄像头检测"}
 
 
 def natural_sort_key(path: Path) -> list[object]:
@@ -44,7 +45,7 @@ def find_result_model_paths(
 
 
 def is_live_source_mode(source_mode: str) -> bool:
-    return str(source_mode).strip() == "摄像头"
+    return str(source_mode).strip() in LIVE_SOURCE_MODES
 
 
 def should_store_detection_history(source_mode: str) -> bool:

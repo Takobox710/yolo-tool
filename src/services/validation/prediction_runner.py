@@ -152,7 +152,11 @@ def run_prediction(
                 else:
                     predict_video(str(image_path), image_path.name)
         else:
-            source = int(config.get("camera_index", 0)) if mode == "摄像头" else config.get("source_path")
+            source = (
+                int(config.get("camera_index", 0))
+                if is_live_source_mode(mode)
+                else config.get("source_path")
+            )
             predict_video(source, "")
     finally:
         del model

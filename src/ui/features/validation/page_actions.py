@@ -197,16 +197,7 @@ class ValidationPageActionsMixin:
             button.setEnabled(enabled)
 
     def update_detection_button_text(self):
-        mode = self.mode_combo.currentText()
-        if self.is_val_mode(mode):
-            self.start_det_btn.setText("开始验证")
-            self.stop_det_btn.setText("停止")
-            return
-        if self.is_video_detection_mode():
-            self.start_det_btn.setText("开启检测")
-            self.stop_det_btn.setText("停止")
-            return
-        self.start_det_btn.setText("批量检测")
+        self.start_det_btn.setText("开始检测")
         self.stop_det_btn.setText("停止")
 
     def choose_detection_source(self, combo: QComboBox):
@@ -264,6 +255,28 @@ class ValidationPageActionsMixin:
         self._persist_validation_value("source_selection", selected_option)
         self.refresh_source_items()
         self.update_video_mode_controls()
+
+    def choose_validation_source(self, combo: QComboBox):
+        current_text = combo.currentText().strip()
+        current = (
+            self.resolve_combo_path_text(current_text)
+            if current_text and current_text not in SOURCE_SCOPE_OPTIONS
+            else str(self.project_root())
+        )
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "选择验证源文件夹",
+            current,
+        )
+        if not path:
+            return
+        selected = Path(path).resolve()
+        if not selected.is_dir():
+            return
+        display_path = relative_path_from_project(str(selected), self.project_root())
+        combo.setCurrentText(display_path)
+        self._persist_validation_value("source_scope", display_path)
+        self.refresh_source_items()
 
     def choose_dataset_yaml(self, edit):
         current = self.resolve_path_text(edit) if edit.text() else str(self.project_root())

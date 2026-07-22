@@ -156,6 +156,7 @@ def run_predict_cli(argv: list[str]) -> int:
         build_save_dir,
         collect_prediction_sources,
         extract_detection_items,
+        is_live_source_mode,
         release_inference_runtime,
         save_detection_label_file,
     )
@@ -374,7 +375,11 @@ def run_predict_cli(argv: list[str]) -> int:
                 else:
                     predict_video(str(image_path), image_path.name)
         else:
-            source = int(config.get("camera_index", 0)) if mode == "摄像头" else config.get("source_path")
+            source = (
+                int(config.get("camera_index", 0))
+                if is_live_source_mode(mode)
+                else config.get("source_path")
+            )
             predict_video(source, "")
         _emit_structured("done", ok=True)
         return 0

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from src.services.validation import collect_prediction_sources
+from src.services.validation import collect_prediction_sources, is_live_source_mode
 
 SOURCE_SCOPE_OPTIONS = ["全部图片", "训练图片", "验证图片", "测试图片"]
 IMAGE_SOURCE_OPTIONS = [*SOURCE_SCOPE_OPTIONS, "单张图片"]
@@ -53,7 +53,7 @@ def collect_validation_source_items(
     resolve_text: Callable[[str], str],
     selected_source_path: str | Path = "",
 ) -> list[Path]:
-    if mode == "摄像头" or is_val_mode:
+    if is_live_source_mode(mode) or is_val_mode:
         return []
     source_path = folder_source_path_for_selection(
         source_text,

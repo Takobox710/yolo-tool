@@ -59,7 +59,7 @@ def start_detection(page):
     if config is None:
         return
     page.refresh_source_items()
-    if page.mode_combo.currentText() != "摄像头" and not page.source_items:
+    if not is_live_source_mode(page.mode_combo.currentText()) and not page.source_items:
         QMessageBox.information(
             page,
             "输入源为空",

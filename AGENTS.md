@@ -122,7 +122,7 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 - Labelme/YOLO 转换、类别识别、类别映射、数据集划分、备份。
 - 数据标注的 Labelme 读写、YOLO 同步导出、画布绘制与选择、AI 预标注。
 - 训练命令生成、模型目录解析、停止流程、日志清洗。
-- 验证页模型扫描、单文件/批量/摄像头/数据集验证、结果保存、`best.pt / last.pt` 开关。
+- 验证页模型扫描、单文件/批量/摄像头检测/数据集验证、结果保存、`best.pt / last.pt` 开关。
 - Windows 打包入口、隐藏后台子进程、图标资源。
 
 ## 维护建议
