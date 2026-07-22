@@ -40,6 +40,7 @@ def show_page(window, key: str) -> None:
     window.current_page_key = key
     window.dismiss_help_bubbles()
     page = ensure_page(window, key)
+    window._invoke_page_hook(page, "prepare_for_show")
     window.stack.setCurrentWidget(page)
     for name, button in window.nav_buttons.items():
         button.setChecked(name == key)

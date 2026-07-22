@@ -94,7 +94,6 @@ def start_detection(page):
         "实时预览" if is_live_source_mode(page.mode_combo.currentText()) else "0/0"
     )
     page.table.setRowCount(0)
-    page.set_status_text("检测中")
     page.detect_worker = _detection_worker_class()(config, page.detect_stop)
     _connect_detection_worker(page, page.detect_worker)
     page.detect_worker.start()
@@ -143,7 +142,6 @@ def start_single_detection(page, path: Path):
     if page.is_video_detection_mode():
         page.video_progress.setValue(0)
         page.clear_active_log()
-    page.set_status_text("检测中")
     page.append_active_log(
         f"开始检测：模型 {Path(config['model_path']).name}，输入源 {path.name}。"
     )
@@ -158,13 +156,11 @@ def apply_detect_done(page, _results):
     video_mode = bool(getattr(page, "is_video_detection_mode", lambda: False)())
     if page.detect_stop.is_set():
         page.append_active_log("检测已停止。")
-        page.set_status_text("检测已停止")
     else:
         if video_mode:
             page.append_active_log("检测完成，请开启下一个视频检测。")
         else:
             page.append_active_log("检测任务结束。")
-        page.set_status_text("检测结束")
     page.is_detecting = False
     page.start_det_btn.setEnabled(True)
     page.stop_det_btn.setEnabled(False)
@@ -173,7 +169,6 @@ def apply_detect_done(page, _results):
 
 def apply_detect_error(page, message):
     page.append_active_log(message)
-    page.set_status_text("检测异常")
     page.is_detecting = False
     page.start_det_btn.setEnabled(True)
     page.stop_det_btn.setEnabled(False)
@@ -193,7 +188,6 @@ def stop_detection(page):
     if callable(request_stop):
         request_stop()
     page.append_active_log("已请求停止检测。")
-    page.set_status_text("停止检测中")
 
 
 def poll_validation_queue(page):

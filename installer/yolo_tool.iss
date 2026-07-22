@@ -41,7 +41,6 @@ Name: "{app}\result"
 ; 应用核心文件 - 每次升级覆盖
 Source: "..\dist\YOLOTool\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\YOLOTool\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\dist\YOLOTool\*.pt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 ; 默认模型与示例资源 - 每次升级覆盖
 Source: "..\dist\YOLOTool\data\models\*"; DestDir: "{app}\data\models"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs

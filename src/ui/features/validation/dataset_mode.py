@@ -37,13 +37,11 @@ def start_dataset_validation(
     page.poll_timer.start()
     page.table.setRowCount(0)
     page.counter.setText("验证中")
-    page.set_status_text("验证中")
 
 
 def stop_dataset_validation(page, stop_process: Callable) -> None:
     page.stop_requested = True
     page.stop_det_btn.setEnabled(False)
-    page.set_status_text("停止验证中")
     stop_process(getattr(page.app, "validation_handle", None))
     page.append_active_log("已请求停止验证。")
 
@@ -78,10 +76,8 @@ def finish_dataset_validation(page, exit_code: int) -> None:
     page._restore_temporary_validation_yaml_if_needed()
     if page.stop_requested:
         page.append_active_log("验证已停止。")
-        page.set_status_text("验证已停止")
     else:
         page.append_active_log(f"验证进程结束，退出码：{exit_code}")
-        page.set_status_text("验证结束" if exit_code == 0 else "验证异常结束")
     page.poll_timer.stop()
     page.is_detecting = False
     page.stop_requested = False

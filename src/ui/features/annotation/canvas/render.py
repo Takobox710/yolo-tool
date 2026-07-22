@@ -38,7 +38,6 @@ class AnnotationCanvasRenderMixin:
         if self.pixmap is None:
             painter.setPen(QColor("#26394D"))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "请打开图片文件夹")
-            self._draw_canvas_status_if_enabled(painter)
             return
         target = self._image_rect()
         painter.drawPixmap(target, self.pixmap, QRectF(self.pixmap.rect()))
@@ -80,7 +79,6 @@ class AnnotationCanvasRenderMixin:
             )
         if self.draw_shape == "rect" and self.crosshair_position is not None:
             self._draw_rect_crosshair(painter)
-        self._draw_canvas_status_if_enabled(painter)
 
     def _draw_rect_crosshair(self, painter: QPainter) -> None:
         x_pos, y_pos = self.crosshair_position

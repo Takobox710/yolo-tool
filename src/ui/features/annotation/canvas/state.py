@@ -15,8 +15,7 @@ def reset_transient_draw_state(canvas) -> None:
 
 def can_show_cancel_drawing_action(canvas) -> bool:
     return (
-        canvas.draw_shape != "select"
-        or canvas.drag_start is not None
+        canvas.drag_start is not None
         or canvas.obb_first is not None
         or bool(canvas.polygon_points)
     )

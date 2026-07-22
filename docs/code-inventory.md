@@ -4,16 +4,16 @@
 
 ## 目录摘要
 
-- `src`: 202 个文件，24380 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
-- `docs`: 2 个文件，236 行文本；架构、规格、打包与代码清单文档。
-- `installer`: 16 个文件，498 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
+- `src`: 202 个文件，24564 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `docs`: 2 个文件，244 行文本；架构、规格、打包与代码清单文档。
+- `installer`: 16 个文件，474 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
 
 | 路径 | 行数 | 说明 |
 | --- | ---: | --- |
 | `AGENTS.md` | 138 | 本仓库 AI 执行约束与开发规则。 |
-| `README.md` | 401 | 项目概览、命令入口与使用说明。 |
+| `README.md` | 406 | 项目概览、命令入口与使用说明。 |
 | `pixi.toml` | 32 | Pixi 环境、依赖与任务命令定义。 |
 | `src/__init__.py` | 1 | 仓库文件。 |
 | `src/app.py` | 8 | 仓库文件。 |
@@ -74,8 +74,8 @@
 | `src/services/validation/runtime_cleanup.py` | 22 | 服务层与可测试业务逻辑实现。 |
 | `src/services/validation/source_collectors.py` | 158 | 服务层与可测试业务逻辑实现。 |
 | `src/shared/__init__.py` | 1 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
-| `src/shared/paths.py` | 20 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
-| `src/shared/qt.py` | 46 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
+| `src/shared/paths.py` | 29 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
+| `src/shared/qt.py` | 47 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
 | `src/shared/theme.py` | 60 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
 | `src/shared/types.py` | 5 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
 | `src/shared/utils/__init__.py` | 1 | 跨层共享基础模块、Qt 出口、路径与主题支持。 |
@@ -106,10 +106,10 @@
 | `src/tests/services/validation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/validation/test_model_catalog.py` | 34 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/validation/test_prediction_services.py` | 279 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/test_app_entry.py` | 229 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/test_app_entry.py` | 300 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/annotation/test_annotation_page.py` | 2052 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/annotation/test_annotation_page.py` | 2072 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/test_convert_tab.py` | 94 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data/test_resize_tab.py` | 108 | pytest 测试、结构约束与回归用例。 |
@@ -122,7 +122,7 @@
 | `src/tests/ui/training/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/training/test_training_page.py` | 336 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/validation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/validation/test_validation_page.py` | 1101 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/validation/test_validation_page.py` | 1104 | pytest 测试、结构约束与回归用例。 |
 | `src/train_cli.py` | 567 | 仓库文件。 |
 | `src/ui/__init__.py` | 1 | 仓库文件。 |
 | `src/ui/app.py` | 19 | 仓库文件。 |
@@ -141,16 +141,16 @@
 | `src/ui/features/annotation/canvas/geometry.py` | 138 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/hit_test.py` | 90 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/interaction.py` | 242 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/render.py` | 250 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/state.py` | 26 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/status.py` | 47 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/widget.py` | 229 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/render.py` | 248 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/state.py` | 25 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/status.py` | 21 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/widget.py` | 232 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/class_panel.py` | 74 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/dialogs.py` | 394 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/file_browser.py` | 360 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/layout.py` | 82 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/layout.py` | 101 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/menus.py` | 165 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/page.py` | 215 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/page.py` | 250 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/persistence.py` | 117 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/selection.py` | 57 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/settings_actions.py` | 89 | 按功能分包的页面真实实现。 |
@@ -181,17 +181,17 @@
 | `src/ui/features/training/runtime.py` | 118 | 按功能分包的页面真实实现。 |
 | `src/ui/features/training/state.py` | 279 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/__init__.py` | 1 | 按功能分包的页面真实实现。 |
-| `src/ui/features/validation/dataset_mode.py` | 94 | 按功能分包的页面真实实现。 |
+| `src/ui/features/validation/dataset_mode.py` | 90 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/helpers.py` | 121 | 按功能分包的页面真实实现。 |
-| `src/ui/features/validation/layout.py` | 358 | 按功能分包的页面真实实现。 |
+| `src/ui/features/validation/layout.py` | 368 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/models.py` | 92 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/page.py` | 49 | 按功能分包的页面真实实现。 |
-| `src/ui/features/validation/page_actions.py` | 523 | 按功能分包的页面真实实现。 |
+| `src/ui/features/validation/page_actions.py` | 522 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/result_list.py` | 85 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/results.py` | 171 | 按功能分包的页面真实实现。 |
-| `src/ui/features/validation/runtime.py` | 216 | 按功能分包的页面真实实现。 |
+| `src/ui/features/validation/runtime.py` | 210 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/sources.py` | 65 | 按功能分包的页面真实实现。 |
-| `src/ui/features/validation/state.py` | 439 | 按功能分包的页面真实实现。 |
+| `src/ui/features/validation/state.py` | 434 | 按功能分包的页面真实实现。 |
 | `src/ui/features/validation/video_player.py` | 162 | 按功能分包的页面真实实现。 |
 | `src/ui/helpers.py` | 66 | 仓库文件。 |
 | `src/ui/shared/__init__.py` | 1 | 跨页面复用的表单、对话框与页面基类。 |
@@ -199,8 +199,8 @@
 | `src/ui/shared/forms.py` | 355 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/page_base.py` | 168 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/widgets/__init__.py` | 1 | 跨页面复用的表单、对话框与页面基类。 |
-| `src/ui/shared/widgets/base.py` | 96 | 跨页面复用的表单、对话框与页面基类。 |
-| `src/ui/shared/widgets/charts.py` | 332 | 跨页面复用的表单、对话框与页面基类。 |
+| `src/ui/shared/widgets/base.py` | 105 | 跨页面复用的表单、对话框与页面基类。 |
+| `src/ui/shared/widgets/charts.py` | 357 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/workers/__init__.py` | 13 | 共享后台工作线程与子进程桥接。 |
 | `src/ui/shared/workers/ai_runtime.py` | 219 | 共享后台工作线程与子进程桥接。 |
 | `src/ui/shared/workers/annotation_ai.py` | 93 | 共享后台工作线程与子进程桥接。 |
@@ -209,17 +209,17 @@
 | `src/ui/shared/workers/model_labels.py` | 48 | 共享后台工作线程与子进程桥接。 |
 | `src/ui/shell/__init__.py` | 1 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/close_guard.py` | 46 | 主窗口壳层、样式与页面协调。 |
-| `src/ui/shell/navigation.py` | 48 | 主窗口壳层、样式与页面协调。 |
+| `src/ui/shell/navigation.py` | 49 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/page_registry.py` | 34 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/program_log.py` | 27 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/style.py` | 7 | 主窗口壳层、样式与页面协调。 |
-| `src/ui/shell/window.py` | 229 | 主窗口壳层、样式与页面协调。 |
+| `src/ui/shell/window.py` | 252 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/widgets/__init__.py` | 1 | 图表与基础复用控件。 |
 | `src/ui/widgets/base.py` | 90 | 图表与基础复用控件。 |
 | `src/ui/widgets/charts.py` | 332 | 图表与基础复用控件。 |
-| `docs/architecture.md` | 198 | 项目架构、打包与维护文档。 |
-| `docs/packaging-windows.md` | 38 | 项目架构、打包与维护文档。 |
-| `installer/build_windows.ps1` | 122 | Windows 打包脚本与安装配置。 |
+| `docs/architecture.md` | 204 | 项目架构、打包与维护文档。 |
+| `docs/packaging-windows.md` | 40 | 项目架构、打包与维护文档。 |
+| `installer/build_windows.ps1` | 111 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-PySide6.scripts.deploy_lib.py` | 1 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-torch.py` | 26 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-torch.utils.tensorboard.py` | 1 | Windows 打包脚本与安装配置。 |
@@ -232,6 +232,6 @@
 | `installer/output/YOLOTool_Setup_1.2.4.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/output/YOLOTool_Setup_1.2.5.exe` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/package_windows.ps1` | 79 | Windows 打包脚本与安装配置。 |
-| `installer/yolo_tool.iss` | 83 | Windows 打包脚本与安装配置。 |
-| `installer/YOLOTool.spec` | 107 | Windows 打包脚本与安装配置。 |
+| `installer/yolo_tool.iss` | 82 | Windows 打包脚本与安装配置。 |
+| `installer/YOLOTool.spec` | 95 | Windows 打包脚本与安装配置。 |
 | `installer/打包程序.ps1` | 79 | Windows 打包脚本与安装配置。 |

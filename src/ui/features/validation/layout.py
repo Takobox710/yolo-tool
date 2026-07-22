@@ -282,37 +282,45 @@ def build_validation_layout(page, app) -> None:
     )
     views = QHBoxLayout(page.views_widget)
     views.setContentsMargins(0, 0, 0, 0)
-    source_panel = Card()
+    source_panel = QWidget()
+    source_panel.setObjectName("validationPreviewPanel")
     source_panel.setMinimumWidth(0)
     source_panel.setSizePolicy(
         QSizePolicy.Policy.Ignored,
         QSizePolicy.Policy.Expanding,
     )
+    source_panel_layout = QVBoxLayout(source_panel)
+    source_panel_layout.setContentsMargins(0, 0, 0, 0)
+    source_panel_layout.setSpacing(0)
     page.source_view = ImageView("源图")
     page.source_view.setMinimumWidth(0)
     page.source_view.setSizePolicy(
         QSizePolicy.Policy.Ignored,
         QSizePolicy.Policy.Expanding,
     )
-    source_panel.layout.addWidget(page.source_view, 1)
+    source_panel_layout.addWidget(page.source_view, 1)
     page.source_video_player = VideoPlayer("源视频")
-    source_panel.layout.addWidget(page.source_video_player, 1)
+    source_panel_layout.addWidget(page.source_video_player, 1)
     page.source_video_player.hide()
-    result_panel = Card()
+    result_panel = QWidget()
+    result_panel.setObjectName("validationPreviewPanel")
     result_panel.setMinimumWidth(0)
     result_panel.setSizePolicy(
         QSizePolicy.Policy.Ignored,
         QSizePolicy.Policy.Expanding,
     )
+    result_panel_layout = QVBoxLayout(result_panel)
+    result_panel_layout.setContentsMargins(0, 0, 0, 0)
+    result_panel_layout.setSpacing(0)
     page.result_view = ImageView("检测结果图")
     page.result_view.setMinimumWidth(0)
     page.result_view.setSizePolicy(
         QSizePolicy.Policy.Ignored,
         QSizePolicy.Policy.Expanding,
     )
-    result_panel.layout.addWidget(page.result_view, 1)
+    result_panel_layout.addWidget(page.result_view, 1)
     page.result_video_player = VideoPlayer("检测后视频")
-    result_panel.layout.addWidget(page.result_video_player, 1)
+    result_panel_layout.addWidget(page.result_video_player, 1)
     page.result_video_player.hide()
     page.video_playback = VideoPlaybackController(
         page.source_video_player,
@@ -326,7 +334,9 @@ def build_validation_layout(page, app) -> None:
         page.handle_video_media_status
     )
     page.source_panel = source_panel
+    page.source_panel_layout = source_panel_layout
     page.result_panel = result_panel
+    page.result_panel_layout = result_panel_layout
     views.addWidget(source_panel, 1)
     views.addWidget(result_panel, 1)
     views.setStretch(0, 1)

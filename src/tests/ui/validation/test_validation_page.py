@@ -708,6 +708,10 @@ def test_validation_page_image_previews_ignore_pixmap_width_for_layout(tmp_path)
     assert page.result_view.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
     assert page.source_panel.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
     assert page.result_panel.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+    assert page.source_panel.objectName() == "validationPreviewPanel"
+    assert page.result_panel.objectName() == "validationPreviewPanel"
+    assert page.source_view.geometry() == page.source_panel.rect()
+    assert page.result_view.geometry() == page.result_panel.rect()
 
     source_width = page.source_panel.width()
     result_width = page.result_panel.width()
@@ -1009,7 +1013,6 @@ def test_validation_page_keeps_detection_worker_until_thread_finished():
     page = SimpleNamespace(
         detect_stop=SimpleNamespace(is_set=lambda: False, clear=lambda: None),
         append_active_log=lambda _text: None,
-        set_status_text=lambda _text: None,
         detect_worker=worker,
         is_detecting=True,
         start_det_btn=SimpleNamespace(setEnabled=lambda _value: None),

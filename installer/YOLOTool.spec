@@ -7,10 +7,6 @@ SPEC_ROOT = Path(SPECPATH).resolve()
 ROOT = SPEC_ROOT.parent
 HOOKS_DIR = ROOT / "installer" / "hooks"
 ASSETS_DIR = ROOT / "src" / "assets"
-MODELS_DIR = ROOT / "data" / "models"
-ROOT_MODEL_FILES = [
-    ROOT / "yolo26n.pt",
-]
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
@@ -36,14 +32,6 @@ datas = [
     (str(ASSETS_DIR), "src/assets"),
     *collect_data_files("ultralytics"),
 ]
-if MODELS_DIR.exists():
-    for model_path in sorted(MODELS_DIR.glob("*.pt")):
-        if model_path.is_file():
-            datas.append((str(model_path), "data/models"))
-for model_path in ROOT_MODEL_FILES:
-    if model_path.exists():
-        datas.append((str(model_path), "."))
-
 binaries = []
 for package in ("torch", "cv2"):
     binaries += collect_dynamic_libs(package)

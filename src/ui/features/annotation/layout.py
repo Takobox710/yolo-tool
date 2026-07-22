@@ -8,6 +8,7 @@ from src.shared.qt import (
     QLabel,
     QListWidget,
     QPushButton,
+    QStatusBar,
     QVBoxLayout,
 )
 from src.ui.features.annotation.canvas.widget import AnnotationCanvas
@@ -22,6 +23,24 @@ def build_center(page) -> QVBoxLayout:
     page.canvas.selection_callback = page.sync_selection
     layout.addWidget(page.canvas, 1)
     return layout
+
+
+def build_status_bar(page) -> QStatusBar:
+    status_bar = QStatusBar(page)
+    status_bar.setObjectName("annotationStatusBar")
+    status_bar.setSizeGripEnabled(False)
+    status_bar.setVisible(False)
+    page.annotation_status_bar = status_bar
+    return status_bar
+
+
+def set_annotation_bottom_margin(page, bottom: int) -> None:
+    margins = page.annotation_root_layout.contentsMargins()
+    if margins.bottom() == bottom:
+        return
+    page.annotation_root_layout.setContentsMargins(
+        margins.left(), margins.top(), margins.right(), bottom
+    )
 
 
 def build_right_panel(page) -> QFrame:

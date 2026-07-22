@@ -4,8 +4,27 @@ from collections.abc import Mapping, Sequence
 from math import ceil
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QLabel
+
+
+def _begin_chart_paint(widget: QLabel, width: int, height: int):
+    dpr = max(float(widget.devicePixelRatioF()), 1.0)
+    pixmap = QPixmap(
+        max(round(width * dpr), 1),
+        max(round(height * dpr), 1),
+    )
+    pixmap.fill(Qt.GlobalColor.white)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.scale(dpr, dpr)
+    return pixmap, painter, dpr
+
+
+def _finish_chart_paint(widget: QLabel, pixmap: QPixmap, painter: QPainter, dpr: float) -> None:
+    painter.end()
+    pixmap.setDevicePixelRatio(dpr)
+    widget.setPixmap(pixmap)
 
 
 class DatasetDistributionWidget(QLabel):
@@ -59,13 +78,13 @@ class DatasetDistributionWidget(QLabel):
         super().resizeEvent(event)
         self._redraw()
 
+    def refresh_for_device_pixel_ratio(self) -> None:
+        self._redraw()
+
     def _redraw(self) -> None:
         width = max(self.width(), 1)
         height = max(self.height(), 1)
-        pixmap = QPixmap(width, height)
-        pixmap.fill(Qt.GlobalColor.white)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pixmap, painter, dpr = _begin_chart_paint(self, width, height)
 
         total = sum(count for _label, count in self._bars)
         labels = [label for label, _count in self._bars]
@@ -85,7 +104,7 @@ class DatasetDistributionWidget(QLabel):
         if self._show_total_summary:
             painter.drawText(
                 18,
-                12,
+                7,
                 max(width - 36, 1),
                 22,
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -94,17 +113,17 @@ class DatasetDistributionWidget(QLabel):
         elif self._single_class_name:
             painter.drawText(
                 18,
-                12,
+                7,
                 max(width - 36, 1),
                 22,
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                 self._single_class_name,
             )
 
-        left = 30
+        left = 20
         right = max(width - 22, left + 1)
-        top = 46
-        bottom = max(height - 38, top + 1)
+        top = 38
+        bottom = max(height - 33, top + 1)
         chart_w = right - left
         chart_h = bottom - top
         painter.setPen(QPen(QColor("#D7E0EA"), 1))
@@ -131,7 +150,7 @@ class DatasetDistributionWidget(QLabel):
                 percent = count / percent_total * 100
             else:
                 percent = 0.0
-            bar_h = round((count / max_count) * (chart_h - 24)) if count else 0
+            bar_h = round((count / max_count) * (chart_h - 22)) if count else 0
             x = round(left + slot_w * index + (slot_w - bar_width) / 2)
             y = bottom - bar_h
             painter.setPen(Qt.PenStyle.NoPen)
@@ -158,6 +177,7 @@ class DatasetDistributionWidget(QLabel):
             painter.drawText(left, top, chart_w, chart_h, Qt.AlignmentFlag.AlignCenter, "暂无已划分的数据集")
 
         painter.end()
+        pixmap.setDevicePixelRatio(dpr)
         self.setPixmap(pixmap)
 
     def _wrap_text(self, text: str, max_width: int) -> str:
@@ -199,21 +219,21 @@ class TrainingCurveWidget(QLabel):
         super().resizeEvent(event)
         self._redraw()
 
+    def refresh_for_device_pixel_ratio(self) -> None:
+        self._redraw()
+
     def _redraw(self) -> None:
         width = max(self.width(), 1)
         height = max(self.height(), 1)
-        pixmap = QPixmap(width, height)
-        pixmap.fill(Qt.GlobalColor.white)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pixmap, painter, dpr = _begin_chart_paint(self, width, height)
 
         map50 = self._find_column("metrics/mAP50(", exclude="95")
         box_loss = "val/box_loss" if self._data.get("val/box_loss") else "train/box_loss"
         epoch_count = max((len(values) for values in self._data.values()), default=0)
         summary = [("Epoch", str(epoch_count or "-"))]
-        self._draw_summary(painter, summary, width)
+        left = 34
+        self._draw_summary(painter, summary, width, left)
 
-        left = 42
         top = 42
         right = max(width - 18, left + 1)
         bottom = max(height - 28, top + 1)
@@ -225,8 +245,7 @@ class TrainingCurveWidget(QLabel):
             painter.setPen(QColor("#94A2AD"))
             painter.setFont(QFont("Microsoft YaHei UI", 11))
             painter.drawText(left, top, chart_w, chart_h, Qt.AlignmentFlag.AlignCenter, "暂无训练记录\n请先进行模型训练")
-            painter.end()
-            self.setPixmap(pixmap)
+            _finish_chart_paint(self, pixmap, painter, dpr)
             return
 
         series = []
@@ -237,8 +256,7 @@ class TrainingCurveWidget(QLabel):
         self._draw_curve_lines(painter, (left, top, chart_w, chart_h), series)
         self._draw_legend(painter, width, height, series)
 
-        painter.end()
-        self.setPixmap(pixmap)
+        _finish_chart_paint(self, pixmap, painter, dpr)
 
     def _find_column(self, prefix: str, exclude: str = "") -> str | None:
         for key in self._data:
@@ -246,9 +264,16 @@ class TrainingCurveWidget(QLabel):
                 return key
         return None
 
-    def _draw_summary(self, painter: QPainter, summary: list[tuple[str, str]], width: int) -> None:
+    def _draw_summary(
+        self,
+        painter: QPainter,
+        summary: list[tuple[str, str]],
+        width: int,
+        axis_left: int,
+    ) -> None:
         painter.setFont(QFont("Microsoft YaHei UI", 9))
-        x = 12
+        axis_font = QFont("Microsoft YaHei UI", 8)
+        x = max(0, axis_left - 8 - QFontMetrics(axis_font).horizontalAdvance("1.0"))
         for label, value in summary:
             text = f"{label}: {value}"
             text_w = painter.fontMetrics().horizontalAdvance(text) + 18

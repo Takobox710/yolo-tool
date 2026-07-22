@@ -76,6 +76,7 @@ class AnnotationCanvas(
         self.show_separate_yolo_save = False
         self.show_annotation_names = False
         self.show_canvas_status = True
+        self.status_changed_callback = None
         self._flash_timer = QTimer(self)
         self._flash_timer.setSingleShot(True)
         self._flash_timer.timeout.connect(self._clear_flash)
@@ -123,6 +124,7 @@ class AnnotationCanvas(
         self.crosshair_position = None
         self._update_hover_cursor()
         self.update()
+        self._notify_canvas_status_changed()
 
     def _clear_selection(self) -> bool:
         had_selection = self.selected_index >= 0
@@ -149,6 +151,7 @@ class AnnotationCanvas(
     def set_show_canvas_status(self, enabled: bool) -> None:
         self.show_canvas_status = bool(enabled)
         self.update()
+        self._notify_canvas_status_changed()
 
     def set_crosshair_position(self, point) -> None:
         if point is None:

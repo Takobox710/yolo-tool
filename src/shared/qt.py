@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QSlider,
+    QStatusBar,
     QStackedWidget,
     QStyle,
     QTableWidget,

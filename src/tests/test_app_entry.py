@@ -64,6 +64,53 @@ def test_qt_app_uses_project_local_icon_assets():
     assert ICON_ICO.exists()
 
 
+def test_navigation_icon_preserves_logical_size_at_high_dpi():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.shared.widgets.base import load_nav_icon
+
+    app = QApplication.instance() or QApplication([])
+    icon = load_nav_icon(2.0)
+
+    assert icon is not None
+    assert icon.devicePixelRatio() == 2.0
+    assert icon.size().width() == 56
+    assert icon.size().height() == 56
+    assert icon.deviceIndependentSize().width() == 28
+    assert icon.deviceIndependentSize().height() == 28
+
+
+def test_home_charts_render_physical_pixels_for_high_dpi(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.shared.widgets.charts import DatasetDistributionWidget, TrainingCurveWidget
+
+    app = QApplication.instance() or QApplication([])
+    for chart in (DatasetDistributionWidget(), TrainingCurveWidget()):
+        chart.resize(300, 200)
+        monkeypatch.setattr(chart, "devicePixelRatioF", lambda: 2.0)
+        rendered = {}
+        monkeypatch.setattr(
+            chart,
+            "setPixmap",
+            lambda pixmap, rendered=rendered: rendered.setdefault("pixmap", pixmap),
+        )
+        if isinstance(chart, DatasetDistributionWidget):
+            chart.set_single_class_counts({"train": 4, "val": 2, "test": 1}, "weld")
+        else:
+            chart.set_curve_data({"metrics/mAP50(B)": [0.1, 0.8], "train/box_loss": [1.0, 0.4]})
+
+        pixmap = rendered["pixmap"]
+        assert pixmap is not None
+        assert pixmap.devicePixelRatio() == 2.0
+        assert pixmap.size().width() == 600
+        assert pixmap.size().height() == 400
+        assert pixmap.deviceIndependentSize().width() == 300
+        assert pixmap.deviceIndependentSize().height() == 200
+
+
 def test_app_file_has_direct_script_import_bootstrap():
     src = Path("src/main.py").read_text(encoding="utf-8")
     assert "freeze_support()" in src
@@ -91,6 +138,27 @@ def test_shared_paths_use_repo_root_in_dev_mode():
     assert RUNTIME_ROOT == repo_root / "data" / "runtime"
     assert ICON_PNG == repo_root / "src" / "assets" / "app_icon.png"
     assert ICON_ICO == repo_root / "src" / "assets" / "app_icon.ico"
+
+
+def test_shared_paths_use_pyinstaller_resource_root(monkeypatch, tmp_path):
+    import importlib
+
+    import src.shared.paths as paths
+
+    resource_root = tmp_path / "_internal"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(resource_root), raising=False)
+
+    frozen_paths = importlib.reload(paths)
+
+    assert frozen_paths.ROOT == Path(sys.executable).resolve().parent
+    assert frozen_paths.PACKAGE_ROOT == resource_root / "src"
+    assert frozen_paths.ASSETS_ROOT == resource_root / "src" / "assets"
+    assert frozen_paths.ICON_PNG == resource_root / "src" / "assets" / "app_icon.png"
+
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+    importlib.reload(paths)
 
 
 def test_direct_script_hidden_train_entry_has_package_context():
@@ -148,15 +216,18 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "pyinstaller" in script
     assert 'ValidateSet("release", "dev")' in script
     assert 'YOLO_TOOL_BUILD_MODE' in script
-    assert 'ROOT_MODEL_FILES = [' in spec
-    assert '"data/models"' in spec
+    assert 'ROOT_MODEL_FILES' not in spec
+    assert 'MODELS_DIR' not in spec
+    assert '(str(model_path), "data/models")' not in spec
     assert 'HOOKS_DIR = ROOT / "installer" / "hooks"' in spec
     assert 'SetupIconFile=..\\src\\assets\\app_icon.ico' in iss
     assert 'Source: "..\\dist\\YOLOTool\\{#MyAppExeName}"' in iss
-    assert 'Source: "..\\dist\\YOLOTool\\*.pt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist' in iss
+    assert 'Source: "..\\dist\\YOLOTool\\*.pt"' not in iss
     assert '$TargetModelPath = Join-Path $TargetModelsDir $ModelFile.Name' in script
-    assert 'Copy-Item -LiteralPath $RootModelPath -Destination $TargetRootModelPath -Force' in script
-    assert 'Build output is missing root model file: yolo26n.pt' in script
+    assert 'Get-ChildItem -LiteralPath $SourceModelsDir -Filter *.pt -File' in script
+    assert '$RootModelPath' not in script
+    assert '$TargetRootModelPath' not in script
+    assert 'Build output is missing root model file: yolo26n.pt' not in script
     assert 'Build output is missing model files under data/models' in script
     assert 'from src.services.settings import build_default_settings, save_last_project_root' in script
     assert 'settings = build_default_settings(app_dir)' in script

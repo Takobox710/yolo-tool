@@ -67,13 +67,13 @@ yolo_tool/
 - `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。
 - `src/shared/` 放跨层共享基础能力，例如路径、Qt 导出、主题和共享类型。
 - `src/shared/paths.py` 在开发态必须把 `ROOT` 解析到仓库根目录，而不是 `src/` 子目录；隐藏 CLI 与后台 worker 依赖这个根目录作为 `python -m src.main` 的工作目录。
-- `src/shared/paths.py` 同时维护应用图标资源路径；GUI 启动时 `QApplication` 和 `WorkbenchWindow` 都应通过这里的 `ICON_PNG` 读取 `src/assets/app_icon.png`，不要在 UI 层硬编码相对目录，避免开发态或打包态窗口/任务栏图标丢失。
+- `src/shared/paths.py` 同时维护应用数据根目录和静态资源根目录；开发态资源从仓库 `src/assets/` 读取，PyInstaller 冻结态资源从 `_MEIPASS/src/assets/` 读取，而 `data/` 仍从 EXE 所在目录读取。GUI 启动时 `QApplication` 和 `WorkbenchWindow` 都应通过这里的 `ICON_PNG` 加载图标，不要在 UI 层硬编码相对目录。顶部导航图标由 `src/ui/shared/widgets/base.py` 按当前屏幕设备像素比生成物理 pixmap 并设置对应 DPR；主窗口屏幕变化时重新取样，保持 `28 x 28` 逻辑尺寸下的清晰度。
 - `src/services/<domain>/` 是唯一业务实现层。这里允许依赖标准库、第三方库、其他服务包和 `src/shared/`，不得依赖 `src/ui/`。
 - `src/services/home/` 负责主页的大目录扫描、统计汇总与训练历史整理；这些逻辑必须通过后台 worker 调用，避免主线程同步 I/O 卡住首页。主页切回时若界面上已有上一轮统计值，应优先保留旧值，待新汇总返回后再替换，避免反复闪出“加载中”。
 - `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。
 - `src/ui/shared/` 负责跨页面 UI 复用能力，例如页面基类、共享表单、共享对话框和后台 worker。
 - `src/ui/features/<feature>/` 负责各页面真实实现；`page.py` 只做页面装配，复杂逻辑继续拆到该功能包子模块。
-- `src/ui/widgets/` 与 `src/ui/shared/widgets/` 放基础可复用控件与图表组件。
+- `src/ui/widgets/` 与 `src/ui/shared/widgets/` 放基础可复用控件与图表组件。主页 `DatasetDistributionWidget` 和 `TrainingCurveWidget` 使用当前控件 DPR 创建物理 pixmap、以逻辑坐标绘制，并通过 `refresh_for_device_pixel_ratio()` 响应主窗口跨屏切换，避免高 DPI 下图表文字、坐标轴和曲线被放大模糊；各类别图片分布坐标轴保持 `20 px` 左边距、`38 px` 顶部位置和 `33 px` 底部留白，类别标题上方留 `7 px`、标题到坐标轴顶部留 `9 px`，最高柱数字与坐标轴顶部间距为 `0 px`；训练曲线坐标轴左边距保持为 `34 px`，顶部 `Epoch` 摘要按纵轴 `1.0` 刻度的实际字体宽度计算起点以保持左对齐。
 - `src/tests/architecture/` 放结构约束、防退化围栏与文档一致性检查。
 - `src/tests/services/` 按领域分目录放服务层测试。
 - `src/tests/ui/` 按 feature / shell / shared / data 分目录放页面与交互回归。
@@ -122,6 +122,7 @@ yolo_tool/
 - 验证页源视频播放器监听 `playbackStateChanged` 和 `mediaStatusChanged`；视频自然结束时由页面统一恢复播放按钮状态并暂停结果视频。
 - 验证页拖放由 `ValidationPageActionsMixin` 识别本地图片/视频文件并更新模式与输入源；输入源选项通过 `source_selection` 区分批量目录和单文件选择，`collect_prediction_sources()` 对图片检测/视频检测模式同时支持目录和单文件路径，复用同一检测 worker。
 - 验证页检测前预览由 `results.show_source_preview()` 负责加载图片源或暂停视频首帧；检测会话开始后由 `detection_started_for_source` 切回原有结果缓存与列表逻辑。
+- 验证页源图和检测结果图使用无视觉容器承载图片/视频切换，容器零内边距；`ImageView` 自身边框直接占据原图片区外框位置，避免出现大框套小框。
 
 验证页左侧布局将普通检测日志控件设为纵向伸缩项，使日志区域填满左侧面板的剩余高度；数据集验证模式则切换为顶部对齐和固定表单高度，避免右侧验证日志面板把左侧控件均匀拉开，并通过 `source_scope` 支持按钮选择自定义验证目录后临时覆盖 `data.yaml` 的 `val:`。验证页外层保持标准页面内边距，右侧内部装配布局清除默认 margin，避免右侧模块边缘间距被重复计算。页面专属布局代码位于 `src/ui/features/validation/layout.py`。
 
@@ -168,8 +169,12 @@ yolo_tool/
 - `src/ui/features/annotation/page.py` 与 `src/ui/features/annotation/canvas/widget.py` 都只保留页面 / 画布装配；交互、保存、菜单、快捷键、AI 与编辑细节继续拆在 feature 子模块。
 - 标注页快捷键由 `src/ui/features/annotation/shortcuts.py` 集中注册；`W` 与左侧 `画标注框(W)` 按钮共用 `enable_draw_mode()`，`V/R/O/M/P/C/L` 持续切换对应画布模式，`L` 仅在直线扩展启用时生效。
 - `DrawShapeDialog` 的“编辑”选项与下方形状列表共用一个连续外框，中间使用固定 `2 px` 高的较粗分隔线，不额外保留垂直布局间距。
+- 标注画布右键菜单的“取消当前绘制”仅由未完成的临时绘制状态（起点、旋转矩形步骤或多边形顶点）触发；单纯切换到绘制形状不会显示该菜单项。
 - 标注画布光标由 `src/ui/features/annotation/canvas/drawing.py` 统一根据交互状态刷新：除编辑模式外选择绘制模式后显示系统十字光标，矩形框模式额外在画布上绘制贯穿鼠标位置、依据热点下图片亮度在黑色与深灰色（`#000000` 至 `#484848`）之间变化的水平/垂直辅助线；三通道始终相等，不会显示彩色，并在短光标热点周围留出原始背景采样空隙，多边形封闭顶点优先显示小手，拖动时显示闭合手。
-- 标注画布左下角由 `src/ui/features/annotation/canvas/status.py` 叠加绘制当前模式名称，文字位于画布内容上方并使用半透明深色衬底；显示由 `annotation.show_canvas_status` 设置控制，默认开启。
+- 数据标注页底部状态栏由 `src/ui/features/annotation/layout.py` 装配并由 `src/ui/features/annotation/page.py` 管理；`annotation.show_canvas_status` 控制其显示，绘制模式变化通过画布状态回调同步“当前状态：{模式}”文字，离开数据标注页时隐藏。
+- 页面导航在切换 `QStackedWidget` 当前页前调用目标页的 `prepare_for_show()`，预先完成标注页状态栏和底部边距布局，避免页面首次显示时发生一次可见重排。
+- `src/ui/features/annotation/canvas/status.py` 仅提供模式文字映射和状态变化通知，不再在画布内容上绘制黑底状态文字；验证页不再调用主窗口级 `set_status_text()`。
+- 数据标注页采用“模块区 + 页面状态栏”的纵向布局，模块区与状态栏之间保持 `3 px` 间距；状态栏隐藏时恢复原有 `12 px` 页面底部边距，左侧栏、画布和右侧栏的底边保持对齐。
 - 标注画布离开时清除悬停状态和辅助线；重新进入时由 `src/ui/features/annotation/canvas/interaction.py` 依据 `QEnterEvent` 坐标恢复当前绘制模式的光标和矩形框辅助线，避免短十字光标丢失。
 - 标注画布渲染由 `src/ui/features/annotation/canvas/render.py` 负责：已完成标注保持类别颜色显示；编辑模式下选中标注持续显示半透明背景，未选中时仅在悬停填充；绘制中的矩形、圆形和 OBB 使用半透明纯绿色轮廓，多边形在至少三个顶点确定后以半透明纯绿色背景标识区域，使颜色随图片底色混合变化，且不显示类别名称。
 - 标注画布控制点由同一渲染模块按状态区分形状：绘制预览使用直径 `7 px` 的不透明纯绿色实心圆点，已完成标注默认使用直径 `7 px` 的实心圆点；圆形标注绘制预览中的半径控制点随鼠标确定方向，完成后使用 JSON 中保存的半径点位置，只有主动拖动该点才会改变；编辑模式悬浮时当前控制点显示直径 `9 px` 的空心方块，其余控制点显示直径 `9 px` 的空心圆点并允许直接拖动；绘制模式只渲染控制点，不开放选中或拖动；编辑模式未选中标注在整体悬浮时显示与选中态相同深度的背景，移开后恢复无背景，选中标注继续显示同等深度的半透明背景；编辑模式控制点命中范围为最大可视尺寸的 `2.0` 倍。
@@ -186,6 +191,7 @@ yolo_tool/
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
 - 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json` 与 `app_state.json`。
+- 打包模型来源统一为 `data/models/*.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集模型文件，项目根目录 `.pt` 也不再复制，避免模型落入 `_internal/` 或形成重复副本。
 - 安装包脚本 `installer/yolo_tool.iss` 负责把 `dist/YOLOTool/` 封装为安装程序。
 - 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py` 与 `src/bootstrap/cli_dispatch.py`。
 

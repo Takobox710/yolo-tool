@@ -31,7 +31,9 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 
 运行时配置使用打包目录内的 `data/runtime/settings.json` 与 `data/runtime/app_state.json`。
 
-程序图标资源统一来自 `src/assets/app_icon.ico` 与 `src/assets/app_icon.png`：`.ico` 用于 PyInstaller/Inno Setup 的 EXE 与安装器图标，GUI 运行时窗口图标通过 `src/shared/paths.py` 中的 `ICON_PNG` 加载，避免目录结构调整后出现窗口或任务栏图标缺失。
+基础模型由 `installer/build_windows.ps1` 从项目的 `data/models/*.pt` 复制到打包产物的 `data/models/`；模型不会作为 PyInstaller 数据文件写入 `_internal/`，项目根目录下的 `.pt` 文件也不会复制到产物根目录。
+
+程序图标资源统一来自 `src/assets/app_icon.ico` 与 `src/assets/app_icon.png`：`.ico` 用于 PyInstaller/Inno Setup 的 EXE 与安装器图标，GUI 运行时窗口图标通过 `src/shared/paths.py` 中的 `ICON_PNG` 加载。冻结态下 `ICON_PNG` 从 PyInstaller 的 `_MEIPASS/src/assets/` 读取，数据文件仍从 EXE 所在目录读取。顶部导航图标以及主页两张图表按当前屏幕设备像素比生成高 DPI pixmap，并在窗口跨屏切换时刷新，打包后无需额外图标或图表资源文件。
 
 Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与单一的 PyInstaller spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。
 

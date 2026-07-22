@@ -58,17 +58,6 @@ if (Test-Path -LiteralPath $SourceModelsDir) {
     }
 }
 
-$RootModelPath = Join-Path $Root "yolo26n.pt"
-$TargetRootModelPath = Join-Path $AppDir "yolo26n.pt"
-if (-not (Test-Path -LiteralPath $RootModelPath)) {
-    throw "Required root model file not found: $RootModelPath"
-}
-Copy-Item -LiteralPath $RootModelPath -Destination $TargetRootModelPath -Force
-
-if (-not (Test-Path -LiteralPath $TargetRootModelPath)) {
-    throw "Build output is missing root model file: yolo26n.pt"
-}
-
 @"
 from __future__ import annotations
 

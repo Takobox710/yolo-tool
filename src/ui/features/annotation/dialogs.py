@@ -64,7 +64,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
         show_canvas_status_box, self.show_canvas_status_check = self.checkbox_with_help(
             "显示当前状态",
             bool(show_canvas_status),
-            help_text="开启后在画布左下角显示当前标注模式名称；关闭后隐藏当前状态文字。",
+            help_text="开启后在数据标注页底部状态栏显示当前状态，例如“当前状态：矩形框”；关闭后隐藏状态栏。",
         )
         continuous_box, self.continuous_draw_check = self.checkbox_with_help(
             "开启连续标注",

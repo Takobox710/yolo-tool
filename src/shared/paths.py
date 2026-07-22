@@ -10,8 +10,17 @@ def app_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def resource_root() -> Path:
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass).resolve()
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
 ROOT = app_root()
-PACKAGE_ROOT = ROOT / "src"
+PACKAGE_ROOT = resource_root() / "src"
 ASSETS_ROOT = PACKAGE_ROOT / "assets"
 DATA_ROOT = ROOT / "data"
 RUNTIME_ROOT = DATA_ROOT / "runtime"

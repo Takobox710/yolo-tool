@@ -52,6 +52,7 @@ python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=..
 - 训练页基础模型下拉框默认从 `data/models/*.pt` 读取，不再优先扫描项目根目录下的 `.pt`。
 - 当基础模型输入的是模型文件名，例如 `yolo11n.pt`、`yolov8m-obb.pt`，训练命令中的 `model=` 与 `pretrained=` 都应解析为 `data/models/` 下的绝对路径。
 - 若本地不存在该模型，Ultralytics 触发自动下载时，也应下载到 `data/models/`，不要落到项目根目录或其他默认目录。
+- Windows 打包只由 `installer/build_windows.ps1` 复制 `data/models/*.pt`；项目根目录下的 `.pt` 不属于打包模型来源。
 
 Qt 实现注意事项：
 

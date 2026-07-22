@@ -155,7 +155,6 @@ class ValidationPageActionsMixin:
         )
         self.refresh_source_items()
         self.update_video_mode_controls()
-        self.set_status_text(f"已载入{mode}文件：{path.name}")
 
     def dropEvent(self, event):  # noqa: N802 - Qt API name
         path = self._drop_media_path(event)

@@ -7,7 +7,7 @@ from src.shared.paths import ICON_PNG
 from src.shared.theme import STYLE
 from src.services.runtime import stop_process
 from src.services.settings import SettingsService
-from src.shared.qt import QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QIcon, QTimer
+from src.shared.qt import QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QIcon, QTimer, Qt
 from src.ui.shell.close_guard import confirm_close_if_needed
 from src.ui.shell.navigation import ensure_page, reload_pages, show_page
 from src.ui.shell.page_registry import PAGE_ORDER, PAGE_TITLES, create_page
@@ -36,6 +36,8 @@ class WorkbenchWindow(QMainWindow):
         self._page_warmup_timer = QTimer(self)
         self._page_warmup_timer.setSingleShot(True)
         self._page_warmup_timer.timeout.connect(self._warm_up_next_page)
+        self._nav_icon_label = None
+        self._nav_window_handle = None
         if ICON_PNG.exists():
             app_icon = QIcon(str(ICON_PNG))
             self.setWindowIcon(app_icon)
@@ -62,11 +64,14 @@ class WorkbenchWindow(QMainWindow):
         nav_layout = QHBoxLayout(nav)
         nav_layout.setContentsMargins(22, 14, 22, 14)
         nav_layout.setSpacing(10)
-        nav_pix = load_nav_icon()
+        nav_pix = load_nav_icon(self.devicePixelRatioF())
         if nav_pix is not None:
             icon_label = QLabel()
+            icon_label.setFixedSize(28, 28)
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             icon_label.setPixmap(nav_pix)
             nav_layout.addWidget(icon_label)
+            self._nav_icon_label = icon_label
         brand = QLabel("YOLO 本地训练工作台")
         brand.setObjectName("brand")
         nav_layout.addWidget(brand)
@@ -87,6 +92,24 @@ class WorkbenchWindow(QMainWindow):
         self.setCentralWidget(root)
         show_page(self, "home")
         self._schedule_page_warmup()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        window_handle = self.windowHandle()
+        if window_handle is not None and window_handle is not self._nav_window_handle:
+            window_handle.screenChanged.connect(self._refresh_nav_icon)
+            self._nav_window_handle = window_handle
+        self._refresh_nav_icon()
+
+    def _refresh_nav_icon(self, *_args) -> None:
+        if self._nav_icon_label is not None:
+            nav_pix = load_nav_icon(self.devicePixelRatioF())
+            if nav_pix is not None:
+                self._nav_icon_label.setPixmap(nav_pix)
+        for child in self.findChildren(QWidget):
+            refresh = getattr(child, "refresh_for_device_pixel_ratio", None)
+            if refresh:
+                refresh()
 
     def reload_pages(self, current_page: str = "home"):
         reload_pages(self, current_page)

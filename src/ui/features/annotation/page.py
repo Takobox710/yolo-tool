@@ -19,6 +19,7 @@ from src.shared.qt import (
     QMessageBox,
     Qt,
     QTimer,
+    QVBoxLayout,
 )
 from src.ui.features.annotation.actions import AnnotationActionsMixin
 from src.ui.features.annotation.ai.dialog import AiPrelabelDialog, CustomAiImageSelectionDialog
@@ -26,7 +27,12 @@ from src.ui.features.annotation.canvas.widget import AnnotationCanvas
 from src.ui.features.annotation.class_panel import AnnotationClassPanelMixin
 from src.ui.features.annotation.dialogs import AnnotationSettingsDialog, ClassManagerDialog, DrawShapeDialog
 from src.ui.features.annotation.file_browser import AnnotationFileBrowserMixin
-from src.ui.features.annotation.layout import build_center, build_right_panel
+from src.ui.features.annotation.layout import (
+    build_center,
+    build_right_panel,
+    build_status_bar,
+    set_annotation_bottom_margin,
+)
 from src.ui.features.annotation.menus import AnnotationMenuMixin
 from src.ui.features.annotation.persistence import AnnotationPersistenceMixin
 from src.ui.features.annotation.selection import AnnotationSelectionMixin
@@ -66,12 +72,20 @@ class AnnotationPage(
         self._file_list_render_timer.setInterval(16)
         self._file_list_render_timer.timeout.connect(self._render_next_file_list_batch)
 
-        root = QHBoxLayout(self)
+        root = QVBoxLayout(self)
         root.setContentsMargins(20, 14, 12, 12)
-        root.setSpacing(8)
-        root.addWidget(build_toolbar(self))
-        root.addLayout(build_center(self), 1)
-        root.addWidget(build_right_panel(self))
+        root.setSpacing(3)
+        self.annotation_root_layout = root
+        modules = QHBoxLayout()
+        modules.setContentsMargins(0, 0, 0, 0)
+        modules.setSpacing(8)
+        self.annotation_modules_layout = modules
+        modules.addWidget(build_toolbar(self))
+        modules.addLayout(build_center(self), 1)
+        modules.addWidget(build_right_panel(self))
+        root.addLayout(modules, 1)
+        root.addWidget(build_status_bar(self))
+        self.canvas.status_changed_callback = self.refresh_annotation_status_bar
 
         self._refresh_class_state()
         self._refresh_path_labels()
@@ -164,6 +178,7 @@ class AnnotationPage(
         super().keyPressEvent(event)
 
     def on_show(self) -> None:
+        self.refresh_annotation_status_bar()
         self._refresh_path_labels()
         if not self._initialized_once:
             self._initialized_once = True
@@ -182,6 +197,26 @@ class AnnotationPage(
         prepare_initial_image = getattr(self, "prepare_initial_image", None)
         if callable(prepare_initial_image):
             prepare_initial_image()
+
+    def on_hide(self) -> None:
+        self.annotation_status_bar.hide()
+        set_annotation_bottom_margin(self, 12)
+
+    def prepare_for_show(self) -> None:
+        self.refresh_annotation_status_bar(page_visible=True)
+
+    def refresh_annotation_status_bar(self, *, page_visible: bool | None = None) -> None:
+        show_status = bool(
+            self.app.settings.get("annotation", {}).get("show_canvas_status", True)
+        )
+        if show_status:
+            self.annotation_status_bar.showMessage(
+                f"当前状态：{self.canvas._canvas_status_text()}"
+            )
+        page_visible = self.isVisible() if page_visible is None else page_visible
+        status_visible = show_status and page_visible
+        self.annotation_status_bar.setVisible(status_visible)
+        set_annotation_bottom_margin(self, 0 if status_visible else 12)
 
     def has_unsaved_annotations(self) -> bool:
         return bool(self.dirty)

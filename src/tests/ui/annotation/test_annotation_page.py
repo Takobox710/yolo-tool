@@ -230,7 +230,7 @@ def test_annotation_canvas_cancel_action_only_shows_while_drawing():
     assert canvas._can_show_cancel_drawing_action() is False
 
     canvas.set_draw_shape("rect")
-    assert canvas._can_show_cancel_drawing_action() is True
+    assert canvas._can_show_cancel_drawing_action() is False
 
     canvas.set_draw_shape("select")
     assert canvas._can_show_cancel_drawing_action() is False
@@ -670,7 +670,7 @@ def test_annotation_settings_dialog_adds_help_symbols_and_tooltips(tmp_path):
     assert dialog.show_annotation_names_check.toolTip() == "开启后在画布中显示已完成标注的类别名称；关闭后只显示标注图形。"
     assert dialog.show_canvas_status_check.text() == "显示当前状态 ⓘ"
     assert dialog.show_canvas_status_check.isChecked() is True
-    assert dialog.show_canvas_status_check.toolTip() == "开启后在画布左下角显示当前标注模式名称；关闭后隐藏当前状态文字。"
+    assert dialog.show_canvas_status_check.toolTip() == "开启后在数据标注页底部状态栏显示当前状态，例如“当前状态：矩形框”；关闭后隐藏状态栏。"
     assert dialog.line_expand_label.text() == "开启直线扩展标注 ⓘ"
     assert dialog.line_expand_check.isChecked() is True
     assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"
@@ -724,13 +724,11 @@ def test_annotation_canvas_name_visibility_is_configurable_in_rendering(tmp_path
     assert calls[1]["show_label"] is True
 
 
-def test_annotation_canvas_status_visibility_is_configurable(tmp_path):
+def test_annotation_page_status_bar_replaces_canvas_status(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-    from PySide6.QtGui import QPaintEvent
-
     from src.services.settings import build_default_settings
-    from src.shared.qt import QApplication, QPixmap
+    from src.shared.qt import QApplication
     from src.ui.features.annotation.page import AnnotationPage
 
     app = QApplication.instance() or QApplication([])
@@ -740,18 +738,40 @@ def test_annotation_canvas_status_visibility_is_configurable(tmp_path):
         settings_service=SimpleNamespace(save=lambda _data: None),
     )
     page = AnnotationPage(fake_app)
-    page.canvas.pixmap = QPixmap(32, 32)
-    page.canvas.image_size = (32, 32)
-    status_calls = []
-    page.canvas._draw_canvas_status = lambda painter: status_calls.append(True)
+    page.resize(1000, 700)
+    page.show()
+    app.processEvents()
+    page.on_show()
+    app.processEvents()
 
-    page.canvas.paintEvent(QPaintEvent(page.canvas.rect()))
-    assert status_calls == [True]
+    assert page.annotation_status_bar.isVisible()
+    assert page.annotation_status_bar.currentMessage() == "当前状态：编辑"
+    assert page.layout().contentsMargins().bottom() == 0
+    assert page.layout().spacing() == 3
+    assert page.annotation_modules_layout.geometry().bottom() + 4 == page.annotation_status_bar.geometry().top()
+
+    page.canvas.set_draw_shape("rect")
+    assert page.annotation_status_bar.currentMessage() == "当前状态：矩形框"
+
+    page.on_hide()
+    page.hide()
+    page.prepare_for_show()
+    assert page.layout().contentsMargins().bottom() == 0
+    page.show()
+    app.processEvents()
+    page.on_show()
+    assert page.annotation_status_bar.isVisible()
 
     settings["annotation"]["show_canvas_status"] = False
     page._refresh_class_state()
-    page.canvas.paintEvent(QPaintEvent(page.canvas.rect()))
-    assert status_calls == [True]
+    assert page.annotation_status_bar.isHidden()
+    assert page.layout().contentsMargins().bottom() == 12
+    assert not hasattr(page.canvas, "_draw_canvas_status")
+
+    page.on_hide()
+    assert page.annotation_status_bar.isHidden()
+    assert page.layout().contentsMargins().bottom() == 12
+    page.close()
 
 
 def test_annotation_canvas_status_text_follows_draw_mode():
@@ -1168,7 +1188,7 @@ def test_annotation_settings_dialog_hides_symbol_but_keeps_tooltip_when_disabled
     assert dialog.show_annotation_names_check.text() == "显示标注名称"
     assert dialog.show_annotation_names_check.toolTip() == "开启后在画布中显示已完成标注的类别名称；关闭后只显示标注图形。"
     assert dialog.show_canvas_status_check.text() == "显示当前状态"
-    assert dialog.show_canvas_status_check.toolTip() == "开启后在画布左下角显示当前标注模式名称；关闭后隐藏当前状态文字。"
+    assert dialog.show_canvas_status_check.toolTip() == "开启后在数据标注页底部状态栏显示当前状态，例如“当前状态：矩形框”；关闭后隐藏状态栏。"
     assert dialog.line_expand_label.text() == "开启直线扩展标注"
     assert dialog.line_expand_check.isChecked() is True
     assert dialog.line_expand_label.toolTip() == "开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。"

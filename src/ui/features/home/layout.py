@@ -29,7 +29,7 @@ def build_home_layout(page) -> None:
     title.setObjectName("pageTitle")
     copy.addWidget(title)
     hero.addLayout(copy, 1)
-    for text in ["pixi env: local", "Python 3.12", "CUDA 13.0"]:
+    for text in ["Python 3.12", "CUDA 13.0"]:
         pill = QLabel(text)
         pill.setObjectName("envPill")
         hero.addWidget(pill)

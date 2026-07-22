@@ -37,12 +37,8 @@ def update_source_mode(page, value):
         )
     ]
     layouts.extend(
-        panel.layout
-        for panel in (
-            getattr(page, "source_panel", None),
-            getattr(page, "result_panel", None),
-        )
-        if panel is not None
+        getattr(page, name, None)
+        for name in ("source_panel_layout", "result_panel_layout")
     )
     layouts = [layout for layout in layouts if layout is not None]
     page.setUpdatesEnabled(False)
@@ -434,6 +430,5 @@ def handle_video_progress(page, payload: dict):
     else:
         message = f"视频检测进度：{percent}% | 上一秒：{frames_last_second}帧"
     page.append_active_log(message)
-    page.set_status_text(message)
 
 
