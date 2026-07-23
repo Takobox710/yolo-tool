@@ -62,7 +62,7 @@ def load_editable_annotations(
 def _labelme_class_id(label: str, class_names: list[str]) -> int:
     text = str(label or "").strip()
     if not text:
-        text = "weld"
+        text = "目标名称"
     if text in class_names:
         return class_names.index(text)
     class_names.append(text)
@@ -97,7 +97,7 @@ def load_labelme_annotations(
     line_expand_pixels: int = 10,
 ) -> tuple[list[EditableAnnotation], list[str]]:
     annotations: list[EditableAnnotation] = []
-    names = list(class_names) or ["weld"]
+    names = list(class_names)
     if not json_path.exists():
         return annotations, names
     try:

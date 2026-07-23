@@ -19,9 +19,15 @@ def resource_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def assets_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return app_root() / "app_assets"
+    return Path(__file__).resolve().parent.parent / "assets"
+
+
 ROOT = app_root()
 PACKAGE_ROOT = resource_root() / "src"
-ASSETS_ROOT = PACKAGE_ROOT / "assets"
+ASSETS_ROOT = assets_root()
 DATA_ROOT = ROOT / "data"
 RUNTIME_ROOT = DATA_ROOT / "runtime"
 DEFAULT_SETTINGS_PATH = RUNTIME_ROOT / "settings.json"

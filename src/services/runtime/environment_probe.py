@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from src import APP_VERSION
+from src.services.runtime.release_manifest import installed_runtime_version
 from src.services.runtime.windows_spawn import hidden_subprocess_kwargs
 
 
@@ -65,6 +66,10 @@ def python_version() -> str:
 
 def application_version() -> str:
     return APP_VERSION
+
+
+def runtime_version() -> str:
+    return installed_runtime_version()
 
 
 def dependency_versions() -> dict[str, str]:

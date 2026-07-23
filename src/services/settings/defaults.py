@@ -22,7 +22,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
         },
         "task": {"mode": "detect"},
         "dataset": {
-            "class_names": ["weld"],
+            "class_names": [],
             "split_ratios": {"train": 0.8, "val": 0.2, "test": 0.0},
             "line_to_obb": {"enabled": True, "half_width": 10.0},
             "random_seed": 42,

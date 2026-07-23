@@ -12,7 +12,14 @@ SECTIONS = [
     ROOT / "installer",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".ps1", ".toml", ".json", ".iss", ".spec", ".txt", ".pyw"}
-IGNORED_DIR_NAMES = {"__pycache__", ".pixi", ".pytest_cache", "dist", "build"}
+IGNORED_DIR_NAMES = {
+    "__pycache__",
+    ".pixi",
+    ".pytest_cache",
+    "dist",
+    "build",
+    "output",
+}
 
 
 @dataclass(slots=True)

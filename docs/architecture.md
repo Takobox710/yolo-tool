@@ -7,7 +7,7 @@
 定位是“通用 YOLO 优先，同时兼容焊缝 OBB 项目”：
 
 - 支持 YOLO `detect` 与 `obb` 两类任务。
-- 默认兼容焊缝识别习惯配置，例如类别 `weld`、Labelme 转 YOLO-OBB、直线标注扩展为旋转矩形。
+- 兼容焊缝识别习惯配置，例如类别 `weld`、Labelme 转 YOLO-OBB、直线标注扩展为旋转矩形；新项目不预置具体类别名称。
 - 使用本项目本地 `pixi` 环境管理依赖，不依赖外部 conda 环境。
 
 ## 当前目录结构
@@ -67,17 +67,21 @@ yolo_tool/
 - `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。
 - `src/shared/` 放跨层共享基础能力，例如路径、Qt 导出、主题和共享类型。
 - `src/shared/paths.py` 在开发态必须把 `ROOT` 解析到仓库根目录，而不是 `src/` 子目录；隐藏 CLI 与后台 worker 依赖这个根目录作为 `python -m src.main` 的工作目录。
-- `src/shared/paths.py` 同时维护应用数据根目录和静态资源根目录；开发态资源从仓库 `src/assets/` 读取，PyInstaller 冻结态资源从 `_MEIPASS/src/assets/` 读取，而 `data/` 仍从 EXE 所在目录读取。GUI 启动时 `QApplication` 和 `WorkbenchWindow` 都应通过这里的 `ICON_PNG` 加载图标，不要在 UI 层硬编码相对目录。顶部导航图标由 `src/ui/shared/widgets/base.py` 按当前屏幕设备像素比生成物理 pixmap 并设置对应 DPR；主窗口屏幕变化时重新取样，保持 `28 x 28` 逻辑尺寸下的清晰度。
+- `src/shared/paths.py` 同时维护应用数据根目录和静态资源根目录；开发态资源从仓库 `src/assets/` 读取，PyInstaller 冻结态资源从 EXE 同级的 `app_assets/` 读取，而 `data/` 仍从 EXE 所在目录读取。GUI 启动时 `QApplication` 和 `WorkbenchWindow` 都应通过这里的 `ICON_PNG` 加载图标，不要在 UI 层硬编码相对目录。顶部导航图标由 `src/ui/shared/widgets/base.py` 按当前屏幕设备像素比生成物理 pixmap 并设置对应 DPR；主窗口屏幕变化时重新取样，保持 `28 x 28` 逻辑尺寸下的清晰度。
 - `src/services/<domain>/` 是唯一业务实现层。这里允许依赖标准库、第三方库、其他服务包和 `src/shared/`，不得依赖 `src/ui/`。
 - `src/services/home/` 负责主页的大目录扫描、统计汇总与训练历史整理；这些逻辑必须通过后台 worker 调用，避免主线程同步 I/O 卡住首页。主页切回时若界面上已有上一轮统计值，应优先保留旧值，待新汇总返回后再替换，避免反复闪出“加载中”。
+- 主页类别分布优先读取数据集 `data.yaml` 的 `names`，关闭多类别模式时使用普通图片分布，开启多类别模式时按总标注和各类别标注对象数量展示；数据集与设置均无类别名称时使用“目标名称”作为兜底。
+- 主页标注数量按 Labelme `shapes` 数量或 YOLO 非空标签行数统计，不按标注文件数统计；普通分布图固定显示总图片、训练、验证、测试、未标注五项，总图片固定在最左侧，其余项目按数量降序排列，未标注为 0 时隐藏。普通模式仅在只有一个标注类型时显示上方类型名称，多类别时隐藏名称并扩展绘图区；无标题模式下 Y 轴顶部间距为 15px，柱顶数值标签和柱状图位置保持独立。
+- 主页没有有效的 `data/train|val|test/labels` 标签时，分布统计回退到当前图片目录及同名 Labelme/YOLO 标签；多类别模式下按每个类别的标注对象数量统计，第一项为总标注数并按类别数量降序排列。
 - `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。
 - `src/ui/shared/` 负责跨页面 UI 复用能力，例如页面基类、共享表单、共享对话框和后台 worker。
 - `src/ui/features/<feature>/` 负责各页面真实实现；`page.py` 只做页面装配，复杂逻辑继续拆到该功能包子模块。
 - `src/ui/widgets/` 与 `src/ui/shared/widgets/` 放基础可复用控件与图表组件。主页 `DatasetDistributionWidget` 和 `TrainingCurveWidget` 使用当前控件 DPR 创建物理 pixmap、以逻辑坐标绘制，并通过 `refresh_for_device_pixel_ratio()` 响应主窗口跨屏切换，避免高 DPI 下图表文字、坐标轴和曲线被放大模糊；各类别图片分布坐标轴保持 `20 px` 左边距、`38 px` 顶部位置和 `33 px` 底部留白，类别标题上方留 `7 px`、标题到坐标轴顶部留 `9 px`，最高柱数字与坐标轴顶部间距为 `0 px`；训练曲线坐标轴左边距保持为 `34 px`，顶部 `Epoch` 摘要按纵轴 `1.0` 刻度的实际字体宽度计算起点以保持左对齐。
-- `src/tests/architecture/` 放结构约束、防退化围栏与文档一致性检查。
-- `src/tests/services/` 按领域分目录放服务层测试。
-- `src/tests/ui/` 按 feature / shell / shared / data 分目录放页面与交互回归。
-- `src/tests/integration/` 放入口和跨层集成回归。
+- `src/tests/architecture/` 只保留依赖方向、旧入口、模块体量和 Qt 生命周期四类结构围栏，不扫描文档措辞或代码清单内容。
+- `src/tests/services/` 按领域保护文件读写、转换、设置、命令构造和运行时安全等业务规则。
+- `src/tests/ui/` 按业务域和 shell 分目录保留关键页面工作流与服务接线；数据处理 UI 测试使用 `data_processing/`，避免与项目级 `data/` 忽略规则冲突；精确布局、颜色、尺寸与提示文本改由发布前人工检查。
+- `src/tests/integration/` 放开发/冻结入口、隐藏 CLI 和 Windows 打包契约回归。
+- 默认 `pixi run test` 固定收集 80 项核心测试，不另设隐藏的慢速或完整测试套件。
 
 ## 服务层说明
 
@@ -90,6 +94,7 @@ yolo_tool/
 - 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
 - `src/runtime/settings.json` 仅作为源码内默认配置参考。
 - 标注页名称显示由项目设置 `annotation.show_annotation_names` 控制，默认值为 `false`。
+- 标注页未配置 `dataset.class_names` 时类别下拉框保持为空，不再自动添加 `weld`；读取已有 Labelme 标注时再按标注中的非空 `label` 动态补充类别。
 
 ### `src/services/runtime/`
 
@@ -190,9 +195,10 @@ yolo_tool/
 ## 打包链路
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
-- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json` 与 `app_state.json`。
+- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json` 和 `app_assets/`。
 - 打包模型来源统一为 `data/models/*.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集模型文件，项目根目录 `.pt` 也不再复制，避免模型落入 `_internal/` 或形成重复副本。
-- 安装包脚本 `installer/yolo_tool.iss` 负责把 `dist/YOLOTool/` 封装为安装程序。
+- `src/services/runtime/release_manifest.py` 负责发布清单、环境版本校验和 SHA-256 校验；`src/devtools/release_package.py` 按 `Full`、`AppUpdate`、`RuntimeFull` 生成 staging。
+- 安装包脚本 `installer/yolo_tool.iss` 通过 `PackageType` 编译参数封装三种安装程序。更新包在临时目录完成文件准备后再切换程序层或程序加环境层，用户数据层不参与更新。
 - 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py` 与 `src/bootstrap/cli_dispatch.py`。
 
 ## 维护建议
@@ -201,4 +207,4 @@ yolo_tool/
 - 新增页面逻辑直接放入 `src/ui/features/<feature>/`，不要恢复任何 `views`、`legacy` 或顶层 UI 兼容壳。
 - `src/services/<domain>/__init__.py` 只做轻量导出，不塞入业务实现。
 - 修改结构后同步更新 `docs/spec/*.md`、`docs/packaging-windows.md` 和 `docs/code-inventory.md`。
-- 当前阶段的结构围栏由 `src/tests/architecture/test_structure_boundaries.py` 负责，包含页面 / worker / service 体量阈值、旧路径禁用和 inventory 新鲜度校验。
+- 当前阶段的结构围栏由 `src/tests/architecture/test_structure_boundaries.py` 的 4 项场景负责：分层依赖、旧路径与导入禁用、页面/worker/service 体量阈值，以及 Qt 延迟回调上下文和通配导入限制。代码清单在结构变化后由生成器更新并通过 diff 审查，不再占用 pytest 时间。

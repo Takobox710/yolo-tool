@@ -14,9 +14,7 @@
     "mode": "detect"
   },
   "dataset": {
-    "class_names": [
-      "weld"
-    ],
+    "class_names": [],
     "split_ratios": {
       "train": 0.8,
       "val": 0.2,

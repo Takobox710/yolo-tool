@@ -124,14 +124,28 @@ class HomePageDataMixin:
         single_counts = summary.get("single_counts") or {}
         multi_counts = summary.get("multi_counts") or {}
         class_names = summary.get("class_names") or []
-        if self.app.settings.get("features", {}).get(
+        standard_counts = summary.get("standard_counts") or {}
+        multi_class_mode = self.app.settings.get("features", {}).get(
             "distribution_multi_class_mode", False
-        ) and len(multi_counts) > 1:
+        )
+        self.distribution_title.setText(
+            "多类别标注分布" if multi_class_mode else "各类别图片分布"
+        )
+        if multi_class_mode:
             self.distribution_view.set_multi_class_counts(multi_counts)
         else:
-            default_class = class_names[0] if class_names else "数据集"
-            self.distribution_view.set_single_class_counts(
-                single_counts, default_class
+            default_class = (
+                class_names[0]
+                if len(class_names) == 1
+                else ""
+            )
+            if not class_names:
+                default_class = "目标名称"
+            self.distribution_view.set_standard_counts(
+                standard_counts.get("total_images", 0),
+                standard_counts.get("split_counts", single_counts),
+                standard_counts.get("unannotated_images", 0),
+                default_class,
             )
         self.curve_view.set_curve_data(summary.get("curve_data") or {})
         self._apply_history_entries(summary.get("history_entries") or [])

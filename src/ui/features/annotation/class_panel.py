@@ -19,11 +19,13 @@ class AnnotationClassPanelMixin:
             for name in self.app.settings.get("dataset", {}).get("class_names", [])
             if str(name).strip()
         ]
-        return names or ["weld"]
+        return names
 
     def _refresh_class_state(self) -> None:
         names = self.class_names()
-        self.current_class_id = min(max(self.current_class_id, 0), len(names) - 1)
+        self.current_class_id = (
+            min(max(self.current_class_id, 0), len(names) - 1) if names else 0
+        )
         if hasattr(self, "class_combo"):
             self.class_combo.blockSignals(True)
             self.class_combo.clear()

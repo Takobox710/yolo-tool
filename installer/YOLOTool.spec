@@ -18,27 +18,34 @@ BASE_EXCLUDES = [
     "tensorboard",
     "dask",
     "matplotlib.tests",
-]
-
-DEV_EXCLUDES = [
+    # Optional data/audio and test-only packages are not used by YOLOTool.
+    "polars",
+    "_polars_runtime_32",
     "torchaudio",
+    "torch.fx.passes.tests",
+    "torch._export.db.examples",
+    "torch.utils.benchmark",
+    "torch.distributed.rpc._testing",
+    "torch.distributed.rpc.examples",
+    "torch._numpy.testing",
 ]
 
 mode = os.environ.get("YOLO_TOOL_BUILD_MODE", "release").strip().lower()
 is_dev = mode == "dev"
 name = "YOLOTool-dev" if is_dev else "YOLOTool"
 
-datas = [
-    (str(ASSETS_DIR), "src/assets"),
-    *collect_data_files("ultralytics"),
-]
+datas = [*collect_data_files("ultralytics")]
 binaries = []
 for package in ("torch", "cv2"):
     binaries += collect_dynamic_libs(package)
 
 hiddenimports = collect_submodules("ultralytics", on_error="ignore")
 if not is_dev:
-    datas += collect_data_files("matplotlib", subdir="mpl-data")
+    datas += collect_data_files(
+        "matplotlib",
+        subdir="mpl-data",
+        excludes=["**/sample_data/**"],
+    )
     hiddenimports += [
         "matplotlib",
         "matplotlib.backends.backend_agg",
@@ -46,8 +53,6 @@ if not is_dev:
     ]
 
 excludes = list(BASE_EXCLUDES)
-if is_dev:
-    excludes += DEV_EXCLUDES
 
 a = Analysis(
     [str(ROOT / "src/main.py")],

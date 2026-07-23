@@ -1,13 +1,26 @@
-# Windows 打包说明
+# Windows 打包与分层更新
 
-推荐使用 `onedir` 绿色版打包，避免单文件模式带来的启动慢和大依赖解包问题。
+项目继续使用 PyInstaller `onedir`，目标机器不需要安装 Python 或 pixi。打包产物分为程序层、环境层、模型层和用户数据层：
 
-## 命令
+```text
+YOLOTool/
+├── YOLOTool.exe
+├── app_assets/
+├── release-manifest.json
+├── runtime-manifest.json
+├── runtime-version.txt
+├── _internal/
+└── data/models/
+```
 
-正式版：
+`_internal/` 包含 Python、PySide6、Torch、CUDA、OpenCV 等环境；`app_assets/` 只包含可随程序更新的图标资源。冻结态路径由 `src/shared/paths.py` 从 EXE 同级目录读取，开发态仍从 `src/assets/` 读取。
+
+## 构建命令
+
+正式完整产物：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -PackageType Full -Clean
 ```
 
 开发快包：
@@ -16,25 +29,26 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode relea
 powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
-如需一键完成 `PyInstaller + Inno Setup`，可执行：
+开发快包输出到 `dist/YOLOTool-dev/`，其中可执行文件名为 `YOLOTool-dev.exe`。
+
+三类安装包由 `installer/package_windows.ps1` 或 `installer/打包程序.ps1` 生成：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
+powershell -File installer\package_windows.ps1 -PackageType Full
+powershell -File installer\package_windows.ps1 -PackageType AppUpdate
+powershell -File installer\package_windows.ps1 -PackageType RuntimeFull -RuntimeVersion runtime-2
 ```
 
-## 输出目录
+`Full` 首次安装包含程序、全部环境和基础模型；`AppUpdate` 只包含 EXE、程序资源和清单；`RuntimeFull` 同时更新程序和完整 `_internal` 环境，但不包含模型和用户数据。环境升级不再制作增量包，因此不需要维护基础环境版本和文件删除兼容规则。
 
-- 正式版输出到 `dist/YOLOTool/`
-- 开发版输出到 `dist/YOLOTool-dev/`
+## 更新规则
 
-打包入口统一来自 `src/main.py`，GUI 与 `--yolo-train`、`--yolo-export`、`--yolo-val` 等隐藏 CLI 子命令都通过同一可执行文件进入 `src/bootstrap/cli_dispatch.py`。
+首次迁移需要安装一次新的 `Full` 包，之后普通程序改动只安装 `AppUpdate`。程序更新包要求当前运行环境与清单匹配；依赖变化时安装 `RuntimeFull`，该包会同时带上兼容的程序层。更新包会自动定位已有安装目录、要求关闭程序，并先写入临时目录再切换，失败时尝试恢复旧文件。
 
-运行时配置使用打包目录内的 `data/runtime/settings.json` 与 `data/runtime/app_state.json`。
+配置、模型、图片、标签和训练结果不会被更新包覆盖。`data/runtime/settings.json` 与 `data/runtime/app_state.json` 只在完整首次安装时使用 `onlyifdoesntexist` 写入。
 
-基础模型由 `installer/build_windows.ps1` 从项目的 `data/models/*.pt` 复制到打包产物的 `data/models/`；模型不会作为 PyInstaller 数据文件写入 `_internal/`，项目根目录下的 `.pt` 文件也不会复制到产物根目录。
+打包入口统一来自 `src/main.py`，GUI 与 `--yolo-train`、`--yolo-export`、`--yolo-val` 等隐藏 CLI 都会执行运行环境版本校验。运行时清单缺失或版本不匹配时，GUI 显示错误，CLI 返回非零状态。
 
-程序图标资源统一来自 `src/assets/app_icon.ico` 与 `src/assets/app_icon.png`：`.ico` 用于 PyInstaller/Inno Setup 的 EXE 与安装器图标，GUI 运行时窗口图标通过 `src/shared/paths.py` 中的 `ICON_PNG` 加载。冻结态下 `ICON_PNG` 从 PyInstaller 的 `_MEIPASS/src/assets/` 读取，数据文件仍从 EXE 所在目录读取。顶部导航图标以及主页两张图表按当前屏幕设备像素比生成高 DPI pixmap，并在窗口跨屏切换时刷新，打包后无需额外图标或图表资源文件。
+完整包输出到 `installer/output/YOLOTool_Setup_<version>.exe`；程序包输出为 `YOLOTool_AppUpdate_<version>.exe`；环境升级包输出为 `YOLOTool_RuntimeFull_<version>.exe`。
 
-Inno Setup 安装脚本位于 `installer/yolo_tool.iss`，与单一的 PyInstaller spec、hooks、PowerShell 打包脚本放在同一目录下统一维护。
-
-验证页视频预览使用 PySide6 的 `QtMultimedia` 与 `QtMultimediaWidgets`；打包验证时需确认 `dist/YOLOTool/` 中包含对应 Qt 多媒体插件，Windows 播放后端才能正常打开源视频和 MP4 检测结果。
+验证页视频预览使用 PySide6 的 `QtMultimedia` 与 `QtMultimediaWidgets`；发布前需确认 `_internal/` 中包含对应 Qt 多媒体插件。

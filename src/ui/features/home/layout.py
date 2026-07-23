@@ -70,7 +70,10 @@ def build_home_layout(page) -> None:
         page.overview_stats[key] = value
     grid.addWidget(overview, 0, 0)
 
-    distribution = Card("各类别图片分布")
+    distribution = Card()
+    page.distribution_title = QLabel("各类别图片分布")
+    page.distribution_title.setObjectName("sectionTitle")
+    distribution.layout.addWidget(page.distribution_title)
     page.distribution_view = DatasetDistributionWidget()
     distribution.layout.addWidget(page.distribution_view, 1)
     grid.addWidget(distribution, 0, 1)

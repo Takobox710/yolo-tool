@@ -1,5 +1,9 @@
 param(
-    [switch]$Clean
+    [switch]$Clean,
+    [ValidateSet("Full", "AppUpdate", "RuntimeFull")]
+    [string]$PackageType = "Full",
+    [string]$RuntimeVersion = "",
+    [string]$RequiredRuntimeVersion = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,7 +56,14 @@ Set-Location $Root
 
 try {
     Write-Step "[1/3] Building with PyInstaller..."
-    & (Join-Path $PSScriptRoot "build_windows.ps1") -Mode release -Clean:$Clean
+    $buildArgs = @{
+        Mode = "release"
+        Clean = $Clean
+        PackageType = $PackageType
+        RuntimeVersion = $RuntimeVersion
+        RequiredRuntimeVersion = $RequiredRuntimeVersion
+    }
+    & (Join-Path $PSScriptRoot "build_windows.ps1") @buildArgs
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller build failed with exit code $LASTEXITCODE"
     }
@@ -64,7 +75,14 @@ try {
 
     Write-Step "[2/3] Building installer with Inno Setup..."
     New-Item -ItemType Directory -Force -Path $InstallerOutputDir | Out-Null
-    & $isccPath $InstallerScript
+    if ([string]::IsNullOrWhiteSpace($RuntimeVersion)) {
+        $RuntimeVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "runtime-version.txt") -Raw).Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($RequiredRuntimeVersion)) {
+        $RequiredRuntimeVersion = $RuntimeVersion
+    }
+    $AppVersion = (& pixi run python -c "from src import APP_VERSION; print(APP_VERSION)" | Out-String).Trim()
+    & $isccPath "/DPackageType=$PackageType" "/DMyAppVersion=$AppVersion" "/DRequiredRuntimeVersion=$RequiredRuntimeVersion" $InstallerScript
     if ($LASTEXITCODE -ne 0) {
         throw "Inno Setup build failed with exit code $LASTEXITCODE"
     }

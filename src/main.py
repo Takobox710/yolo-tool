@@ -16,6 +16,14 @@ def main() -> None:
     # workers; freeze_support() must run before normal GUI startup branching.
     freeze_support()
 
+    if len(sys.argv) > 1:
+        from src.services.runtime import check_runtime_compatibility
+
+        compatibility = check_runtime_compatibility()
+        if not compatibility.compatible:
+            sys.stderr.write(f"YOLOTool 运行环境不兼容：{compatibility.reason}\n")
+            raise SystemExit(78)
+
     if len(sys.argv) > 1 and sys.argv[1] == "--yolo-train":
         from src.bootstrap.cli_dispatch import run_train_cli
 
