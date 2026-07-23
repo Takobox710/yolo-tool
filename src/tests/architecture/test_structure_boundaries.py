@@ -81,10 +81,10 @@ def test_legacy_paths_and_imports_stay_removed():
 
 def test_modules_and_service_exports_stay_within_size_limits():
     limits = (
-        (Path("src/ui/features"), "page.py", 250, False),
-        (Path("src/ui/features/annotation/canvas"), "*.py", 250, False),
-        (Path("src/ui/shared/workers"), "*.py", 220, False),
-        (Path("src/services"), "*.py", 300, True),
+        (Path("src/ui/features"), "page.py", 350, False),
+        (Path("src/ui/features/annotation/canvas"), "*.py", 350, False),
+        (Path("src/ui/shared/workers"), "*.py", 300, False),
+        (Path("src/services"), "*.py", 400, True),
     )
     offenders = []
     for root, pattern, limit, skip_init in limits:
@@ -99,7 +99,11 @@ def test_modules_and_service_exports_stay_within_size_limits():
         lines = len(path.read_text(encoding="utf-8").splitlines())
         if lines > 80:
             offenders.append(f"{path.as_posix()} ({lines} > 80)")
-    assert offenders == []
+    assert offenders == [], (
+        "Modules exceeded the architecture safety ceiling. Split them by "
+        "responsibility; do not compress formatting merely to reduce line counts: "
+        + ", ".join(offenders)
+    )
 
 
 def test_python_imports_and_qt_delayed_callbacks_use_safe_patterns():

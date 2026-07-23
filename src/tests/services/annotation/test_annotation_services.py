@@ -118,10 +118,39 @@ def test_annotation_page_labelme_json_roundtrip_and_yolo_export(tmp_path):
         "rectangle",
         "oriented_rectangle",
     ]
+    assert payload["shapes"][1]["flags"]["yolo_tool_shape"] == "obb_mirror"
     assert class_names == ["weld"]
     assert loaded[0].shape == "rect"
-    assert loaded[1].shape == "obb"
+    assert loaded[1].shape == "obb_mirror"
     assert yolo_path.read_text(encoding="utf-8").splitlines()[0].startswith("0 0.100000")
+
+
+def test_labelme_line_loads_as_mirror_obb(tmp_path):
+    from src.services.annotation import load_labelme_annotations
+
+    json_path = tmp_path / "line.json"
+    json_path.write_text(
+        json.dumps(
+            {
+                "imageWidth": 100,
+                "imageHeight": 100,
+                "shapes": [
+                    {
+                        "label": "weld",
+                        "shape_type": "line",
+                        "points": [[20, 50], [80, 50]],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    annotations, _class_names = load_labelme_annotations(
+        (100, 100), json_path, [], line_expand_pixels=10
+    )
+
+    assert annotations[0].shape == "obb_mirror"
 
 
 def test_load_labelme_annotations_keeps_empty_initial_class_list(tmp_path):

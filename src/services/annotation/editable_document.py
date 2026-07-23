@@ -104,7 +104,6 @@ def load_labelme_annotations(
         payload = json.loads(json_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return annotations, names
-
     for shape in payload.get("shapes", []):
         raw_points = shape.get("points", [])
         points: list[tuple[float, float]] = []
@@ -150,9 +149,12 @@ def load_labelme_annotations(
         elif shape_type == "line":
             obb_points = _line_points_to_obb(points[:2], float(line_expand_pixels))
             if obb_points is not None:
-                annotations.append(EditableAnnotation(class_id, "line_expand", obb_points))
+                annotations.append(EditableAnnotation(class_id, "obb_mirror", obb_points))
         elif shape_type == "oriented_rectangle" and len(points) >= 4:
-            annotations.append(EditableAnnotation(class_id, "obb", points[:4]))
+            flags = shape.get("flags") or {}
+            stored_shape = str(flags.get("yolo_tool_shape") or "") if isinstance(flags, dict) else ""
+            shape_name = stored_shape if stored_shape in {"obb", "obb_mirror", "obb_single"} else "obb"
+            annotations.append(EditableAnnotation(class_id, shape_name, points[:4]))
         elif shape_type == "polygon" and len(points) >= 3:
             annotations.append(EditableAnnotation(class_id, "polygon", points))
         elif len(points) >= 4:
@@ -206,6 +208,9 @@ def save_labelme_annotations(
             labelme_points = [
                 [float(x_pos), float(y_pos)] for x_pos, y_pos in points[:4]
             ]
+        flags = {}
+        if annotation.shape in {"obb", "obb_mirror", "obb_single", "line_expand"}:
+            flags["yolo_tool_shape"] = "obb_mirror" if annotation.shape == "line_expand" else annotation.shape
         shapes.append(
             {
                 "label": label,
@@ -213,7 +218,7 @@ def save_labelme_annotations(
                 "group_id": None,
                 "description": "",
                 "shape_type": shape_type,
-                "flags": {},
+                "flags": flags,
                 "mask": None,
             }
         )

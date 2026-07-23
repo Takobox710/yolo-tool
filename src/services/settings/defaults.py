@@ -90,6 +90,7 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "quick_draw": False,
             "line_expand_enabled": False,
             "line_expand_pixels": 10,
+            "optimize_mirror_edit": False,
             "ai_prelabel": {
                 "model_path": "",
                 "confidence": 0.50,

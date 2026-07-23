@@ -39,10 +39,11 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
         *,
         show_annotation_names: bool = False,
         show_canvas_status: bool = True,
+        optimize_mirror_edit: bool = False,
     ):
         super().__init__(parent)
         self.setWindowTitle("更多设置")
-        self.resize(300, 420)
+        self.resize(300, 450)
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
         self.auto_save_check = QCheckBox("自动保存 Labelme JSON")
@@ -76,6 +77,11 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             "开启快捷标注",
             bool(quick_draw),
             help_text="开启后矩形框、圆形、直线扩展支持拖动后松开直接完成；关闭后改为通过多次点击确认。",
+        )
+        optimize_mirror_box, self.optimize_mirror_check = self.checkbox_with_help(
+            "优化镜像有向矩形编辑",
+            bool(optimize_mirror_edit),
+            help_text="开启后编辑镜像有向矩形时显示中心线，只保留中心线端点和两侧宽度控制点。",
         )
         line_label_box, self.line_expand_check = self.checkbox_with_help(
             "开启直线扩展标注",
@@ -126,6 +132,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             show_canvas_status_box,
             continuous_box,
             quick_box,
+            optimize_mirror_box,
             line_label_box,
             yolo_setting,
             pixel_setting,
@@ -178,7 +185,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             return None
         return Path(getter())
 
-    def values(self) -> tuple[bool, int, bool, bool, bool, bool, bool, str, bool, bool]:
+    def values(self) -> tuple[bool, int, bool, bool, bool, bool, bool, str, bool, bool, bool]:
         return (
             self.line_expand_check.isChecked(),
             int(self.pixel_spin.value()),
@@ -190,6 +197,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             self.yolo_dir_edit.text().strip(),
             self.show_annotation_names_check.isChecked(),
             self.show_canvas_status_check.isChecked(),
+            self.optimize_mirror_check.isChecked(),
         )
 
 

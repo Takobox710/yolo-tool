@@ -60,6 +60,7 @@ class AnnotationCanvas(
         self.crosshair_position: tuple[float, float] | None = None
         self.line_expand_enabled = False
         self.line_expand_pixels = 10
+        self.optimize_mirror_edit = False
         self.continuous_draw = False
         self.quick_draw = True
         self.flash_index = -1
@@ -140,6 +141,10 @@ class AnnotationCanvas(
     def set_line_expand_config(self, enabled: bool, pixels: int) -> None:
         self.line_expand_enabled = bool(enabled)
         self.line_expand_pixels = max(1, int(pixels))
+
+    def set_optimize_mirror_edit(self, enabled: bool) -> None:
+        self.optimize_mirror_edit = bool(enabled)
+        self.update()
 
     def set_interaction_config(self, continuous_draw: bool, quick_draw: bool) -> None:
         self.continuous_draw = bool(continuous_draw)

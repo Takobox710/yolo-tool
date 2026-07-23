@@ -39,6 +39,7 @@ class AnnotationPageSettingsMixin:
             self,
             show_annotation_names=current.get("show_annotation_names", False),
             show_canvas_status=current.get("show_canvas_status", True),
+            optimize_mirror_edit=current.get("optimize_mirror_edit", False),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -53,6 +54,7 @@ class AnnotationPageSettingsMixin:
             yolo_dir,
             show_annotation_names,
             show_canvas_status,
+            optimize_mirror_edit,
         ) = dialog.values()
         self.app.settings.setdefault("annotation", {})["line_expand_enabled"] = enabled
         self.app.settings["annotation"]["line_expand_pixels"] = pixels
@@ -65,6 +67,7 @@ class AnnotationPageSettingsMixin:
         self.app.settings["annotation"]["quick_draw"] = quick_draw
         self.app.settings["annotation"]["show_annotation_names"] = show_annotation_names
         self.app.settings["annotation"]["show_canvas_status"] = show_canvas_status
+        self.app.settings["annotation"]["optimize_mirror_edit"] = optimize_mirror_edit
         if yolo_dir:
             resolved_yolo_dir = Path(resolve_project_path(yolo_dir, self.project_root()))
             self.app.settings.setdefault("paths", {})["labels_dir"] = str(resolved_yolo_dir)

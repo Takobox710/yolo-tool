@@ -9,6 +9,63 @@ from PySide6.QtGui import QImage, QPixmap
 from src.services.annotation import EditableAnnotation
 
 
+def mirror_edit_points(
+    points: list[tuple[float, float]],
+) -> tuple[
+    tuple[float, float],
+    tuple[float, float],
+    tuple[float, float],
+    tuple[float, float],
+] | None:
+    if len(points) != 4:
+        return None
+    p0, p1, p2, p3 = points
+    center_start = ((p0[0] + p3[0]) / 2, (p0[1] + p3[1]) / 2)
+    center_end = ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+    side_start = ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2)
+    side_end = ((p2[0] + p3[0]) / 2, (p2[1] + p3[1]) / 2)
+    return center_start, center_end, side_start, side_end
+
+
+def mirror_geometry(
+    points: list[tuple[float, float]],
+) -> tuple[tuple[float, float], tuple[float, float], float] | None:
+    if len(points) != 4:
+        return None
+    p0, p1, p2, p3 = points
+    center_start = ((p0[0] + p3[0]) / 2, (p0[1] + p3[1]) / 2)
+    center_end = ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+    dx = center_end[0] - center_start[0]
+    dy = center_end[1] - center_start[1]
+    length = (dx * dx + dy * dy) ** 0.5
+    if length < 1e-6:
+        return None
+    nx = -dy / length
+    ny = dx / length
+    signed_half_width = (p0[0] - center_start[0]) * nx + (p0[1] - center_start[1]) * ny
+    return center_start, center_end, signed_half_width
+
+
+def rebuild_mirror_points(
+    center_start: tuple[float, float],
+    center_end: tuple[float, float],
+    signed_half_width: float,
+) -> list[tuple[float, float]] | None:
+    dx = center_end[0] - center_start[0]
+    dy = center_end[1] - center_start[1]
+    length = (dx * dx + dy * dy) ** 0.5
+    if length < 3 or abs(signed_half_width) < 3:
+        return None
+    nx = -dy / length
+    ny = dx / length
+    return [
+        (center_start[0] + nx * signed_half_width, center_start[1] + ny * signed_half_width),
+        (center_end[0] + nx * signed_half_width, center_end[1] + ny * signed_half_width),
+        (center_end[0] - nx * signed_half_width, center_end[1] - ny * signed_half_width),
+        (center_start[0] - nx * signed_half_width, center_start[1] - ny * signed_half_width),
+    ]
+
+
 def pixmap_from_path(path: Path) -> QPixmap:
     image = Image.open(path).convert("RGBA")
     data = image.tobytes("raw", "RGBA")
@@ -111,7 +168,7 @@ def make_obb_annotation(
             (x2 - nx * distance, y2 - ny * distance),
             (x1 - nx * distance, y1 - ny * distance),
         ]
-        return EditableAnnotation(canvas.current_class_id, "line_expand", points)
+        return EditableAnnotation(canvas.current_class_id, "obb_mirror", points)
     if width_point is None:
         return None
     wx, wy = width_point

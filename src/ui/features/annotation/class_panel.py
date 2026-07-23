@@ -40,6 +40,9 @@ class AnnotationClassPanelMixin:
                 annotation_settings.get("line_expand_enabled", False),
                 annotation_settings.get("line_expand_pixels", 10),
             )
+            self.canvas.set_optimize_mirror_edit(
+                annotation_settings.get("optimize_mirror_edit", False)
+            )
             self.canvas.set_interaction_config(
                 annotation_settings.get("continuous_draw", False),
                 annotation_settings.get("quick_draw", True),

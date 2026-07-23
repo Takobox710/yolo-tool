@@ -86,10 +86,17 @@ class ImageView(QLabel):
 
 
 class PageScrollArea(QScrollArea):
+    def _sync_inner_page_width(self):
+        inner_page = getattr(self, "inner_page", None)
+        if inner_page is None:
+            return
+        width = max(0, self.viewport().width())
+        inner_page.setMinimumWidth(width)
+        inner_page.setMaximumWidth(width)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if getattr(self, "inner_page", None):
-            self.inner_page.setMaximumWidth(self.viewport().width())
+        self._sync_inner_page_width()
 
 
 def scroll_page(widget: QWidget):
@@ -100,6 +107,7 @@ def scroll_page(widget: QWidget):
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setWidget(widget)
     scroll.inner_page = widget
+    scroll._sync_inner_page_width()
     return scroll
 
 

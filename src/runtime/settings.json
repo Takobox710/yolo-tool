@@ -82,7 +82,8 @@
     "continuous_draw": false,
     "quick_draw": false,
     "line_expand_enabled": false,
-    "line_expand_pixels": 10
+    "line_expand_pixels": 10,
+    "optimize_mirror_edit": false
   },
   "rename": {
     "prefix": "A",

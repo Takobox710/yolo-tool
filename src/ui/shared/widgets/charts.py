@@ -316,6 +316,7 @@ class TrainingCurveWidget(QLabel):
         map50 = self._find_column("metrics/mAP50(", exclude="95")
         box_loss = "val/box_loss" if self._data.get("val/box_loss") else "train/box_loss"
         epoch_count = max((len(values) for values in self._data.values()), default=0)
+        epoch_values = self._epoch_values(epoch_count)
         summary = [("Epoch", str(epoch_count or "-"))]
         left = 34
         self._draw_summary(painter, summary, width, left)
@@ -325,7 +326,7 @@ class TrainingCurveWidget(QLabel):
         bottom = max(height - 28, top + 1)
         chart_w = right - left
         chart_h = bottom - top
-        self._draw_axes(painter, left, top, chart_w, chart_h)
+        self._draw_axes(painter, left, top, chart_w, chart_h, epoch_values)
 
         if not self._data:
             painter.setPen(QColor("#94A2AD"))
@@ -339,7 +340,7 @@ class TrainingCurveWidget(QLabel):
             series.append((map50, QColor("#246BFE"), "mAP50", False))
         if self._data.get(box_loss):
             series.append((box_loss, QColor("#D94A38"), "Box Loss", True))
-        self._draw_curve_lines(painter, (left, top, chart_w, chart_h), series)
+        self._draw_curve_lines(painter, (left, top, chart_w, chart_h), series, epoch_values)
         self._draw_legend(painter, width, height, series)
 
         _finish_chart_paint(self, pixmap, painter, dpr)
@@ -349,6 +350,24 @@ class TrainingCurveWidget(QLabel):
             if key.startswith(prefix) and (not exclude or exclude not in key):
                 return key
         return None
+
+    def _epoch_values(self, epoch_count: int) -> list[float]:
+        epochs = self._data.get("epoch", [])
+        if len(epochs) >= epoch_count:
+            return epochs[:epoch_count]
+        return [float(index) for index in range(epoch_count)]
+
+    def _epoch_ticks(self, epoch_values: list[float]) -> list[tuple[float, float]]:
+        if not epoch_values:
+            return []
+        if len(epoch_values) == 1:
+            return [(epoch_values[0], 0.0)]
+        tick_count = min(6, len(epoch_values))
+        indices = [round(index * (len(epoch_values) - 1) / (tick_count - 1)) for index in range(tick_count)]
+        return [
+            (epoch_values[index], index / (len(epoch_values) - 1))
+            for index in dict.fromkeys(indices)
+        ]
 
     def _draw_summary(
         self,
@@ -369,7 +388,15 @@ class TrainingCurveWidget(QLabel):
             painter.drawText(x, 12, text_w, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
             x += text_w + 10
 
-    def _draw_axes(self, painter: QPainter, x: int, y: int, width: int, height: int) -> None:
+    def _draw_axes(
+        self,
+        painter: QPainter,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        epoch_values: list[float],
+    ) -> None:
         painter.setFont(QFont("Microsoft YaHei UI", 8))
         painter.setPen(QPen(QColor("#000000"), 1))
         painter.drawLine(x, y + height, x + width, y + height)
@@ -382,11 +409,28 @@ class TrainingCurveWidget(QLabel):
         for tick in range(6):
             value = tick / 5
             ty = y + height - round(value * height)
-            tx = x + round(value * width)
             painter.drawText(0, ty - 8, x - 8, 16, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"{value:.1f}")
-            painter.drawText(tx - 14, y + height + 6, 28, 16, Qt.AlignmentFlag.AlignCenter, f"{value:.1f}")
+        axis_font_metrics = painter.fontMetrics()
+        for epoch, position in self._epoch_ticks(epoch_values):
+            label = f"{epoch:g}"
+            label_width = max(28, axis_font_metrics.horizontalAdvance(label) + 8)
+            tx = x + round(position * width)
+            painter.drawText(
+                tx - label_width // 2,
+                y + height + 6,
+                label_width,
+                16,
+                Qt.AlignmentFlag.AlignCenter,
+                label,
+            )
 
-    def _draw_curve_lines(self, painter: QPainter, rect: tuple[int, int, int, int], series) -> None:
+    def _draw_curve_lines(
+        self,
+        painter: QPainter,
+        rect: tuple[int, int, int, int],
+        series,
+        epoch_values: list[float],
+    ) -> None:
         x, y, width, height = rect
         for key, color, _label, is_loss in series:
             vals = self._data.get(key, [])
@@ -396,9 +440,14 @@ class TrainingCurveWidget(QLabel):
             min_value = min(vals) if is_loss else 0.0
             if max_value == min_value:
                 max_value = min_value + 1.0
+            curve_epochs = epoch_values[: len(vals)]
+            epoch_start = curve_epochs[0] if curve_epochs else 0.0
+            epoch_end = curve_epochs[-1] if curve_epochs else max(len(vals) - 1, 1)
+            epoch_span = epoch_end - epoch_start or 1.0
             path = QPainterPath()
             for index, value in enumerate(vals):
-                px = x + (index / max(len(vals) - 1, 1)) * width
+                epoch = curve_epochs[index] if index < len(curve_epochs) else float(index)
+                px = x + ((epoch - epoch_start) / epoch_span) * width
                 py = y + height - ((value - min_value) / (max_value - min_value)) * height
                 if index == 0:
                     path.moveTo(px, py)

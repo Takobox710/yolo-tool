@@ -232,6 +232,154 @@ def test_annotation_canvas_escape_clears_selection_in_edit_mode():
     assert canvas.hovered_index == -1
 
 
+def test_oriented_rectangle_has_four_edge_rotation_handles():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    annotation = EditableAnnotation(
+        0,
+        "obb",
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 60.0), (0.0, 60.0)],
+    )
+
+    handles = canvas._annotation_handles(annotation)
+    canvas.annotations = [annotation]
+
+    assert [handle for handle, _point in handles if handle.startswith("rotate-")] == [
+        "rotate-0",
+        "rotate-1",
+        "rotate-2",
+        "rotate-3",
+    ]
+    assert [point for handle, point in handles if handle.startswith("rotate-")] == [
+        (50.0, 0.0),
+        (100.0, 30.0),
+        (50.0, 60.0),
+        (0.0, 30.0),
+    ]
+    assert canvas._hit_annotation_handle((100.0, 30.0), 0) == ("rotate", 1)
+
+
+def test_oriented_rectangle_edge_handle_rotates_around_center():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from pytest import approx
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.annotations = [
+        EditableAnnotation(
+            0,
+            "obb",
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
+        )
+    ]
+    canvas.selected_index = 0
+    canvas.active_handle = ("rotate", 0)
+
+    canvas._update_selected_handle((10.0, 5.0))
+
+    expected_points = [
+        (10.0, 0.0),
+        (10.0, 10.0),
+        (0.0, 10.0),
+        (0.0, 0.0),
+    ]
+    assert all(actual == approx(expected) for actual, expected in zip(canvas.annotations[0].points, expected_points))
+
+
+def test_optimized_mirror_rectangle_uses_centerline_and_width_handles():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.optimize_mirror_edit = True
+    annotation = EditableAnnotation(
+        0,
+        "obb_mirror",
+        [(20.0, 40.0), (80.0, 40.0), (80.0, 60.0), (20.0, 60.0)],
+    )
+    canvas.annotations = [annotation]
+
+    handles = canvas._annotation_handles(annotation)
+
+    assert [handle for handle, _point in handles] == [
+        "mirror-center-0",
+        "mirror-center-1",
+        "mirror-width-0",
+        "mirror-width-1",
+    ]
+    assert [point for _handle, point in handles] == [
+        (20.0, 50.0),
+        (80.0, 50.0),
+        (50.0, 40.0),
+        (50.0, 60.0),
+    ]
+    assert canvas._hit_annotation_handle((50.0, 40.0), 0) == ("mirror-width", 0)
+
+    canvas.selected_index = 0
+    canvas.active_handle = ("mirror-width", 0)
+    canvas._update_selected_handle((50.0, 30.0))
+
+    assert canvas.annotations[0].points == [
+        (20.0, 30.0),
+        (80.0, 30.0),
+        (80.0, 70.0),
+        (20.0, 70.0),
+    ]
+
+    canvas.annotations[0].points = [
+        (20.0, 40.0),
+        (80.0, 40.0),
+        (80.0, 60.0),
+        (20.0, 60.0),
+    ]
+    canvas.active_handle = ("mirror-center", 0)
+    canvas._update_selected_handle((10.0, 50.0))
+
+    assert canvas.annotations[0].points == [
+        (10.0, 40.0),
+        (80.0, 40.0),
+        (80.0, 60.0),
+        (10.0, 60.0),
+    ]
+
+
+def test_annotation_settings_can_enable_optimized_mirror_edit():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.dialogs import AnnotationSettingsDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = AnnotationSettingsDialog(
+        False,
+        10,
+        True,
+        False,
+        False,
+        False,
+        False,
+        "labels",
+        optimize_mirror_edit=True,
+    )
+
+    assert dialog.optimize_mirror_check.isChecked() is True
+    assert dialog.values()[-1] is True
+
+
 def test_annotation_page_canvas_context_save_flags_follow_auto_save_settings(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

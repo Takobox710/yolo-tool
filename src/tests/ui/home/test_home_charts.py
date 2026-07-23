@@ -42,3 +42,26 @@ def test_home_chart_frame_matches_training_history_round_frame():
     assert "border: 0" in chart_rule
     assert _CHART_FRAME_COLOR == "#CFD9E3"
     assert _CHART_FRAME_RADIUS == 5
+
+
+def test_training_curve_uses_epoch_values_for_x_axis_ticks_and_points():
+    from src.shared.qt import QApplication
+    from src.ui.shared.widgets.charts import TrainingCurveWidget
+
+    app = QApplication.instance() or QApplication([])
+    chart = TrainingCurveWidget()
+    chart.set_curve_data(
+        {
+            "epoch": [0, 1, 2, 3, 4],
+            "metrics/mAP50(B)": [0.1, 0.2, 0.3, 0.4, 0.5],
+        }
+    )
+
+    assert chart._epoch_values(5) == [0.0, 1.0, 2.0, 3.0, 4.0]
+    assert chart._epoch_ticks([0.0, 1.0, 2.0, 3.0, 4.0]) == [
+        (0.0, 0.0),
+        (1.0, 0.25),
+        (2.0, 0.5),
+        (3.0, 0.75),
+        (4.0, 1.0),
+    ]

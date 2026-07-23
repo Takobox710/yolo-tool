@@ -3,6 +3,7 @@ from __future__ import annotations
 from math import hypot
 
 from src.services.annotation import EditableAnnotation
+from src.ui.features.annotation.canvas.geometry import mirror_edit_points
 
 
 HANDLE_RADIUS = 4.5
@@ -58,7 +59,32 @@ class AnnotationCanvasHitTestMixin:
                         center[1] + direction[1] / distance * radius,
                     )
             return [("center", center), ("radius", radius_point)]
-        return [(f"point-{index}", point) for index, point in enumerate(annotation.points)]
+        if (
+            annotation.shape in {"obb_mirror", "line_expand"}
+            and self.optimize_mirror_edit
+        ):
+            mirror_points = mirror_edit_points(annotation.points)
+            if mirror_points is not None:
+                center_start, center_end, side_start, side_end = mirror_points
+                return [
+                    ("mirror-center-0", center_start),
+                    ("mirror-center-1", center_end),
+                    ("mirror-width-0", side_start),
+                    ("mirror-width-1", side_end),
+                ]
+        handles = [(f"point-{index}", point) for index, point in enumerate(annotation.points)]
+        if annotation.shape in {"obb", "obb_mirror", "obb_single", "line_expand"} and len(annotation.points) == 4:
+            handles.extend(
+                (
+                    f"rotate-{index}",
+                    (
+                        (annotation.points[index][0] + annotation.points[(index + 1) % 4][0]) / 2,
+                        (annotation.points[index][1] + annotation.points[(index + 1) % 4][1]) / 2,
+                    ),
+                )
+                for index in range(4)
+            )
+        return handles
 
     def _hit_annotation_handle(self, point: tuple[float, float], annotation_index: int) -> tuple[str, int] | None:
         if not (0 <= annotation_index < len(self.annotations)):
@@ -71,6 +97,12 @@ class AnnotationCanvasHitTestMixin:
             if dx * dx + dy * dy <= radius * radius:
                 if handle_type.startswith("point-"):
                     return ("point", int(handle_type.split("-", 1)[1]))
+                if handle_type.startswith("rotate-"):
+                    return ("rotate", int(handle_type.split("-", 1)[1]))
+                if handle_type.startswith("mirror-center-"):
+                    return ("mirror-center", int(handle_type.rsplit("-", 1)[1]))
+                if handle_type.startswith("mirror-width-"):
+                    return ("mirror-width", int(handle_type.rsplit("-", 1)[1]))
                 if handle_type == "center":
                     return ("center", 0)
                 if handle_type == "radius":

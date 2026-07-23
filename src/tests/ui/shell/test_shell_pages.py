@@ -79,6 +79,32 @@ def test_workbench_window_switches_to_project_local_settings(tmp_path):
     assert list(window.pages.keys()) == ["home"]
 
 
+def test_data_page_expands_after_window_grows_from_initial_size():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.shell.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    try:
+        window.show()
+        app.processEvents()
+        window.show_page("data")
+        app.processEvents()
+
+        window.resize(1800, 1000)
+        app.processEvents()
+
+        page = window.pages["data"]
+        assert page.inner_page.width() == page.viewport().width()
+        assert page.inner_page.minimumWidth() == page.viewport().width()
+    finally:
+        window.hide()
+        window.deleteLater()
+        app.processEvents()
+
+
 def test_workbench_window_close_event_prompts_for_unsaved_annotations(monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
