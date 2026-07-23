@@ -64,7 +64,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
                 "Pillow": "12.2.0",
                 "psutil": "7.2.2",
             },
-            "app_version": "1.2.6",
+            "app_version": "1.2.7",
         }
     )
 
@@ -75,7 +75,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
     assert page.status_cards["OpenCV"].text() == "4.13.0：可用"
     assert page.status_cards["Pillow"].text() == "12.2.0：可用"
     assert page.status_cards["psutil"].text() == "7.2.2：可用"
-    assert page.status_cards["程序版本"].text() == "1.2.6"
+    assert page.status_cards["程序版本"].text() == "1.2.7"
 
 
 def test_settings_toggle_refreshes_validation_page_model_choices(tmp_path):
