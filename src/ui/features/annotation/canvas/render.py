@@ -222,11 +222,11 @@ class AnnotationCanvasRenderMixin:
         radius = self._handle_radius()
         for handle_type, point in self._annotation_handles(annotation, reference_point=handle_reference_point):
             widget_point = self._image_to_widget(point)
-            handle_color = PREVIEW_COLOR if preview else QColor("#B91C1C")
+            handle_color = PREVIEW_COLOR if preview else _class_color(annotation.class_id)
             hollow = not preview and hovered_handle is not None
             is_hovered = hollow and self._is_hovered_handle(handle_type, hovered_handle)
             if hollow:
-                fill = QColor("#FFE3E3") if annotation.shape == "circle" and handle_type == "center" else QColor("#FFFFFF")
+                fill = QColor("#FFFFFF")
                 radius = self._handle_radius()
             else:
                 fill = PREVIEW_POINT_COLOR if preview else handle_color

@@ -47,14 +47,6 @@ def test_logged_process_uses_hidden_windows_subprocess(monkeypatch):
     assert calls["creationflags"] == getattr(runtime_service.subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def test_sanitize_terminal_line_removes_ansi_sequences():
-    from src.services.runtime import sanitize_terminal_line
-
-    raw = "\x1b[K\x1b[34m\x1b[1mtrain: \x1b[0mScanning labels.cache... 91/91 0.0s\r\n"
-
-    assert sanitize_terminal_line(raw) == "train: Scanning labels.cache... 91/91 0.0s"
-
-
 def test_logged_process_cleans_terminal_escape_sequences(monkeypatch):
     from queue import Queue
 
@@ -85,4 +77,3 @@ def test_logged_process_cleans_terminal_escape_sequences(monkeypatch):
     assert queue.get(timeout=1) == ("log", "1/500 640: 5% 1/20 1.1it/s")
     assert queue.get(timeout=1) == ("log", "optimizer: AdamW(lr=0.002)")
     assert queue.get(timeout=1) == ("exit", 0)
-

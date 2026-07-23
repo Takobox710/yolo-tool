@@ -113,6 +113,7 @@ class AnnotationCanvas(
 
     def set_current_class(self, class_id: int) -> None:
         self.current_class_id = max(0, class_id)
+        self.update()
 
     def set_draw_shape(self, shape: str) -> None:
         was_editing = self.draw_shape == "select"

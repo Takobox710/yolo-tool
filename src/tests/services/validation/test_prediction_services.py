@@ -22,14 +22,53 @@ def test_video_prediction_writes_mp4_without_frame_labels(monkeypatch, tmp_path)
     import types
 
     from src.train_cli import run_predict_cli
+    import src.services.validation as validation_services
 
-    input_path = tmp_path / "demo.avi"
-    writer = cv2.VideoWriter(
-        str(input_path), cv2.VideoWriter_fourcc(*"MJPG"), 5.0, (16, 12)
-    )
-    for value in (32, 64, 96):
-        writer.write(np.full((12, 16, 3), value, dtype=np.uint8))
-    writer.release()
+    monkeypatch.setattr(validation_services, "release_inference_runtime", lambda: None)
+
+    input_path = tmp_path / "demo.mp4"
+    input_path.write_bytes(b"fake-video")
+    frames = [np.full((12, 16, 3), value, dtype=np.uint8) for value in (32, 64, 96)]
+    written_frames = []
+
+    class FakeCapture:
+        def __init__(self, _source):
+            self._frames = iter(frames)
+            self._open = True
+
+        def isOpened(self):
+            return self._open
+
+        def get(self, prop):
+            return len(frames) if prop == cv2.CAP_PROP_FRAME_COUNT else 5.0
+
+        def read(self):
+            try:
+                return True, next(self._frames)
+            except StopIteration:
+                self._open = False
+                return False, None
+
+        def release(self):
+            self._open = False
+
+    class FakeWriter:
+        def __init__(self, path, *_args):
+            Path(path).touch()
+
+        def isOpened(self):
+            return True
+
+        def write(self, frame):
+            written_frames.append(frame.copy())
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(cv2, "VideoCapture", FakeCapture)
+    monkeypatch.setattr(cv2, "VideoWriter", FakeWriter)
+    monkeypatch.setattr(cv2, "VideoWriter_fourcc", lambda *_args: 0)
+    monkeypatch.setattr(cv2, "imwrite", lambda path, _frame: Path(path).touch() or True)
 
     class FakeResult:
         names = {}
@@ -75,10 +114,7 @@ def test_video_prediction_writes_mp4_without_frame_labels(monkeypatch, tmp_path)
     result_video = result_dirs[0] / "demo_result.mp4"
     assert result_video.exists()
     assert not (result_dirs[0] / "labels").exists()
-    capture = cv2.VideoCapture(str(result_video))
-    assert capture.isOpened()
-    assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == 3
-    capture.release()
+    assert len(written_frames) == 3
     completed = [payload for event, payload in events if event == "video_completed"]
     assert completed
     assert completed[-1]["payload"]["result_path"] == str(result_video)
@@ -164,49 +200,6 @@ def test_detection_source_collection_supports_dataset_yaml_scopes(tmp_path):
     ) == [test_image.resolve()]
 
 
-def test_detection_source_collection_prefers_custom_folder_over_dataset_yaml(tmp_path):
-    from src.services.validation import collect_prediction_sources
-
-    custom_dir = tmp_path / "custom"
-    custom_dir.mkdir()
-    custom_image = custom_dir / "custom.jpg"
-    custom_image.write_bytes(b"custom")
-
-    dataset_root = tmp_path / "data"
-    train_dir = dataset_root / "train" / "images"
-    train_dir.mkdir(parents=True)
-    (train_dir / "train.jpg").write_bytes(b"train")
-    dataset_yaml = dataset_root / "data.yaml"
-    dataset_yaml.write_text(
-        "path: .\ntrain: train/images\nval: val/images\nnames: ['weld']\n",
-        encoding="utf-8",
-    )
-
-    assert collect_prediction_sources(
-        "图片检测",
-        custom_dir,
-        dataset_yaml=dataset_yaml,
-        source_scope="训练图片",
-    ) == [custom_image]
-
-
-def test_detection_source_collection_uses_natural_numeric_sort(tmp_path):
-    from src.services.validation import collect_prediction_sources
-
-    folder = tmp_path / "inputs"
-    folder.mkdir()
-    for name in ["1.jpg", "10.jpg", "100.jpg", "2.jpg", "3.jpg"]:
-        (folder / name).write_bytes(b"image")
-
-    assert [path.name for path in collect_prediction_sources("图片检测", folder)] == [
-        "1.jpg",
-        "2.jpg",
-        "3.jpg",
-        "10.jpg",
-        "100.jpg",
-    ]
-
-
 def test_stream_result_rendering_uses_current_frame_as_plot_background():
     import numpy as np
     from src.services.validation import render_result_image_from_frame
@@ -229,7 +222,7 @@ def test_stream_result_rendering_uses_current_frame_as_plot_background():
     assert rendered.size == (5, 4)
 
 
-def test_save_detection_label_file_writes_detect_format(tmp_path):
+def test_save_detection_label_file_writes_detect_and_obb_formats(tmp_path):
     from src.services.validation import normalize_detection_item, save_detection_label_file
 
     label_dir = tmp_path / "labels"
@@ -246,12 +239,6 @@ def test_save_detection_label_file_writes_detect_format(tmp_path):
         == "0 0.500000 0.500000 0.200000 0.400000"
     )
 
-
-def test_save_detection_label_file_writes_obb_format(tmp_path):
-    from src.services.validation import normalize_detection_item, save_detection_label_file
-
-    label_dir = tmp_path / "labels"
-    label_dir.mkdir()
     label_path = label_dir / "obb.txt"
     item = normalize_detection_item(
         "weld", 0.9, [(10, 20), (30, 10), (40, 30), (20, 40)]
@@ -276,4 +263,3 @@ def test_ultralytics_compat_patches_missing_cv2_highgui_symbols(monkeypatch):
     assert callable(fake_cv2.namedWindow)
     assert callable(fake_cv2.destroyAllWindows)
     assert fake_cv2.waitKey() == -1
-

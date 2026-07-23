@@ -42,7 +42,7 @@ class AnnotationCanvasContextMenuMixin:
             shape_actions[line_expand_action] = "line_expand"
         class_actions: dict[QAction, int] = {}
         if 0 <= self.selected_index < len(self.annotations):
-            class_menu = menu.addMenu("标注类别")
+            class_menu = menu.addMenu("目标类型")
             for index, class_name in enumerate(self.class_names):
                 action = QAction(f"{index} : {class_name}", class_menu)
                 action.setCheckable(True)

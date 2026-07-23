@@ -84,9 +84,13 @@ def build_home_layout(page) -> None:
     grid.addWidget(curve, 1, 0)
 
     history = Card()
+    history.layout.setSpacing(9)
+    history.layout.setContentsMargins(14, 14, 14, 12)
     hist_header = QHBoxLayout()
+    hist_header.setContentsMargins(0, -3, 0, 3)
     hist_title = QLabel("训练历史")
     hist_title.setObjectName("sectionTitle")
+    hist_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     hist_header.addWidget(hist_title)
     hist_header.addStretch(1)
     open_button = QPushButton("打开结果目录")
@@ -96,7 +100,7 @@ def build_home_layout(page) -> None:
     open_button.clicked.connect(page.open_result_dir)
     hist_header.addWidget(open_button)
     history.layout.addLayout(hist_header)
-    history.layout.addSpacing(3)
+    history.layout.addSpacing(0)
     page.history_table = QTableWidget(0, 7)
     page.history_table.setHorizontalHeaderLabels(
         ["模型ID", "Epochs", "Time", "mAP50", "mAP50-95", "Box Loss", "Recall"]

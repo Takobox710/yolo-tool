@@ -76,12 +76,14 @@ yolo_tool/
 - `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。
 - `src/ui/shared/` 负责跨页面 UI 复用能力，例如页面基类、共享表单、共享对话框和后台 worker。
 - `src/ui/features/<feature>/` 负责各页面真实实现；`page.py` 只做页面装配，复杂逻辑继续拆到该功能包子模块。
-- `src/ui/widgets/` 与 `src/ui/shared/widgets/` 放基础可复用控件与图表组件。主页 `DatasetDistributionWidget` 和 `TrainingCurveWidget` 使用当前控件 DPR 创建物理 pixmap、以逻辑坐标绘制，并通过 `refresh_for_device_pixel_ratio()` 响应主窗口跨屏切换，避免高 DPI 下图表文字、坐标轴和曲线被放大模糊；各类别图片分布坐标轴保持 `20 px` 左边距、`38 px` 顶部位置和 `33 px` 底部留白，类别标题上方留 `7 px`、标题到坐标轴顶部留 `9 px`，最高柱数字与坐标轴顶部间距为 `0 px`；训练曲线坐标轴左边距保持为 `34 px`，顶部 `Epoch` 摘要按纵轴 `1.0` 刻度的实际字体宽度计算起点以保持左对齐。
+- 数据标注页的目标类型联动由 `src/ui/features/annotation/selection.py` 统一维护：选中画布或列表标注时同步右侧下拉框，选中标注时修改下拉框会回写该标注类别；未选中标注时下拉框仍只控制新建标注的默认类别。
+- `src/services/annotation/class_names.py` 扫描当前项目 Labelme 标注目录中的非空类别名并追加到项目设置；`ClassManagerDialog` 负责类别编辑、删除依赖保护和转换按钮，`ClassConversionDialog` 作为独立窗口选择源/目标类别；确认后由标注页统一保存设置和标注，取消不产生转换。
+- `src/ui/widgets/` 与 `src/ui/shared/widgets/` 放基础可复用控件与图表组件。主页 `DatasetDistributionWidget` 和 `TrainingCurveWidget` 使用当前控件 DPR 创建物理 pixmap、以逻辑坐标绘制，并通过 `refresh_for_device_pixel_ratio()` 响应主窗口跨屏切换，避免高 DPI 下图表文字、坐标轴和曲线被放大模糊；图表内框在 pixmap 内部绘制，与训练历史表格统一使用 `1 px #CFD9E3` 边框和 `5 px` 圆角，避免 QLabel 内容覆盖圆角造成断开空隙；各类别图片分布坐标轴保持 `20 px` 左边距、`38 px` 顶部位置和 `33 px` 底部留白，类别标题上方留 `7 px`、标题到坐标轴顶部留 `9 px`，最高柱数字与坐标轴顶部间距为 `0 px`；训练曲线坐标轴左边距保持为 `34 px`，顶部 `Epoch` 摘要按纵轴 `1.0` 刻度的实际字体宽度计算起点以保持左对齐。
 - `src/tests/architecture/` 只保留依赖方向、旧入口、模块体量和 Qt 生命周期四类结构围栏，不扫描文档措辞或代码清单内容。
 - `src/tests/services/` 按领域保护文件读写、转换、设置、命令构造和运行时安全等业务规则。
 - `src/tests/ui/` 按业务域和 shell 分目录保留关键页面工作流与服务接线；数据处理 UI 测试使用 `data_processing/`，避免与项目级 `data/` 忽略规则冲突；精确布局、颜色、尺寸与提示文本改由发布前人工检查。
 - `src/tests/integration/` 放开发/冻结入口、隐藏 CLI 和 Windows 打包契约回归。
-- 默认 `pixi run test` 固定收集 80 项核心测试，不另设隐藏的慢速或完整测试套件。
+- 默认 `pixi run test` 固定收集 88 项核心测试，不另设隐藏的慢速或完整测试套件。
 
 ## 服务层说明
 
@@ -94,7 +96,7 @@ yolo_tool/
 - 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
 - `src/runtime/settings.json` 仅作为源码内默认配置参考。
 - 标注页名称显示由项目设置 `annotation.show_annotation_names` 控制，默认值为 `false`。
-- 标注页未配置 `dataset.class_names` 时类别下拉框保持为空，不再自动添加 `weld`；读取已有 Labelme 标注时再按标注中的非空 `label` 动态补充类别。
+- 标注页未配置 `dataset.class_names` 时类别下拉框保持为空，不再自动添加 `weld`；进入项目标注目录时会按文件顺序读取所有 Labelme JSON 的非空 `label`，将缺少的类别追加到当前项目 `data/runtime/settings.json`。
 
 ### `src/services/runtime/`
 
@@ -147,6 +149,7 @@ yolo_tool/
 - `labelme_parser.py` 负责 Labelme 形状解析与 Labelme -> YOLO 行转换。
 - `dataset_split.py` 负责输入收集、数据集划分和统计汇总。
 - `dataset_yaml.py` 负责 `data.yaml` 输出，并只写入本次实际产出的 split 条目。
+- 数据处理页的数据集划分配置直接读取当前项目 `dataset.class_names`；该字段由数据标注页“管理类别”维护，自定义类别映射窗口也使用这组类别作为来源。
 - `backup.py` 负责旧产物清理与备份；未启用备份时不主动创建 `old/` 目录。
 - `formatting.py` 负责转换结果说明文本。
 - `execute.py` 保留为转换总流程装配入口。
@@ -167,7 +170,7 @@ yolo_tool/
 - 关闭确认统一由 `src/ui/shell/close_guard.py` 处理，包括未保存标注与训练运行中确认。
 - `WorkbenchWindow` 默认尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`；项目内路径在 UI 中优先显示为相对路径，写入文件时由设置存储层解析/序列化。
 - `BasePage.update_setting()` 保存项目设置后，通过 `WorkbenchWindow.notify_setting_changed()` 广播设置键路径；已创建页面必须立即刷新镜像路径控件，控件刷新期间阻断信号，避免重复保存。
-- 项目路径字段分为三组共享路径：`paths.images_dir`（标注转换、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、标注转换、批量重命名）和 `paths.labels_dir`（标注预览、标注转换）；图片压缩源目录单独使用 `image_resize.source_dir`。
+- 项目路径字段分为三组共享路径：`paths.images_dir`（数据集划分、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、数据集划分、批量重命名）和 `paths.labels_dir`（标注预览、数据集划分）；图片压缩源目录单独使用 `image_resize.source_dir`。
 - 标注页“更多设置”使用等权垂直伸缩项承接窗口额外高度，保证各设置行之间的间隔一致；复合设置内部（如直线扩展像素标题与数值框）不参与外层间隔分配。
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
 - worker 真实实现只放在 `src/ui/shared/workers/`，页面持有 worker 时必须在原生 `finished` 信号后再清理对象。

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.services.annotation import collect_labelme_class_counts, convert_labelme_classes
 from src.services.data_ops import resolve_project_path
 from src.shared.qt import QDialog
 from src.ui.features.annotation.ai.dialog import AiPrelabelDialog
@@ -79,11 +80,39 @@ class AnnotationPageSettingsMixin:
             )
 
     def manage_classes(self) -> None:
-        dialog = ClassManagerDialog(self.class_names(), self)
+        self._sync_project_labelme_class_names()
+        class_names = self.class_names()
+        dialog = ClassManagerDialog(
+            class_names,
+            self,
+            annotations=self.canvas.annotations,
+            annotation_counts=collect_labelme_class_counts(
+                self.path_from_setting("annotations_dir"), class_names
+            ),
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        if dialog.annotation_class_ids_changed:
+            for annotation, class_id in zip(
+                self.canvas.annotations, dialog.annotation_class_ids
+            ):
+                annotation.class_id = class_id
+        operations = dialog.conversion_operations
+        if operations and self.current_image_path is not None and self.dirty:
+            self.save_current(force=True, save_json=True)
         self.app.settings.setdefault("dataset", {})["class_names"] = dialog.class_names
         self.save_settings()
+        for source_name, target_name in operations:
+            convert_labelme_classes(
+                self.path_from_setting("annotations_dir"), source_name, target_name
+            )
         self._refresh_class_state()
         self.canvas.set_class_names(dialog.class_names)
         self.refresh_annotation_list()
+        if dialog.annotation_class_ids_changed:
+            if operations and self.current_image_path is not None:
+                self.load_current()
+            else:
+                self.mark_dirty_and_save()
+        else:
+            self.canvas.update()

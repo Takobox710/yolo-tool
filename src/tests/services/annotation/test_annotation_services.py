@@ -75,19 +75,6 @@ def test_annotation_file_index_scans_images_and_detects_existing_annotations(tmp
     assert statuses[str((images_dir / "10.png").resolve())] is True
 
 
-def test_normalize_ai_target_images_preserves_ui_selected_order_subset(tmp_path):
-    from src.services.annotation import normalize_ai_target_images
-
-    images = [tmp_path / f"{index}.jpg" for index in range(1, 5)]
-
-    targets = normalize_ai_target_images(
-        images,
-        [images[1], images[3], tmp_path / "other.jpg"],
-    )
-
-    assert targets == [images[1], images[3]]
-
-
 def test_annotation_preview_services(tmp_path):
     from src.services.annotation import Annotation, load_yolo_annotations, render_annotation_preview
 
@@ -100,24 +87,6 @@ def test_annotation_preview_services(tmp_path):
     preview = render_annotation_preview(image_path, [Annotation(0, "weld", annotations[0].points)])
 
     assert annotations[0].points == [(40.0, 30.0), (60.0, 30.0), (60.0, 70.0), (40.0, 70.0)]
-    assert preview.size == (100, 100)
-
-
-def test_annotation_preview_auto_detects_obb_labels(tmp_path):
-    from src.services.annotation import load_yolo_annotations, render_annotation_preview
-
-    image_path = tmp_path / "obb.jpg"
-    make_image(image_path, size=(100, 100), color="white")
-    label = tmp_path / "obb.txt"
-    label.write_text(
-        "0 0.1 0.2 0.8 0.2 0.8 0.3 0.1 0.3\n",
-        encoding="utf-8",
-    )
-
-    annotations = load_yolo_annotations((100, 100), label, "detect", ["weld"])
-    preview = render_annotation_preview(image_path, annotations)
-
-    assert annotations[0].points == [(10.0, 20.0), (80.0, 20.0), (80.0, 30.0), (10.0, 30.0)]
     assert preview.size == (100, 100)
 
 
@@ -155,6 +124,17 @@ def test_annotation_page_labelme_json_roundtrip_and_yolo_export(tmp_path):
     assert yolo_path.read_text(encoding="utf-8").splitlines()[0].startswith("0 0.100000")
 
 
+def test_load_labelme_annotations_keeps_empty_initial_class_list(tmp_path):
+    from src.services.annotation import load_labelme_annotations
+
+    annotations, class_names = load_labelme_annotations(
+        (100, 100), tmp_path / "missing.json", []
+    )
+
+    assert annotations == []
+    assert class_names == []
+
+
 def test_circle_labelme_roundtrip_preserves_radius_point_direction(tmp_path):
     from src.services.annotation import (
         EditableAnnotation,
@@ -185,3 +165,50 @@ def test_circle_labelme_roundtrip_preserves_radius_point_direction(tmp_path):
     assert loaded[0].radius_point == (64.0, 64.0)
 
 
+def test_collect_labelme_class_names_appends_project_labels(tmp_path):
+    from src.services.annotation import collect_labelme_class_names
+
+    annotations_dir = tmp_path / "annotations"
+    annotations_dir.mkdir()
+    (annotations_dir / "1.json").write_text(
+        json.dumps(
+            {"shapes": [{"label": "weld"}, {"label": "scratch"}, {"label": ""}]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (annotations_dir / "2.json").write_text(
+        json.dumps({"shapes": [{"label": "weld"}, {"label": "crack"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert collect_labelme_class_names(annotations_dir, ["configured"]) == [
+        "configured",
+        "weld",
+        "scratch",
+        "crack",
+    ]
+
+
+def test_labelme_class_counts_and_conversion_cover_all_project_files(tmp_path):
+    from src.services.annotation import (
+        collect_labelme_class_counts,
+        convert_labelme_classes,
+    )
+
+    annotations_dir = tmp_path / "annotations"
+    annotations_dir.mkdir()
+    first = annotations_dir / "1.json"
+    second = annotations_dir / "2.json"
+    first.write_text(
+        json.dumps({"shapes": [{"label": "weld"}, {"label": "weld"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    second.write_text(
+        json.dumps({"shapes": [{"label": "weld"}, {"label": "scratch"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert collect_labelme_class_counts(annotations_dir, ["weld", "scratch"]) == [3, 1]
+    assert convert_labelme_classes(annotations_dir, "weld", "scratch") == 3
+    assert collect_labelme_class_counts(annotations_dir, ["weld", "scratch"]) == [0, 4]

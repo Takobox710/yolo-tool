@@ -18,8 +18,10 @@ def _cleanup_qt_widgets(app):
     for widget in app.topLevelWidgets():
         widget.hide()
         widget.deleteLater()
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    app.processEvents()
+    # A second pass releases page-owned workers queued by the first deletion pass.
+    for _ in range(2):
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
 
 
 @pytest.fixture(autouse=True)

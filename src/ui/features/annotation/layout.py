@@ -60,7 +60,7 @@ def build_right_panel(page) -> QFrame:
     )
     page.output_mode_combo.currentTextChanged.connect(page.change_output_mode)
     layout.addWidget(page.output_mode_combo)
-    class_label = QLabel("标注类别：")
+    class_label = QLabel("目标类型：")
     class_label.setObjectName("annotationPathLabel")
     layout.addWidget(class_label)
     page.class_combo = QComboBox()

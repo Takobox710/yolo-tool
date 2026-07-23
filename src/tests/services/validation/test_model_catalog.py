@@ -31,4 +31,3 @@ def test_validation_model_choices_include_result_best_and_optional_last(tmp_path
 
     assert [path.name for path in with_last] == ["best.pt", "last.pt"]
     assert [path.name for path in without_last] == ["best.pt"]
-

@@ -176,11 +176,17 @@ class ClassMappingDialog(QDialog):
         labelme_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(current, 0, yolo_item)
         self.table.setItem(current, 1, labelme_item)
+        self.table.setVerticalHeaderLabels(
+            [str(index) for index in range(self.table.rowCount())]
+        )
 
     def _remove_selected_rows(self) -> None:
         rows = sorted({item.row() for item in self.table.selectedItems()}, reverse=True)
         for row in rows:
             self.table.removeRow(row)
+        self.table.setVerticalHeaderLabels(
+            [str(index) for index in range(self.table.rowCount())]
+        )
 
     def _rows(self) -> list[ClassMappingRow]:
         rows: list[ClassMappingRow] = []

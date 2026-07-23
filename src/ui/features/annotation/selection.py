@@ -33,6 +33,15 @@ class AnnotationSelectionMixin:
     def change_class(self, index: int) -> None:
         self.current_class_id = max(0, index)
         self.canvas.set_current_class(self.current_class_id)
+        selected_index = self.canvas.selected_index
+        if not (0 <= selected_index < len(self.canvas.annotations)):
+            return
+        annotation = self.canvas.annotations[selected_index]
+        if annotation.class_id == self.current_class_id:
+            return
+        annotation.class_id = self.current_class_id
+        self.mark_dirty_and_save()
+        self.canvas.update()
 
     def change_shape(self, text: str) -> None:
         mapping = {
@@ -46,12 +55,28 @@ class AnnotationSelectionMixin:
         self.canvas.set_draw_shape(mapping.get(text, "rect"))
 
     def select_annotation(self, row: int) -> None:
-        if row == self.canvas.selected_index:
-            return
-        self.canvas.selected_index = row
+        if row != self.canvas.selected_index:
+            self.canvas.selected_index = row
+        self._sync_target_type_to_selection()
         self.canvas.update()
 
     def sync_selection(self, row: int) -> None:
         self.annotation_list.blockSignals(True)
         self.annotation_list.setCurrentRow(row)
         self.annotation_list.blockSignals(False)
+        self._sync_target_type_to_selection()
+
+    def _sync_target_type_to_selection(self) -> None:
+        selected_index = self.canvas.selected_index
+        if not (0 <= selected_index < len(self.canvas.annotations)):
+            return
+        class_id = self.canvas.annotations[selected_index].class_id
+        self.current_class_id = max(0, class_id)
+        self.canvas.set_current_class(self.current_class_id)
+        if not hasattr(self, "class_combo"):
+            return
+        if not 0 <= class_id < self.class_combo.count():
+            return
+        self.class_combo.blockSignals(True)
+        self.class_combo.setCurrentIndex(class_id)
+        self.class_combo.blockSignals(False)

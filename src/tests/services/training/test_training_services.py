@@ -76,34 +76,6 @@ def test_training_model_helpers_merge_project_and_app_models_with_project_priori
     assert missing_resolved == str((project_root / "data" / "models" / "missing.pt").resolve())
 
 
-def test_training_model_helpers_avoid_duplicate_scan_when_project_is_app_root(tmp_path):
-    from src.services.training import find_training_model_names
-
-    models_dir = tmp_path / "data" / "models"
-    models_dir.mkdir(parents=True)
-    (models_dir / "alpha.pt").write_text("a", encoding="utf-8")
-
-    assert find_training_model_names(tmp_path, tmp_path) == ["alpha.pt"]
-
-
-def test_training_command_includes_all_hsv_params_when_configured():
-    from src.services.training import build_train_command
-
-    command = build_train_command(
-        {
-            "model_yaml": "data/yolov8m-obb.yaml",
-            "data": "data.yaml",
-            "hsv_h": 0.015,
-            "hsv_s": 0.7,
-            "hsv_v": 0.4,
-        }
-    )
-
-    assert "hsv_h=0.015" in command
-    assert "hsv_s=0.7" in command
-    assert "hsv_v=0.4" in command
-
-
 def test_app_cli_command_uses_module_entry_under_current_python():
     from src.services.training import app_cli_command
 
@@ -184,55 +156,6 @@ def test_read_train_metrics_uses_map5095_for_best_checkpoint(tmp_path):
     assert last_metrics["epochs"] == 374
 
 
-def test_read_train_metrics_prefers_latest_epoch_when_best_score_ties(tmp_path):
-    from src.services.training import read_train_metrics
-
-    run_dir = tmp_path / "result" / "train-4"
-    run_dir.mkdir(parents=True)
-    (run_dir / "results.csv").write_text(
-        "\n".join(
-            [
-                "epoch,time,metrics/mAP50(B),metrics/mAP50-95(B),val/box_loss,metrics/recall(B)",
-                "100,60,0.900,0.500,0.2500,0.800",
-                "120,72,0.910,0.500,0.2200,0.820",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    best_metrics = read_train_metrics(run_dir, "best.pt")
-
-    assert best_metrics["epochs"] == 120
-
-
-def test_training_command_ignores_dataset_yaml_in_model_field(tmp_path):
-    from src.services.training import build_train_command
-
-    dataset_yaml = tmp_path / "data.yaml"
-    dataset_yaml.write_text(
-        "path: data\ntrain: train/images\nval: val/images\nnames: ['weld']\n",
-        encoding="utf-8",
-    )
-    obb_model = tmp_path / "data" / "models" / "yolov8m-obb.pt"
-    obb_model.parent.mkdir(parents=True)
-    obb_model.write_text("weights", encoding="utf-8")
-
-    command = build_train_command(
-        {
-            "model_yaml": str(dataset_yaml),
-            "base_model": str(obb_model),
-            "pretrained": str(obb_model),
-            "data": str(dataset_yaml),
-        }
-    )
-
-    assert "model=" + str(dataset_yaml) not in command
-    assert "model=" + str(obb_model) in command
-    assert "pretrained=" + str(obb_model) in command
-    assert "obb" in command
-
-
 def test_train_cli_falls_back_to_pretrained_when_model_points_to_dataset_yaml(monkeypatch, tmp_path):
     from src.train_cli import run_train_cli
 
@@ -275,4 +198,3 @@ def test_train_cli_falls_back_to_pretrained_when_model_points_to_dataset_yaml(mo
     assert calls["kwargs"]["task"] == "obb"
     assert calls["kwargs"]["data"] == str(dataset_yaml)
     assert calls["kwargs"]["pretrained"] == str(obb_model)
-

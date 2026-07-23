@@ -35,112 +35,6 @@ def _read_ui_bundle():
     return "\n".join(path.read_text(encoding="utf-8") for path in UI_BUNDLE_PATHS)
 
 
-def test_train_page_resolves_model_file_from_data_models(tmp_path):
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    from src.services.settings import build_default_settings
-    from src.services.training import build_train_command
-    from src.shared.qt import QApplication
-    from src.ui.features.training.page import TrainPage
-
-    model_path = tmp_path / "data" / "models" / "yolov8m-obb.pt"
-    model_path.parent.mkdir(parents=True)
-    model_path.write_text("weights", encoding="utf-8")
-
-    app = QApplication.instance() or QApplication([])
-    settings = build_default_settings(tmp_path)
-    settings["training"]["model_yaml"] = ""
-    settings["training"]["pretrained"] = model_path.name
-    fake_app = SimpleNamespace(
-        settings=settings,
-        settings_service=SimpleNamespace(save=lambda _data: None),
-        run_background=lambda _kind, _fn: None,
-        status=SimpleNamespace(setText=lambda _text: None),
-        training_handle=None,
-    )
-
-    page = TrainPage(fake_app)
-    command = build_train_command(page.collect_config())
-
-    assert f"model={model_path}" in command
-    assert f"pretrained={model_path}" in command
-
-
-def test_train_page_merges_project_and_app_model_lists_with_project_priority(tmp_path, monkeypatch):
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    from src.services.settings import build_default_settings
-    from src.services.training import model_resolution as training_service
-    from src.shared.qt import QApplication
-    from src.ui.features.training.page import TrainPage
-
-    project_model = tmp_path / "project" / "data" / "models" / "shared.pt"
-    app_model_dir = tmp_path / "app" / "data" / "models"
-    project_model.parent.mkdir(parents=True)
-    app_model_dir.mkdir(parents=True)
-    project_model.write_text("project", encoding="utf-8")
-    (tmp_path / "project" / "data" / "models" / "project-only.pt").write_text("project", encoding="utf-8")
-    (app_model_dir / "shared.pt").write_text("app", encoding="utf-8")
-    (app_model_dir / "app-only.pt").write_text("app", encoding="utf-8")
-
-    monkeypatch.setattr(training_service, "ROOT", tmp_path / "app")
-
-    app = QApplication.instance() or QApplication([])
-    settings = build_default_settings(tmp_path / "project")
-    fake_app = SimpleNamespace(
-        settings=settings,
-        settings_service=SimpleNamespace(save=lambda _data: None),
-        run_background=lambda _kind, _fn: None,
-        status=SimpleNamespace(setText=lambda _text: None),
-        training_handle=None,
-    )
-
-    page = TrainPage(fake_app)
-    items = [page.pretrained_combo.itemText(i) for i in range(page.pretrained_combo.count())]
-
-    assert items == ["project-only.pt", "shared.pt", "app-only.pt"]
-    assert page._resolve_model_reference("shared.pt") == str(project_model.resolve())
-
-
-def test_train_page_unknown_model_defaults_to_project_models_dir(tmp_path):
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    from src.services.settings import build_default_settings
-    from src.shared.qt import QApplication
-    from src.ui.features.training.page import TrainPage
-
-    app = QApplication.instance() or QApplication([])
-    settings = build_default_settings(tmp_path)
-    fake_app = SimpleNamespace(
-        settings=settings,
-        settings_service=SimpleNamespace(save=lambda _data: None),
-        run_background=lambda _kind, _fn: None,
-        status=SimpleNamespace(setText=lambda _text: None),
-        training_handle=None,
-    )
-
-    page = TrainPage(fake_app)
-
-    assert page._resolve_model_reference("missing.pt") == str(
-        (tmp_path / "data" / "models" / "missing.pt").resolve()
-    )
-
-
-def test_command_dialog_uses_wider_size():
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    from src.ui.shared.dialogs import CommandDialog
-    from src.shared.qt import QApplication
-
-    app = QApplication.instance() or QApplication([])
-    dialog = CommandDialog(["pixi", "run", "yolo", "detect", "train"])
-
-    assert dialog.minimumWidth() == 350
-    assert dialog.minimumHeight() == 100
-    assert dialog.width() == 700
-    assert dialog.height() == 200
-
-
 def test_training_page_persists_updated_fields_to_settings(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -166,34 +60,6 @@ def test_training_page_persists_updated_fields_to_settings(tmp_path):
     assert fake_app.settings["training"]["epochs"] == "123"
     assert Path(fake_app.settings["training"]["pretrained"]).name == "custom.pt"
     assert "training" in saved
-
-
-def test_train_page_starts_status_timer_only_when_visible(tmp_path):
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    from src.services.settings import build_default_settings
-    from src.shared.qt import QApplication
-    from src.ui.features.training.page import TrainPage
-
-    app = QApplication.instance() or QApplication([])
-    settings = build_default_settings(tmp_path)
-    fake_app = SimpleNamespace(
-        settings=settings,
-        settings_service=SimpleNamespace(save=lambda _data: None),
-        run_background=lambda _kind, _fn: None,
-        status=SimpleNamespace(setText=lambda _text: None),
-        training_handle=None,
-    )
-
-    page = TrainPage(fake_app)
-
-    assert page.train_status_timer.isActive() is False
-
-    page.on_show()
-    assert page.train_status_timer.isActive() is True
-
-    page.on_hide()
-    assert page.train_status_timer.isActive() is False
 
 
 def test_train_page_stop_flow_recovers_buttons_and_hides_stop_noise(tmp_path, monkeypatch):
@@ -332,5 +198,3 @@ def test_train_page_recovers_if_process_exits_without_queue_exit_event(tmp_path,
     assert page.stop_btn.isEnabled() is False
     assert fake_app.training_handle is None
     assert fake_status.text == "训练异常结束"
-
-

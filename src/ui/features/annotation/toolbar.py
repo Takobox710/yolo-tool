@@ -24,7 +24,7 @@ def build_toolbar(page) -> QFrame:
     page._set_help_target(
         title,
         "数据标注",
-        "可通过右键菜单快速切换标注类型，默认保存和读取 Labelme 格式标注；可通过“更多设置”开启 YOLO 格式文件保存。",
+        "可通过右键菜单快速切换目标类型，默认保存和读取 Labelme 格式标注；可通过“更多设置”开启 YOLO 格式文件保存。",
     )
     layout.addWidget(title)
     line = QFrame()

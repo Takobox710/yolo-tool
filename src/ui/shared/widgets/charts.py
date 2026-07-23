@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from math import ceil
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QLabel
 
 
 _BAR_TOP_PADDING = 27
+_CHART_FRAME_COLOR = "#CFD9E3"
+_CHART_FRAME_RADIUS = 5
 
 
 def _begin_chart_paint(widget: QLabel, width: int, height: int):
@@ -21,6 +23,13 @@ def _begin_chart_paint(widget: QLabel, width: int, height: int):
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.scale(dpr, dpr)
+    painter.setPen(QPen(QColor(_CHART_FRAME_COLOR), 1))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(
+        QRectF(0.5, 0.5, max(width - 1, 1), max(height - 1, 1)),
+        _CHART_FRAME_RADIUS,
+        _CHART_FRAME_RADIUS,
+    )
     return pixmap, painter, dpr
 
 

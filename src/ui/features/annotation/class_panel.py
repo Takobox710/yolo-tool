@@ -50,6 +50,9 @@ class AnnotationClassPanelMixin:
             self.canvas.set_show_canvas_status(
                 annotation_settings.get("show_canvas_status", True)
             )
+            sync_target_type = getattr(self, "_sync_target_type_to_selection", None)
+            if callable(sync_target_type):
+                sync_target_type()
 
     def refresh_annotation_list(self) -> None:
         names = self.class_names()

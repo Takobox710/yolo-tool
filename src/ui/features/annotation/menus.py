@@ -126,6 +126,7 @@ class AnnotationMenuMixin:
             return
         self.canvas.annotations[self.canvas.selected_index].class_id = class_id
         self.refresh_annotation_list()
+        self._sync_target_type_to_selection()
         self.mark_dirty_and_save()
 
     def open_annotation_list_context_menu(self, pos) -> None:
@@ -136,7 +137,7 @@ class AnnotationMenuMixin:
         self.sync_selection(row)
         self.canvas.update()
         menu = QMenu(self)
-        class_menu = QMenu("标注类型", menu)
+        class_menu = QMenu("目标类型", menu)
         class_actions: dict[object, int] = {}
         names = self.class_names()
         current_class_id = self.canvas.annotations[row].class_id
@@ -147,7 +148,7 @@ class AnnotationMenuMixin:
             class_actions[action] = index
         class_entry_action = self._add_menu_button_action(
             menu,
-            "标注类型",
+            "目标类型",
             show_submenu_arrow=True,
         )
         menu.addSeparator()

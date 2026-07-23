@@ -23,6 +23,11 @@ from src.services.annotation.editable_document import (
     save_labelme_annotations,
 )
 from src.services.annotation.circle_geometry import circle_bounds
+from src.services.annotation.class_names import (
+    collect_labelme_class_counts,
+    collect_labelme_class_names,
+    convert_labelme_classes,
+)
 from src.services.annotation.file_index import (
     annotation_exists,
     collect_annotation_presence,
@@ -40,6 +45,9 @@ __all__ = [
     "Annotation",
     "EditableAnnotation",
     "circle_bounds",
+    "collect_labelme_class_counts",
+    "collect_labelme_class_names",
+    "convert_labelme_classes",
     "_detect_points_to_rect",
     "annotation_exists",
     "apply_ai_labeling",

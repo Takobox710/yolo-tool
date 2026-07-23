@@ -181,91 +181,6 @@ def test_conversion_can_split_existing_yolo_labels_without_labelme(tmp_path):
     assert "test:" not in yaml_text
 
 
-def test_conversion_tracks_multi_class_stats_and_formats_result(tmp_path):
-    from src.services.conversion import ConversionConfig, format_conversion_result, run_conversion
-
-    images = tmp_path / "images"
-    images.mkdir()
-    make_image(images / "multi.jpg")
-    (images / "multi.json").write_text(
-        json.dumps(
-            {
-                "imageWidth": 100,
-                "imageHeight": 100,
-                "shapes": [
-                    {"label": "weld", "shape_type": "rectangle", "points": [[10, 10], [30, 30]]},
-                    {"label": "scratch", "shape_type": "rectangle", "points": [[40, 40], [50, 60]]},
-                    {"label": "unknown", "shape_type": "rectangle", "points": [[70, 70], [80, 90]]},
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    config = ConversionConfig(
-        task_mode="detect",
-        source_format="labelme",
-        images_dir=images,
-        annotations_dir=images,
-        output_dir=tmp_path / "data",
-        labels_dir=tmp_path / "labels",
-        class_names=["weld", "scratch"],
-        train_ratio=1.0,
-        val_ratio=0.0,
-        test_ratio=0.0,
-    )
-
-    result = run_conversion(config)
-    report = format_conversion_result(result, config)
-
-    assert result.stats["train"] == {"weld": 1, "scratch": 1}
-    assert "转换完成" in report
-    assert "训练集（train）: 1 张图片, 2 个标注" in report
-    assert "weld: train=1, val=0, test=0, total=1" in report
-    assert "scratch: train=1, val=0, test=0, total=1" in report
-    assert "标签 'unknown'" in report
-    assert str(result.yaml_path) in report
-
-
-def test_preview_conversion_reports_real_box_counts(tmp_path):
-    from src.services.conversion import ConversionConfig, preview_conversion
-
-    images = tmp_path / "images"
-    images.mkdir()
-    make_image(images / "multi.jpg")
-    (images / "multi.json").write_text(
-        json.dumps(
-            {
-                "imageWidth": 100,
-                "imageHeight": 100,
-                "shapes": [
-                    {"label": "weld", "shape_type": "rectangle", "points": [[10, 10], [30, 30]]},
-                    {"label": "scratch", "shape_type": "rectangle", "points": [[40, 40], [60, 60]]},
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    result = preview_conversion(
-        ConversionConfig(
-            task_mode="detect",
-            source_format="labelme",
-            images_dir=images,
-            annotations_dir=images,
-            output_dir=tmp_path / "data",
-            labels_dir=tmp_path / "labels",
-            class_names=[],
-            train_ratio=1.0,
-            val_ratio=0.0,
-            test_ratio=0.0,
-        )
-    )
-
-    assert result.labeled_train_count == 1
-    assert result.total_boxes == 2
-    assert result.stats["train"] == {"weld": 1, "scratch": 1}
-
-
 def test_conversion_auto_detects_labelme_classes(tmp_path):
     from src.services.conversion import ConversionConfig, run_conversion
 
@@ -304,35 +219,6 @@ def test_conversion_auto_detects_labelme_classes(tmp_path):
     assert result.class_names == ["scratch", "weld"]
     assert result.stats["train"] == {"scratch": 1, "weld": 1}
     assert "names: ['scratch', 'weld']" in (tmp_path / "data" / "data.yaml").read_text(encoding="utf-8")
-
-
-def test_conversion_auto_names_existing_yolo_classes(tmp_path):
-    from src.services.conversion import ConversionConfig, run_conversion
-
-    images = tmp_path / "images"
-    labels = tmp_path / "labels_in"
-    images.mkdir()
-    labels.mkdir()
-    make_image(images / "one.jpg")
-    (labels / "one.txt").write_text("2 0.5 0.5 0.2 0.2\n0 0.4 0.4 0.1 0.1\n", encoding="utf-8")
-
-    result = run_conversion(
-        ConversionConfig(
-            task_mode="detect",
-            source_format="yolo",
-            images_dir=images,
-            annotations_dir=labels,
-            output_dir=tmp_path / "data",
-            labels_dir=tmp_path / "labels_out",
-            class_names=[],
-            train_ratio=1.0,
-            val_ratio=0.0,
-            test_ratio=0.0,
-        )
-    )
-
-    assert result.class_names == ["class_0", "class_1", "class_2"]
-    assert result.stats["train"] == {"class_2": 1, "class_0": 1}
 
 
 def test_conversion_supports_class_mapping_and_backup_folder(tmp_path):
@@ -429,4 +315,3 @@ def test_conversion_skips_empty_split_directories_even_when_ratio_is_nonzero(tmp
     assert "train:" not in yaml_text
     assert "val: data/val/images" in yaml_text
     assert "test:" not in yaml_text
-

@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from src.services.annotation import (
+    collect_labelme_class_names,
     load_editable_annotations,
     load_labelme_annotations,
     save_editable_annotations,
@@ -13,9 +14,20 @@ from src.services.annotation import (
 
 
 class AnnotationPersistenceMixin:
+    def _sync_project_labelme_class_names(self) -> None:
+        names = collect_labelme_class_names(
+            self.path_from_setting("annotations_dir"), self.class_names()
+        )
+        if names == self.class_names():
+            return
+        self.app.settings.setdefault("dataset", {})["class_names"] = names
+        self.save_settings()
+        self._refresh_class_state()
+
     def load_current(self) -> None:
         if not (0 <= self.current_index < len(self.image_items)):
             return
+        self._sync_project_labelme_class_names()
         image_path = self.image_items[self.current_index]
         json_path = self.path_from_setting("annotations_dir") / f"{image_path.stem}.json"
         yolo_path = self.path_from_setting("labels_dir") / f"{image_path.stem}.txt"
@@ -93,6 +105,9 @@ class AnnotationPersistenceMixin:
 
     def mark_dirty_and_save(self) -> None:
         self.dirty = True
+        sync_target_type = getattr(self, "_sync_target_type_to_selection", None)
+        if callable(sync_target_type):
+            sync_target_type()
         self.refresh_annotation_list()
         annotation_settings = self.annotation_settings()
         self._update_current_file_list_item()

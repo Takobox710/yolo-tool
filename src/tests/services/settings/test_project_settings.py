@@ -31,6 +31,7 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["features"]["show_help_icons"] is True
     assert settings["features"]["show_last_training_models"] is False
     assert settings["task"]["mode"] == "detect"
+    assert settings["dataset"]["class_names"] == []
     assert settings["dataset"]["split_ratios"] == {"train": 0.8, "val": 0.2, "test": 0.0}
     assert settings["training"]["model_yaml"] == ""
     assert settings["training"]["base_model"] == "yolov8s.pt"
@@ -40,26 +41,6 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["annotation"]["auto_convert_yolo"] is False
     assert settings["annotation"]["continuous_draw"] is False
     assert settings["annotation"]["quick_draw"] is False
-
-
-def test_settings_service_defaults_to_project_data_runtime(tmp_path):
-    from src.services.settings import SettingsService, project_settings_path
-
-    service = SettingsService(project_root=tmp_path)
-    settings = service.load()
-
-    assert service.settings_path == tmp_path / "data" / "runtime" / "settings.json"
-    assert project_settings_path(tmp_path) == service.settings_path
-    assert service.settings_path.exists()
-    assert settings["project"]["root"] == str(tmp_path)
-    saved = json.loads(service.settings_path.read_text(encoding="utf-8"))
-    assert saved["project"]["root"] == "."
-    assert saved["paths"]["images_dir"] == "images"
-    assert saved["paths"]["dataset_dir"] == "data"
-    assert saved["paths"]["models_dir"] == str(Path("data") / "models")
-    assert saved["training"]["data"] == str(Path("data") / "data.yaml")
-    assert saved["training"]["project"] == "result"
-    assert saved["validation"]["save_dir"] == str(Path("result") / "gui_val")
 
 
 def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(tmp_path):
@@ -115,48 +96,6 @@ def test_settings_service_can_reset_current_project_to_defaults(tmp_path):
     assert persisted["training"]["pretrained"] == "data\\models\\yolov8s.pt"
 
 
-def test_settings_service_reads_relative_project_paths_as_absolute_runtime_paths(tmp_path):
-    from src.services.settings import SettingsService
-
-    project_root = tmp_path / "portable-project"
-    settings_path = project_root / "data" / "runtime" / "settings.json"
-    settings_path.parent.mkdir(parents=True)
-    settings_path.write_text(
-        json.dumps(
-            {
-                "project": {"root": "."},
-                "paths": {
-                    "images_dir": "images",
-                    "dataset_dir": "data",
-                    "models_dir": "data/models",
-                    "result_dir": "result",
-                },
-                "training": {
-                    "data": "data/data.yaml",
-                    "project": "result",
-                    "pretrained": "data/models/yolov8s.pt",
-                },
-                "validation": {
-                    "save_dir": "result/gui_val",
-                    "source_path": "images/demo.jpg",
-                },
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    settings = SettingsService(project_root=project_root).load()
-
-    assert settings["project"]["root"] == str(project_root)
-    assert settings["paths"]["images_dir"] == str((project_root / "images").resolve())
-    assert settings["paths"]["models_dir"] == str((project_root / "data" / "models").resolve())
-    assert settings["training"]["data"] == str((project_root / "data" / "data.yaml").resolve())
-    assert settings["training"]["pretrained"] == str((project_root / "data" / "models" / "yolov8s.pt").resolve())
-    assert settings["validation"]["save_dir"] == str((project_root / "result" / "gui_val").resolve())
-    assert settings["validation"]["source_path"] == str((project_root / "images" / "demo.jpg").resolve())
-
-
 def test_settings_service_preserves_model_bare_name_for_portable_download_target(tmp_path):
     from src.services.settings import SettingsService
 
@@ -172,4 +111,3 @@ def test_settings_service_preserves_model_bare_name_for_portable_download_target
 
     assert persisted["training"]["pretrained"] == "custom.pt"
     assert reloaded["training"]["pretrained"] == "custom.pt"
-

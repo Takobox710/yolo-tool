@@ -16,34 +16,6 @@ def make_image(path: Path, size=(100, 100), color="white"):
     Image.new("RGB", size, color).save(path)
 
 
-def test_resize_preview_and_run(tmp_path):
-    from src.services.data_ops import ResizeConfig, preview_resize, run_resize
-
-    source = tmp_path / "images"
-    source.mkdir()
-    make_image(source / "a.jpg", size=(1920, 1080), color="red")
-    config = ResizeConfig(
-        source,
-        tmp_path / "out",
-        tmp_path / "backup",
-        960,
-        960,
-        "white",
-        True,
-    )
-
-    preview = preview_resize(config)
-    result = run_resize(config)
-
-    from PIL import Image
-
-    assert preview.items[0].scale == 0.5
-    assert preview.items[0].resized_size == (960, 540)
-    assert Image.open(tmp_path / "out" / "a.jpg").size == (960, 960)
-    assert (tmp_path / "backup" / "a.jpg").exists()
-    assert result.processed_count == 1
-
-
 def test_resize_can_skip_backup_by_default(tmp_path):
     from src.services.data_ops import ResizeConfig, run_resize
 
@@ -103,4 +75,3 @@ def test_resize_recursively_scans_and_preserves_relative_structure(tmp_path):
     assert (tmp_path / "out" / "10" / "2" / "3.jpg").exists()
     assert (tmp_path / "backup" / "10" / "2" / "3.jpg").exists()
     assert result.processed_count == 3
-

@@ -36,7 +36,7 @@ QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
 #imageView { background: #F8FBFD; border: 1px solid #D9E3EC; border-radius: 6px; color: #627286; }
 #statCard { background: #F5F8FB; border: 1px solid #E8EDF2; border-radius: 6px; }
 #metricCard { background: #F5F8FB; border: 1px solid #E8EDF2; border-radius: 6px; }
-#chartView { background: white; border: 1px solid #D9E3EC; border-radius: 6px; }
+#chartView { background: white; border: 0; }
 #systemInfoOuter { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }
 #systemInfoInner { background: #F0F2F5; border: 1px solid #E0E3E8; border-radius: 6px; }
 QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }

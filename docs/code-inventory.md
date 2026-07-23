@@ -4,8 +4,8 @@
 
 ## 目录摘要
 
-- `src`: 206 个文件，20892 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
-- `docs`: 3 个文件，279 行文本；架构、规格、打包与代码清单文档。
+- `src`: 207 个文件，21515 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `docs`: 5 个文件，314 行文本；架构、规格、打包与代码清单文档。
 - `installer`: 9 个文件，845 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
@@ -13,7 +13,7 @@
 | 路径 | 行数 | 说明 |
 | --- | ---: | --- |
 | `AGENTS.md` | 138 | 本仓库 AI 执行约束与开发规则。 |
-| `README.md` | 410 | 项目概览、命令入口与使用说明。 |
+| `README.md` | 412 | 项目概览、命令入口与使用说明。 |
 | `pixi.toml` | 32 | Pixi 环境、依赖与任务命令定义。 |
 | `src/__init__.py` | 1 | 仓库文件。 |
 | `src/app.py` | 8 | 仓库文件。 |
@@ -32,9 +32,10 @@
 | `src/open_yolo_tool.pyw` | 32 | 仓库文件。 |
 | `src/runtime/settings.json` | 106 | 源码内默认配置参考。 |
 | `src/services/__init__.py` | 2 | 服务层与可测试业务逻辑实现。 |
-| `src/services/annotation/__init__.py` | 62 | 服务层与可测试业务逻辑实现。 |
+| `src/services/annotation/__init__.py` | 70 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/ai_labeling.py` | 283 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/circle_geometry.py` | 16 | 服务层与可测试业务逻辑实现。 |
+| `src/services/annotation/class_names.py` | 89 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/editable_document.py` | 295 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/file_index.py` | 57 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/preview_render.py` | 146 | 服务层与可测试业务逻辑实现。 |
@@ -92,7 +93,7 @@
 | `src/tests/integration/test_app_entry.py` | 119 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/annotation/test_annotation_services.py` | 165 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/annotation/test_annotation_services.py` | 214 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/conversion/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/conversion/test_conversion_services.py` | 317 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/data_ops/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
@@ -113,11 +114,11 @@
 | `src/tests/services/validation/test_prediction_services.py` | 265 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/annotation/test_annotation_page.py` | 356 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/annotation/test_annotation_page.py` | 546 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data_processing/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/data_processing/test_resize_tab.py` | 62 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/data_processing/test_resize_tab.py` | 97 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/home/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/home/test_home_charts.py` | 33 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/home/test_home_charts.py` | 44 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/settings/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/settings/test_settings_page.py` | 119 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/shared/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
@@ -148,21 +149,21 @@
 | `src/ui/features/annotation/canvas/render.py` | 248 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/state.py` | 25 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/canvas/status.py` | 21 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/canvas/widget.py` | 232 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/class_panel.py` | 76 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/dialogs.py` | 394 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/file_browser.py` | 360 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/canvas/widget.py` | 233 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/class_panel.py` | 79 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/dialogs.py` | 535 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/file_browser.py` | 362 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/layout.py` | 101 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/menus.py` | 165 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/menus.py` | 166 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/page.py` | 250 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/persistence.py` | 117 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/selection.py` | 57 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/settings_actions.py` | 89 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/persistence.py` | 132 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/selection.py` | 82 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/settings_actions.py` | 118 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/shortcuts.py` | 48 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/toolbar.py` | 61 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/convert/__init__.py` | 1 | 按功能分包的页面真实实现。 |
-| `src/ui/features/data/convert/tab.py` | 365 | 按功能分包的页面真实实现。 |
+| `src/ui/features/data/convert/tab.py` | 370 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/page.py` | 68 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/preview/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/preview/tab.py` | 190 | 按功能分包的页面真实实现。 |
@@ -172,7 +173,7 @@
 | `src/ui/features/data/resize/tab.py` | 170 | 按功能分包的页面真实实现。 |
 | `src/ui/features/home/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/home/data.py` | 207 | 按功能分包的页面真实实现。 |
-| `src/ui/features/home/layout.py` | 117 | 按功能分包的页面真实实现。 |
+| `src/ui/features/home/layout.py` | 121 | 按功能分包的页面真实实现。 |
 | `src/ui/features/home/page.py` | 14 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/constants.py` | 12 | 按功能分包的页面真实实现。 |
@@ -199,12 +200,12 @@
 | `src/ui/features/validation/video_player.py` | 162 | 按功能分包的页面真实实现。 |
 | `src/ui/helpers.py` | 66 | 仓库文件。 |
 | `src/ui/shared/__init__.py` | 1 | 跨页面复用的表单、对话框与页面基类。 |
-| `src/ui/shared/dialogs.py` | 211 | 跨页面复用的表单、对话框与页面基类。 |
+| `src/ui/shared/dialogs.py` | 217 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/forms.py` | 355 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/page_base.py` | 168 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/widgets/__init__.py` | 1 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/widgets/base.py` | 105 | 跨页面复用的表单、对话框与页面基类。 |
-| `src/ui/shared/widgets/charts.py` | 434 | 跨页面复用的表单、对话框与页面基类。 |
+| `src/ui/shared/widgets/charts.py` | 443 | 跨页面复用的表单、对话框与页面基类。 |
 | `src/ui/shared/workers/__init__.py` | 13 | 共享后台工作线程与子进程桥接。 |
 | `src/ui/shared/workers/ai_runtime.py` | 219 | 共享后台工作线程与子进程桥接。 |
 | `src/ui/shared/workers/annotation_ai.py` | 93 | 共享后台工作线程与子进程桥接。 |
@@ -221,8 +222,10 @@
 | `src/ui/widgets/__init__.py` | 1 | 图表与基础复用控件。 |
 | `src/ui/widgets/base.py` | 90 | 图表与基础复用控件。 |
 | `src/ui/widgets/charts.py` | 332 | 图表与基础复用控件。 |
-| `docs/architecture.md` | 210 | 项目架构、打包与维护文档。 |
+| `docs/architecture.md` | 213 | 项目架构、打包与维护文档。 |
 | `docs/packaging-windows.md` | 54 | 项目架构、打包与维护文档。 |
+| `docs/spec/annotation.md` | 19 | 页面与功能规格说明。 |
+| `docs/spec/data-processing.md` | 13 | 页面与功能规格说明。 |
 | `docs/spec/settings.md` | 15 | 页面与功能规格说明。 |
 | `installer/build_windows.ps1` | 151 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-PySide6.scripts.deploy_lib.py` | 1 | Windows 打包脚本与安装配置。 |

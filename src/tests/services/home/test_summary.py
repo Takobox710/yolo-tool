@@ -84,6 +84,11 @@ def test_build_home_summary_counts_annotations_distribution_and_history(tmp_path
     assert summary["label_count"] == 1
     assert summary["single_counts"] == {"train": 1, "val": 0, "test": 0}
     assert summary["multi_counts"] == {"weld": 1, "scratch": 2}
+    assert summary["standard_counts"] == {
+        "total_images": 2,
+        "split_counts": {"train": 1, "val": 1, "test": 0},
+        "unannotated_images": 1,
+    }
     assert summary["class_names"] == ["weld", "scratch"]
     assert summary["curve_data"]["epoch"] == [0.0]
     assert len(summary["history_entries"]) == 1
@@ -122,3 +127,71 @@ def test_build_home_summary_falls_back_to_yolo_labels_when_no_valid_json(tmp_pat
     assert summary["label_count"] == 1
     assert summary["single_counts"] == {"train": 0, "val": 0, "test": 0}
     assert summary["multi_counts"] == {"weld": 0}
+    assert summary["standard_counts"]["unannotated_images"] == 0
+
+
+def test_count_annotation_objects_counts_all_labelme_shapes_and_yolo_rows(tmp_path):
+    from src.services.home.summary import count_annotation_files
+
+    annotations_dir = tmp_path / "annotations"
+    labels_dir = tmp_path / "labels"
+    annotations_dir.mkdir()
+    labels_dir.mkdir()
+    (annotations_dir / "one.json").write_text(
+        json.dumps({"shapes": [{"label": "a"}] * 5}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert count_annotation_files(annotations_dir, labels_dir) == 5
+
+    (annotations_dir / "one.json").write_text("{}", encoding="utf-8")
+    (labels_dir / "one.txt").write_text(
+        "0 0.5 0.5 0.2 0.2\n\n1 0.4 0.4 0.1 0.1\n", encoding="utf-8"
+    )
+    assert count_annotation_files(annotations_dir, labels_dir) == 2
+
+
+def test_build_home_summary_falls_back_to_project_folder_before_dataset_split(tmp_path):
+    from src.services.home import build_home_summary
+
+    images_dir = tmp_path / "Pictures"
+    annotations_dir = images_dir
+    labels_dir = tmp_path / "labels"
+    dataset_dir = tmp_path / "data"
+    result_dir = tmp_path / "result"
+    images_dir.mkdir()
+    labels_dir.mkdir()
+    dataset_dir.mkdir()
+    result_dir.mkdir()
+    for name in ("1.jpg", "2.jpg", "3.jpg"):
+        (images_dir / name).write_text("image", encoding="utf-8")
+    (images_dir / "1.json").write_text(
+        json.dumps({"shapes": [{"label": "weld"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (images_dir / "2.json").write_text(
+        json.dumps({"shapes": [{"label": "scratch"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    summary = build_home_summary(
+        images_dir=images_dir,
+        annotations_dir=annotations_dir,
+        labels_dir=labels_dir,
+        dataset_dir=dataset_dir,
+        result_dir=result_dir,
+        configured_class_names=["weld", "scratch"],
+    )
+
+    assert summary["distribution_source"] == "folder"
+    assert summary["folder_counts"] == {
+        "total_images": 3,
+        "annotated_images": 2,
+        "class_counts": {"weld": 1, "scratch": 1},
+    }
+    assert summary["multi_counts"] == {"weld": 1, "scratch": 1}
+    assert summary["standard_counts"] == {
+        "total_images": 3,
+        "split_counts": {"train": 0, "val": 0, "test": 0},
+        "unannotated_images": 1,
+    }

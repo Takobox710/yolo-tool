@@ -133,6 +133,7 @@ class AnnotationFileBrowserMixin:
             self.file_list.setItemWidget(item, widget)
 
     def scan_images(self, *, select_first: bool) -> None:
+        self._sync_project_labelme_class_names()
         image_dir = self.path_from_setting("images_dir")
         self.image_items = scan_annotation_image_items(image_dir)
         self._annotation_status_request_id += 1
@@ -166,6 +167,7 @@ class AnnotationFileBrowserMixin:
         self._refresh_manual_action_buttons()
 
     def prepare_initial_image(self) -> None:
+        self._sync_project_labelme_class_names()
         if self.image_items:
             return
         image_dir = self.path_from_setting("images_dir")

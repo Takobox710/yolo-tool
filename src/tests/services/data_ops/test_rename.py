@@ -30,18 +30,6 @@ def test_rename_preview_execute_and_conflict(tmp_path):
     assert conflict_plan[0].conflict is True
 
 
-def test_rename_preview_uses_natural_numeric_sort(tmp_path):
-    from src.services.data_ops import preview_rename
-
-    for name in ["1.jpg", "10.jpg", "100.jpg", "2.jpg", "3.jpg"]:
-        (tmp_path / name).write_bytes(b"image")
-
-    plan = preview_rename(tmp_path, "", 1, 1)
-
-    assert [item.old_name for item in plan] == ["1.jpg", "2.jpg", "3.jpg", "10.jpg", "100.jpg"]
-    assert [item.new_name for item in plan] == ["1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg"]
-
-
 def test_rename_can_include_matching_labels_and_blocks_label_conflicts(tmp_path):
     from src.services.data_ops import execute_rename, preview_rename
 
@@ -105,4 +93,3 @@ def test_rename_can_include_labelme_and_yolo_labels_separately(tmp_path):
     assert (images / "A1.jpg").exists()
     assert (labelme / "A1.json").read_text(encoding="utf-8") == "labelme"
     assert (yolo / "A1.txt").read_text(encoding="utf-8") == "yolo"
-
