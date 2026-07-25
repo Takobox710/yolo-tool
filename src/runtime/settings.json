@@ -36,8 +36,8 @@
   },
   "training": {
     "model_yaml": "",
-    "base_model": "yolov8s.pt",
-    "pretrained": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\models\\yolov8s.pt",
+    "base_model": "yolo11s.pt",
+    "pretrained": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\models\\yolo11s.pt",
     "data": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\data.yaml",
     "project": "D:\\ruanjian\\User\\Python\\yolo_tool\\result",
     "export_format": "onnx",
@@ -72,6 +72,13 @@
   },
   "conversion": {
     "use_labelme": true
+  },
+  "model_export": {
+    "model_path": "",
+    "output_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\data\\models\\model_exports",
+    "format": "onnx",
+    "imgsz": 640,
+    "simplify": true
   },
   "annotation": {
     "auto_save": true,

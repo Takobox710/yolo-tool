@@ -16,14 +16,18 @@ from src.ui.features.settings.state import (
     toggle_show_last_training_models,
 )
 from src.ui.shared.page_base import BasePage
+from src.ui.shared.model_export_package import ModelExportPackageDropMixin
+from src.services.runtime import invalidate_cache
 from src.shared.qt import QTimer
 
 
-class SettingsPage(BasePage):
+class SettingsPage(ModelExportPackageDropMixin, BasePage):
     def __init__(self, app):
         super().__init__(app)
+        self.setup_model_export_package_drop()
         self._refresh_count = 0
         build_settings_layout(self)
+        self.finalize_model_export_package_drop()
         self.distribution_mode_check.setChecked(
             self.app.settings.get("features", {}).get(
                 "distribution_multi_class_mode", False
@@ -78,5 +82,19 @@ class SettingsPage(BasePage):
 
     def append_program_log_entry(self, entry: str) -> None:
         return append_program_log_entry(self, entry)
+
+    def model_export_package_installing_changed(self, installing: bool) -> None:
+        if installing:
+            self.append_program_log_entry("正在校验并安装模型转换附加包...")
+
+    def model_export_package_install_progress(self, message: str, value: int) -> None:
+        self.append_program_log_entry(f"{message}（{value}%）")
+
+    def model_export_package_installed(self, installed) -> None:
+        invalidate_cache("dependency_versions")
+        self.append_program_log_entry(
+            f"已启用模型转换附加环境 {installed.version}。"
+        )
+        self.on_show()
 
 

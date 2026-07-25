@@ -50,6 +50,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
         run_background=lambda _kind, _fn: None,
         status=SimpleNamespace(setText=lambda _text: None),
         training_handle=None,
+        workers=[],
     )
 
     page = SettingsPage(fake_app)
@@ -58,24 +59,84 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
             "python": "3.12.10",
             "cuda": {"torch": "2.12.1+cu130", "cuda": "13.0", "gpu": "Test GPU"},
             "dependencies": {
-                "PySide6": "6.10.0",
+                "ONNX": "1.22.0",
                 "Ultralytics": "8.4.80",
                 "OpenCV": "4.13.0",
                 "Pillow": "12.2.0",
-                "psutil": "7.2.2",
+                "TensorRT": "11.1.0",
             },
-            "app_version": "1.2.7",
+            "app_version": "1.3.0",
         }
     )
 
     assert page.status_cards["Python"].text() == "3.12.10：可用"
     assert page.status_cards["Torch"].text() == "2.12.1+cu130：可用"
-    assert page.status_cards["PySide6"].text() == "6.10.0：可用"
+    assert page.status_cards["ONNX"].text() == "1.22.0：可用"
     assert page.status_cards["Ultralytics"].text() == "8.4.80：可用"
     assert page.status_cards["OpenCV"].text() == "4.13.0：可用"
     assert page.status_cards["Pillow"].text() == "12.2.0：可用"
-    assert page.status_cards["psutil"].text() == "7.2.2：可用"
-    assert page.status_cards["程序版本"].text() == "1.2.7"
+    assert page.status_cards["TensorRT"].text() == "11.1.0：可用"
+    assert list(page.status_cards) == [
+        "Python",
+        "Torch",
+        "Ultralytics",
+        "OpenCV",
+        "Pillow",
+        "ONNX",
+        "TensorRT",
+        "程序版本",
+    ]
+    assert page.status_cards["程序版本"].text() == "1.3.0"
+    assert page.acceptDrops()
+
+
+def test_settings_page_routes_dropped_model_export_archive_to_confirmation(
+    monkeypatch, tmp_path
+):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, QEvent, QUrl
+    from src.ui.features.settings.page import SettingsPage
+
+    class DropEvent:
+        def __init__(self, path):
+            self.path = path
+            self.accepted = False
+
+        def type(self):
+            return QEvent.Type.Drop
+
+        def mimeData(self):
+            return SimpleNamespace(
+                hasUrls=lambda: True,
+                urls=lambda: [QUrl.fromLocalFile(str(self.path))],
+            )
+
+        def acceptProposedAction(self):
+            self.accepted = True
+
+    app = QApplication.instance() or QApplication([])
+    fake_app = SimpleNamespace(
+        settings=build_default_settings(tmp_path),
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        workers=[],
+    )
+    page = SettingsPage(fake_app)
+    package = tmp_path / "runtime.7z"
+    package.touch()
+    selected = []
+    monkeypatch.setattr(page, "confirm_model_export_package", selected.append)
+    event = DropEvent(package)
+
+    handled = page.eventFilter(page.log, event)
+
+    assert handled is True
+    assert event.accepted is True
+    assert selected == [package]
 
 
 def test_settings_toggle_refreshes_validation_page_model_choices(tmp_path):

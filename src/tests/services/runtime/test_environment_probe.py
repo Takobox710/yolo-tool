@@ -73,3 +73,27 @@ def test_torch_cuda_summary_can_use_subprocess_helper(monkeypatch):
     assert calls["command"][-1] == "--torch-summary"
     assert calls["creationflags"] == getattr(environment_service.subprocess, "CREATE_NO_WINDOW", 0)
     assert summary == {"torch": "2.0.0", "cuda": "13.0", "gpu": "Test GPU"}
+
+
+def test_module_version_fallback_covers_frozen_build_without_dist_info(monkeypatch):
+    from src.services.runtime import environment_probe as environment_service
+
+    monkeypatch.setattr(
+        environment_service.importlib,
+        "import_module",
+        lambda _name: type("Module", (), {"__version__": "8.4.80"})(),
+    )
+    monkeypatch.setattr(
+        environment_service.importlib.util,
+        "find_spec",
+        lambda _name: object(),
+    )
+    monkeypatch.setattr(
+        environment_service,
+        "_detect_distribution_version",
+        lambda _distributions: "",
+    )
+
+    versions = environment_service._load_dependency_versions()
+
+    assert versions["Ultralytics"] == "8.4.80"

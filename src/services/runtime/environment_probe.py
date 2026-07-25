@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib
 import importlib.util
 import shutil
 import subprocess
@@ -18,25 +19,35 @@ from src.services.runtime.windows_spawn import hidden_subprocess_kwargs
 T = TypeVar("T")
 _CACHE: dict[str, tuple[float, object]] = {}
 PACKAGE_SPECS: dict[str, dict[str, tuple[str, ...] | str]] = {
-    "PySide6": {
-        "module": "PySide6",
-        "distributions": ("PySide6",),
+    "ONNX": {
+        "module": "onnx",
+        "distributions": ("onnx",),
+        "version_attribute": "__version__",
     },
     "Ultralytics": {
         "module": "ultralytics",
         "distributions": ("ultralytics",),
+        "version_attribute": "__version__",
     },
     "OpenCV": {
         "module": "cv2",
         "distributions": ("opencv-python", "opencv-python-headless"),
+        "version_attribute": "__version__",
     },
     "Pillow": {
         "module": "PIL",
         "distributions": ("Pillow",),
+        "version_attribute": "__version__",
     },
     "psutil": {
         "module": "psutil",
         "distributions": ("psutil",),
+        "version_attribute": "__version__",
+    },
+    "TensorRT": {
+        "module": "tensorrt",
+        "distributions": ("tensorrt",),
+        "version_attribute": "__version__",
     },
 }
 
@@ -76,6 +87,11 @@ def dependency_versions() -> dict[str, str]:
     return cached_call("dependency_versions", 60.0, _load_dependency_versions)
 
 
+def invalidate_cache(*keys: str) -> None:
+    for key in keys:
+        _CACHE.pop(key, None)
+
+
 def pixi_available() -> bool:
     return shutil.which("pixi") is not None
 
@@ -88,7 +104,25 @@ def _load_dependency_versions() -> dict[str, str]:
             versions[label] = "未安装"
             continue
         version = _detect_distribution_version(tuple(spec["distributions"]))
+        if not version:
+            version = _detect_module_version(
+                module_name,
+                str(spec.get("version_attribute") or "__version__"),
+            )
         versions[label] = version or "已安装"
+    try:
+        from src.services.model_export.package import load_installed_extension
+
+        installed = load_installed_extension()
+        if installed is not None and "engine" in installed.supported_formats:
+            dependencies = installed.manifest.get("dependencies", {})
+            versions["TensorRT"] = str(
+                dependencies.get("tensorrt")
+                or dependencies.get("tensorrt-cu13")
+                or "已安装"
+            )
+    except Exception:
+        pass
     return versions
 
 
@@ -99,6 +133,15 @@ def _detect_distribution_version(distributions: tuple[str, ...]) -> str:
         except metadata.PackageNotFoundError:
             continue
     return ""
+
+
+def _detect_module_version(module_name: str, attribute: str = "__version__") -> str:
+    try:
+        module = importlib.import_module(module_name)
+        value = getattr(module, attribute, "")
+    except Exception:
+        return ""
+    return str(value) if value else ""
 
 
 def torch_cuda_summary(*, use_subprocess: bool = False) -> dict[str, str]:

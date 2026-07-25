@@ -68,6 +68,7 @@ def build_settings_layout(page) -> None:
 
     page.log = QTextEdit()
     page.prepare_readonly_text(page.log)
+    page.log.setAcceptDrops(False)
     page.log.setPlainText(page.program_log_text())
     log_layout.addWidget(page.log, 1)
     layout.addWidget(log_panel, 1)

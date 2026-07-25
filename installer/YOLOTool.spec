@@ -1,14 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+import shutil
 from pathlib import Path
+import PyInstaller
 
 SPEC_ROOT = Path(SPECPATH).resolve()
 ROOT = SPEC_ROOT.parent
 HOOKS_DIR = ROOT / "installer" / "hooks"
 ASSETS_DIR = ROOT / "src" / "assets"
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+    copy_metadata,
+)
 
 BASE_EXCLUDES = [
     "pytest",
@@ -28,31 +35,116 @@ BASE_EXCLUDES = [
     "torch.distributed.rpc._testing",
     "torch.distributed.rpc.examples",
     "torch._numpy.testing",
+    # TensorRT remains in the additive LZMA2 archive.
+    "tensorrt",
 ]
 
 mode = os.environ.get("YOLO_TOOL_BUILD_MODE", "release").strip().lower()
 is_dev = mode == "dev"
+is_program_only = os.environ.get("YOLO_TOOL_PROGRAM_ONLY", "0") == "1"
 name = "YOLOTool-dev" if is_dev else "YOLOTool"
 
-datas = [*collect_data_files("ultralytics")]
-binaries = []
-for package in ("torch", "cv2"):
-    binaries += collect_dynamic_libs(package)
-
-hiddenimports = collect_submodules("ultralytics", on_error="ignore")
-if not is_dev:
-    datas += collect_data_files(
-        "matplotlib",
-        subdir="mpl-data",
-        excludes=["**/sample_data/**"],
-    )
-    hiddenimports += [
-        "matplotlib",
-        "matplotlib.backends.backend_agg",
-        "matplotlib.backends.backend_qtagg",
-    ]
-
+PY7ZR_PACKAGES = (
+    "py7zr",
+    "bcj",
+    "pyppmd",
+    "backports.zstd",
+    "inflate64",
+    "brotli",
+    "Cryptodome",
+)
+BASE_EXPORT_PACKAGES = (
+    "openvino",
+    "ncnn",
+    "pnnx",
+)
 excludes = list(BASE_EXCLUDES)
+
+if is_program_only:
+    # The base archive owns Python, pure third-party modules, and native
+    # libraries. The program update only carries the application graph.
+    datas = []
+    binaries = []
+    hiddenimports = ["src.assets_rc", "ctypes.util", "ctypes.wintypes"]
+    hook_paths = []
+    runtime_hooks = [
+        str(
+            Path(PyInstaller.__file__).resolve().parent
+            / "hooks"
+            / "rthooks"
+            / "pyi_rth_pyside6.py"
+        ),
+        str(HOOKS_DIR / "program_external_runtime.py"),
+    ]
+    excludes += [
+        "PIL",
+        "cv2",
+        "torch",
+        "ultralytics",
+        "onnx",
+        "onnxslim",
+        "onnxruntime",
+        "openvino",
+        "ncnn",
+        "pnnx",
+        "matplotlib",
+        "psutil",
+        "py7zr",
+    ]
+else:
+    datas = [*collect_data_files("ultralytics")]
+    native_7z = shutil.which("7z.exe") or shutil.which("7z")
+    if native_7z:
+        datas += [(native_7z, ".")]
+        native_7z_dll = str(Path(native_7z).with_name("7z.dll"))
+        if Path(native_7z_dll).is_file():
+            datas += [(native_7z_dll, ".")]
+    binaries = []
+    for package in (
+        "torch",
+        "cv2",
+        "onnx",
+        "onnxruntime",
+        *BASE_EXPORT_PACKAGES,
+        *PY7ZR_PACKAGES,
+    ):
+        binaries += collect_dynamic_libs(package)
+
+    hiddenimports = collect_submodules("ultralytics", on_error="ignore")
+    hiddenimports += ["src.assets_rc"]
+    for package in (
+        "onnx",
+        "onnxslim",
+        "onnxruntime",
+        *BASE_EXPORT_PACKAGES,
+        *PY7ZR_PACKAGES,
+    ):
+        hiddenimports += collect_submodules(package, on_error="ignore")
+        datas += collect_data_files(package)
+
+    # Keep the small dist-info directories used by importlib.metadata in frozen builds.
+    for distribution in (
+        "onnx",
+        "onnxruntime",
+        "opencv-python",
+        "Pillow",
+        "psutil",
+        "ultralytics",
+    ):
+        datas += copy_metadata(distribution)
+    if not is_dev:
+        datas += collect_data_files(
+            "matplotlib",
+            subdir="mpl-data",
+            excludes=["**/sample_data/**"],
+        )
+        hiddenimports += [
+            "matplotlib",
+            "matplotlib.backends.backend_agg",
+            "matplotlib.backends.backend_qtagg",
+        ]
+    hook_paths = [str(HOOKS_DIR)]
+    runtime_hooks = []
 
 a = Analysis(
     [str(ROOT / "src/main.py")],
@@ -60,41 +152,63 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[str(HOOKS_DIR)],
+    hookspath=hook_paths,
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=runtime_hooks,
     excludes=excludes,
     noarchive=False,
     optimize=0,
 )
+
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name=name,
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=str(ASSETS_DIR / "app_icon.ico"),
-)
+if is_program_only:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name=name,
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon=str(ASSETS_DIR / "app_icon.ico"),
+    )
+else:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name=name,
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon=str(ASSETS_DIR / "app_icon.ico"),
+    )
 
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    name=name,
-)
+if not is_program_only:
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name=name,
+    )
 

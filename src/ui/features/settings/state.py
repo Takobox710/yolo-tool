@@ -177,10 +177,10 @@ def apply_env_data(page, payload):
     page.set_status_card("Python", f"{python_text}：可用")
     page.set_status_card("Torch", torch_text)
     page.set_status_card("Ultralytics", format_dependency_status(dependencies, "Ultralytics"))
-    page.set_status_card("PySide6", format_dependency_status(dependencies, "PySide6"))
+    page.set_status_card("ONNX", format_dependency_status(dependencies, "ONNX"))
     page.set_status_card("OpenCV", format_dependency_status(dependencies, "OpenCV"))
     page.set_status_card("Pillow", format_dependency_status(dependencies, "Pillow"))
-    page.set_status_card("psutil", format_dependency_status(dependencies, "psutil"))
+    page.set_status_card("TensorRT", format_dependency_status(dependencies, "TensorRT"))
     page.set_status_card("程序版本", payload.get("app_version", "未知"))
 
 

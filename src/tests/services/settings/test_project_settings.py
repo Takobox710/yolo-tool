@@ -34,8 +34,8 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings["dataset"]["class_names"] == []
     assert settings["dataset"]["split_ratios"] == {"train": 0.8, "val": 0.2, "test": 0.0}
     assert settings["training"]["model_yaml"] == ""
-    assert settings["training"]["base_model"] == "yolov8s.pt"
-    assert Path(settings["training"]["pretrained"]).name == "yolov8s.pt"
+    assert settings["training"]["base_model"] == "yolo11s.pt"
+    assert Path(settings["training"]["pretrained"]).name == "yolo11s.pt"
     assert settings["training"]["patience"] == 100
     assert settings["annotation"]["auto_save"] is True
     assert settings["annotation"]["auto_convert_yolo"] is False
@@ -93,7 +93,7 @@ def test_settings_service_can_reset_current_project_to_defaults(tmp_path):
     assert settings == defaults
     assert persisted["project"]["root"] == "."
     assert persisted["paths"]["result_dir"] == "result"
-    assert persisted["training"]["pretrained"] == "data\\models\\yolov8s.pt"
+    assert persisted["training"]["pretrained"] == "data\\models\\yolo11s.pt"
 
 
 def test_settings_service_preserves_model_bare_name_for_portable_download_target(tmp_path):

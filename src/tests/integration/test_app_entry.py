@@ -8,15 +8,67 @@ import sys
 
 from types import SimpleNamespace
 
+import json
+
 from src.tests.helpers.ui_paths import (
     ICON_ICO,
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
     PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_FULL_BAT,
+    PACKAGING_PROGRAM_ONLY_BAT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
 )
+
+
+def test_runtime_probe_only_compares_program_and_base_runtime_versions(
+    monkeypatch, capsys
+):
+    from src.services.runtime import release_manifest
+    from src.train_cli import run_runtime_probe_cli
+
+    monkeypatch.setattr(
+        release_manifest,
+        "check_runtime_compatibility",
+        lambda: release_manifest.RuntimeCompatibility(
+            True, "runtime-1", "runtime-1", "运行环境匹配"
+        ),
+    )
+
+    assert run_runtime_probe_cli([]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "ok": True,
+        "runtime_version": "runtime-1",
+        "required_runtime_version": "runtime-1",
+        "reason": "运行环境匹配",
+    }
+
+
+def test_runtime_probe_returns_failure_for_runtime_version_mismatch(
+    monkeypatch, capsys
+):
+    from src.services.runtime import release_manifest
+    from src.train_cli import run_runtime_probe_cli
+
+    monkeypatch.setattr(
+        release_manifest,
+        "check_runtime_compatibility",
+        lambda: release_manifest.RuntimeCompatibility(
+            False,
+            "runtime-1",
+            "runtime-2",
+            "当前运行环境为 runtime-1，程序要求 runtime-2",
+        ),
+    )
+
+    assert run_runtime_probe_cli([]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["runtime_version"] == "runtime-1"
+    assert payload["required_runtime_version"] == "runtime-2"
 
 
 def test_project_path_helpers_display_relative_and_resolve_user_text(tmp_path):
@@ -67,7 +119,7 @@ def test_shared_paths_use_dev_and_frozen_resource_roots(monkeypatch, tmp_path):
 
     assert frozen_paths.ROOT == Path(sys.executable).resolve().parent
     assert frozen_paths.PACKAGE_ROOT == resource_root / "src"
-    assert frozen_paths.ASSETS_ROOT == Path(sys.executable).resolve().parent / "app_assets"
+    assert frozen_paths.ASSETS_ROOT == resource_root / "src" / "assets"
 
     monkeypatch.delattr(sys, "frozen", raising=False)
     monkeypatch.delattr(sys, "_MEIPASS", raising=False)
@@ -93,6 +145,8 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_SPEC.exists()
     assert PACKAGING_SCRIPT.exists()
     assert PACKAGING_ONE_CLICK_SCRIPT.exists()
+    assert PACKAGING_FULL_BAT.exists()
+    assert PACKAGING_PROGRAM_ONLY_BAT.exists()
     assert INSTALLER_ISS.exists()
     assert PACKAGING_DOC.exists()
     assert ICON_PNG.exists()
@@ -101,6 +155,10 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     spec = PACKAGING_SPEC.read_text(encoding="utf-8")
     script = PACKAGING_SCRIPT.read_text(encoding="utf-8")
     one_click_script = PACKAGING_ONE_CLICK_SCRIPT.read_text(encoding="utf-8")
+    full_bat_bytes = PACKAGING_FULL_BAT.read_bytes()
+    program_only_bat_bytes = PACKAGING_PROGRAM_ONLY_BAT.read_bytes()
+    full_bat = full_bat_bytes.decode("ascii")
+    program_only_bat = program_only_bat_bytes.decode("ascii")
     iss = INSTALLER_ISS.read_text(encoding="utf-8")
     doc = PACKAGING_DOC.read_text(encoding="utf-8")
 
@@ -110,10 +168,28 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert 'mode = os.environ.get("YOLO_TOOL_BUILD_MODE", "release")' in spec
     assert 'HOOKS_DIR = ROOT / "installer" / "hooks"' in spec
     assert 'SetupIconFile=..\\src\\assets\\app_icon.ico' in iss
-    assert 'Source: "..\\dist\\packages\\{#PackageType}\\YOLOTool.exe"' in iss
-    assert 'PackageType == "RuntimeFull"' in iss
-    assert "pyinstaller" in script and "app_assets" in script
+    assert 'Source: "..\\dist\\packages\\Program\\YOLOTool.exe"' in iss
+    assert 'Source: "{code:GetBaseArchivePath}"' in iss
+    assert "ArchiveExtraction=enhanced/nopassword" in iss
+    assert "CreateUninstallRegKey=no" in iss
+    assert "YOLOTool_' + PathInstanceId" in iss
+    assert "WriteUninstallRegistration" in iss
+    assert "CreateCustomPage(wpSelectDir, '选择安装组件'" in iss
+    assert "--remove-managed-models" in iss
+    assert 'Source: "..\\dist\\packages\\Program\\_internal' not in iss
+    assert "Full" not in iss and "AppUpdate" not in iss and "RuntimeFull" not in iss
+    assert "pyinstaller" in script and "app_assets" not in script
+    assert Path("src/assets.qrc").exists()
+    assert "assets_rc" in Path("src/ui/shared/assets.py").read_text(encoding="utf-8")
     assert "src.devtools.release_package" in script and "PackageType" in script
-    assert '$TargetModelPath = Join-Path $TargetModelsDir $ModelFile.Name' in script
+    assert '$BaseModelNames = @("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")' in script
     assert 'save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")' in script
-    assert "build_windows.ps1" in one_click_script
+    assert "package_windows.ps1" in one_click_script
+    assert "SkipBaseRuntimeModels" in one_click_script
+    assert "package_windows.ps1" in full_bat
+    assert "-BuildBaseRuntimeModels" in full_bat
+    assert "-BuildModelExportRuntime" in full_bat
+    assert "package_windows.ps1" in program_only_bat
+    assert "-BuildBaseRuntimeModels" not in program_only_bat
+    assert "-BuildModelExportRuntime" not in program_only_bat
+    assert b"\r\n" in full_bat_bytes and b"\r\n" in program_only_bat_bytes

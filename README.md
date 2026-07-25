@@ -13,7 +13,7 @@
 - 支持 Labelme 转 YOLO，也支持对已存在的 YOLO `.txt` 标注直接分组并生成数据集。
 - 支持 `oriented_rectangle` 转 OBB，支持 `line` 标注按半宽扩展为旋转框。
 - 训练命令由服务层统一生成，支持优化器、HSV、MixUp、Mosaic 等常见参数，训练页 tooltip 采用“中文全称（命令参数名）；说明”的统一格式。
-- 支持扫描 `data/models/*.pt` 与 `result/**/weights/*.pt` 作为模型候选。
+- 模型验证和训练使用 `data/models/` 中的基础模型；模型格式转换默认只显示 `result/**/weights/*.pt`，其余 `.pt` 文件通过浏览选择。
 - 支持图片检测、视频检测、摄像头检测、数据集验证四类验证模式。
 - 内置本地手工数据标注页，默认读写 Labelme `.json`，支持右键切换绘制/编辑模式、类别管理、AI 预标注与项目级标注设置。
 - 图片检测模式支持固定输入源和单张图片；视频检测模式支持批量视频目录和单个视频。
@@ -22,13 +22,15 @@
 - 系统设置提供“训练模型显示 last”开关，默认关闭；关闭时模型验证页只显示训练产物中的 `best.pt`，开启后才额外显示 `last.pt`。
 - 主要配置会持久化到当前项目目录的 `data/runtime/settings.json`，切换项目目录后会自动读取该项目自己的配置。
 - 最近一次使用的项目目录会记录到应用根目录 `data/runtime/app_state.json`，用于下次启动时恢复到最近项目。
-- 支持 PyInstaller `onedir` 绿色版打包，目标 Windows 机器无需安装 Python 或 pixi。
-- 支持正式版与开发快包两套 PyInstaller 打包流程，便于日常联调与最终交付分离。
+- 支持 PyInstaller `onedir` 冻结打包，目标 Windows 机器无需安装 Python 或 pixi。
+- 系统设置中的依赖版本优先读取冻结包内的发行版元数据；旧包缺少元数据时会回退读取模块自身版本，不会把已正常导入的依赖误显示为“已安装”。
+- 正式发布拆分为小型程序安装器、基础环境和模型包、可选模型转换附加包，普通更新无需重复分发完整环境。
 - Windows 发布包按程序、运行环境、模型和用户数据分层；普通程序更新包不再重复携带 Torch/CUDA 环境。
-- 根目录提供 `打包程序.bat` 作为一键入口，会转调 `installer/打包程序.ps1` 完成整套打包。
+- 支持把 `.pt` 模型转换为 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN；默认安装直接支持前两种，其余后端通过不重复基础库的 LZMA2 `.7z` 附加包提供。
+- 根目录提供两个打包入口：`打包更新程序.bat` 复用已有环境包，只重建程序安装器；`打包程序.bat` 完成程序、基础环境和附加环境的完整打包。BAT 内部使用纯 ASCII 和 CRLF，避免 Windows `cmd.exe` 代码页导致乱码或命令截断。
 - 服务层与测试已拆分，便于后续继续扩展 GUI 而不把业务逻辑写死在界面回调中。
 - 主导航页面采用“启动先显示首页、窗口空闲后分批预热其余页面”的策略，避免冷启动时连带触发重页面初始化，同时减少首次切到任意页面时的同步卡顿。
-- 应用窗口与任务栏图标开发态读取 `src/assets/app_icon.png`，冻结态读取 EXE 同级的 `app_assets/app_icon.png`；安装器和 EXE 图标仍使用 `src/assets/app_icon.ico`，顶部导航图标会按当前屏幕缩放比例生成高 DPI pixmap，窗口跨屏切换时同步刷新，避免缩放后模糊。
+- 应用窗口与任务栏图标通过 Qt 资源模块内嵌到程序本体，开发态保留 `src/assets/` 文件作为资源编译源；安装器和 EXE 图标使用 `src/assets/app_icon.ico`，顶部导航图标会按当前屏幕缩放比例生成高 DPI pixmap，窗口跨屏切换时同步刷新，避免缩放后模糊。
 
 ## 主要功能
 
@@ -55,6 +57,8 @@
 - 标注预览：读取图片与同名 `.txt` 标签进行可视化预览，自动识别 `detect` / `obb` 标签格式，并使用接近 YOLO 官方的标注框与标签样式。
 - 批量重命名：支持图片、Labelme `.json`、YOLO `.txt` 联动重命名。
 - 图片压缩：递归扫描子目录图片，按画布尺寸对齐长边、贴到统一画布，并保持输出目录结构；是否备份原始图片可选，默认不备份，并可直接从页面打开当前结果文件夹。
+- 模型格式转换：默认只扫描 `result/**/weights/*.pt`，模型显示规则与模型验证页一致；支持浏览选择其他 `.pt` 文件，默认输出到 `data/models/model_exports/<模型名>/`。
+- ONNX 默认简化且可关闭，TorchScript 无需扩展；OpenVINO、TensorRT、NCNN 需要发布版模型转换环境。无 NVIDIA GPU 时 TensorRT 不可用，但 OpenVINO 和 NCNN 不受影响。
 - 数据处理页面在普通窗口放大或进入全屏后会自动铺满可用宽度，页面内容过高时仍可通过纵向滚动查看。
 
 ### 3. 数据标注
@@ -123,7 +127,7 @@
 ### 4. 模型训练
 
 - 自动从模型名称推断 `obb` 或 `detect`。
-- 基础模型优先从 `data/models/` 读取，也允许手动输入；当前默认基础模型为 `yolov8s.pt`。
+- 基础模型优先从 `data/models/` 读取，也允许手动输入；当前默认基础模型为 `yolo11s.pt`。
 - 默认训练参数为：优化器 `auto`、学习率 `0.001`、`训练轮数=500`、`早停轮数=100`、`线程数=2`、`批次大小=16`、`图片尺寸=640`、`设备=0`。
 - 训练页当前参数显示名为：优化器、学习率、训练轮数、早停轮数、线程数、批次大小、图片尺寸、设备；其中“图片尺寸”为可编辑下拉框，内置 `640`、`960`、`1280`，也支持手动输入。
 - 默认增强勾选状态为：随机拼图、缩放、平移、调色、左右翻转开启；上下翻转、旋转、混合关闭。
@@ -195,6 +199,8 @@ python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=..
 - psutil
 - pytest
 - torch / torchvision / torchaudio（目标 CUDA 13.0）
+- ONNX / ONNXSlim；发布基础环境使用 CPU ONNX Runtime
+- OpenVINO / TensorRT / NCNN / PNNX（开发环境和可选模型转换环境）
 
 依赖由 `pixi.toml` 管理，PyTorch 相关包通过独立 PyPI 索引拉取 CUDA 13.0 版本。
 
@@ -207,6 +213,7 @@ yolo_tool/
 ├── pixi.toml
 ├── pixi.lock
 ├── 打包程序.bat
+├── 打包更新程序.bat
 ├── docs/
 │   └── packaging-windows.md
 ├── installer/
@@ -244,6 +251,8 @@ yolo_tool/
 pixi install
 ```
 
+默认开发环境包含全部模型转换后端；`release-base` 用于主安装包并包含 OpenVINO、NCNN、PNNX，`export-full` 在此基础上提供 TensorRT 和 GPU ONNX Runtime。`onnxruntime` 与 `onnxruntime-gpu` 保持在不同环境中。
+
 如果需要确认 PyTorch/CUDA 是否正确安装，可执行：
 
 ```powershell
@@ -268,70 +277,43 @@ pixi run python -m src.main
 
 也可以双击 `src/open_yolo_tool.pyw` 启动程序。
 
-## Windows 绿色版打包
+## Windows 打包与更新
 
-推荐使用 PyInstaller `onedir` 形式打包：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -Clean
-```
-
-本地快速验证可使用开发快包：
+冻结程序仍使用 PyInstaller `onedir`。普通功能更新只发布小型程序安装器：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
+powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1
 ```
 
-或使用快捷脚本：
+程序更新构建会跳过第三方运行库的全量 PyInstaller 分析，直接复用基础包的 `_internal/`；基础包额外保留动态导入所需的标准库 ZIP 和第三方纯 Python 源码，程序更新包不会复制大型 DLL、Torch 或 CUDA。本机实测程序-only EXE 约 2.76 MB，完整发布仍会执行完整环境分析。
+
+双击根目录 `打包更新程序.bat` 只重建程序安装器，并复用 `installer/output/` 中已有的基础环境包和附加环境包。基础包必须存在，附加包仍为可选。
+
+双击根目录 `打包程序.bat` 会执行完整发布，同时重新生成程序安装器、基础环境和模型包、可选模型转换附加包。对应 PowerShell 命令为：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 ```
 
-如果希望直接双击启动整套打包流程，可使用根目录的 `打包程序.bat`。
+PowerShell 下也可分别使用 `-SkipBaseRuntimeModels`、`-SkipModelExportRuntime` 跳过未变化的运行包。本地快速验证仍可构建开发快包：
 
-正式版打包产物位于：
-
-```text
-dist/YOLOTool/
-├── YOLOTool.exe
-├── app_assets/
-├── release-manifest.json
-├── runtime-manifest.json
-├── runtime-version.txt
-├── _internal/
-├── data/
-│   ├── models/
-│   └── runtime/
-│       └── settings.json
-├── images/
-├── labels/
-└── result/
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
-开发快包输出到 `dist/YOLOTool-dev/`，用于快速验证 GUI 启动、训练按钮是否能真正拉起训练进程、验证页是否能加载模型并推理。
+面向用户的发布物固定为：
 
-打包配置当前约定如下：
+```text
+YOLOTool_Setup_<程序版本>.exe
+YOLOTool_BaseEnv_<基础包版本>.7z
+YOLOTool_ExtraEnv_<附加包版本>.7z
+```
 
-- `installer/yolo_tool.iss`：Inno Setup 安装包脚本。
-- `installer/YOLOTool.spec`：统一的 PyInstaller spec，通过环境变量区分 `release/dev`。
-- `installer/build_windows.ps1`：负责 PyInstaller 和 staging，支持 `-Mode release/dev` 与 `-PackageType Full/AppUpdate/RuntimeFull`。
-- `installer/package_windows.ps1`、`installer/打包程序.ps1`：完成 `PyInstaller + staging + Inno Setup`。
-- `installer/hooks/`：自定义 PyInstaller hooks，用于减少无关依赖探测造成的误报。
-- 打包时由 `installer/build_windows.ps1` 只复制 `data/models/*.pt` 到产物的 `data/models/`；模型不会进入 `_internal/`，项目根目录 `.pt` 也不会复制到产物根目录。
+程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`。当前环境包文件名为 `YOLOTool_BaseEnv_v1.7z` 和 `YOLOTool_ExtraEnv_v1.7z`，运行时兼容协议仍独立使用 `runtime-1`。首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时必须提供基础包；已有兼容环境时可只更新程序。默认目录为 `YOLOTool`，有效旧实例才会成为下次安装默认目录。
 
-首次迁移用户需要安装一次 `Full` 完整安装包；之后普通功能更新使用 `AppUpdate`。Torch、CUDA、PySide6 等依赖变化时，使用同时包含程序层和环境层的 `RuntimeFull` 环境升级包。更新包不会覆盖 `data/runtime`、`images`、`labels`、`result` 或已有模型。
+附加包始终可选，仅收集 TensorRT 运行库。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装期间显示进度；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复哈希读取；每个安装实例独立保存到 `%LOCALAPPDATA%\YOLOTool\instances\<实例ID>\extensions\`，不会写入 Program Files 或与其他并行实例共用活动版本。
 
-当前打包流程不再对 `torch`、`PySide6` 等大包执行 `collect_all(...)` 全量扫描，因为那会明显拖慢打包，并制造大量和本项目无关的 warning。
-
-已知仍可能出现但目前不影响使用的打包日志包括：
-
-- `triton not found`
-- `Hidden import "tzdata" not found`
-- `Hidden import "scipy.special._cdflib" not found`
-- `Ignoring /usr/lib64/libgomp.so.1 ... only basenames are supported with ctypes imports`
-
-把整个 `dist/YOLOTool/` 或 `dist/YOLOTool-dev/` 文件夹复制到其他 Windows 机器即可运行。CUDA 版仍要求目标机器安装兼容的 NVIDIA 驱动。
+组件页只按名称、扩展名和压缩大小识别本地包，完整 SHA-256 在点击安装后执行，避免扫描大型压缩包时卡住界面。安装器校验完成后使用普通百分比进度条显示文件安装进度；提交完成前的 `--runtime-probe` 只比较程序清单要求的运行时版本与 `_internal` 基础环境清单版本，不导入 Torch、PySide6 或 ONNX。程序-only 本体明确包含 `ctypes.util`，兼容 Python 3.12 Windows 下 Cryptodome 的 ctypes 回退路径；七个安装清单保存到 `_internal/yolotool_metadata/`，旧根目录清单可自动迁移。基础包同时维护 `data/models/yolo26n.pt` 和根目录兼容副本 `yolo26n.pt`。用户模型和 `data/runtime/`、`images/`、`labels/`、`result/` 均保留。
 
 更多说明见 `docs/packaging-windows.md`。
 
@@ -358,6 +340,7 @@ pixi run check
 - 基础模型目录：`data/models/`
 - 训练结果目录：`result/`
 - 模型验证默认输出路径：`result/gui_val`
+- 模型格式转换默认输出路径：`data/models/model_exports`
 - 运行时设置：`data/runtime/settings.json`
 - 最近项目状态：`data/runtime/app_state.json`
 
@@ -371,7 +354,7 @@ pixi run check
 - 数据标注优化镜像有向矩形编辑：默认关闭
 - 数据集划分比例：`0.8 / 0.2 / 0.0`
 - 图片压缩画布尺寸：`960`
-- 训练基础模型：`data/models/yolov8s.pt`
+- 训练基础模型：`data/models/yolo11s.pt`
 - 模型 YAML：默认留空
 - 训练参数：`epochs=500`、`patience=100`、`workers=2`、`batch=16`、`imgsz=640`、`device=0`
 - 模型验证训练结果列表默认仅显示 `best.pt`，需在系统设置开启“训练模型显示 last”后才显示 `last.pt`
@@ -381,12 +364,13 @@ AI 智能预标注弹窗默认尺寸为 `700 x 620`，最小尺寸为 `650 x 520
 
 ## 已覆盖测试
 
-默认套件固定为 88 项核心测试，主要覆盖以下内容：
+默认套件当前包含 127 项核心测试，主要覆盖以下内容：
 
 - 设置深合并、项目路径、恢复默认值与可移植模型路径。
 - Labelme/YOLO 标注读写，以及 detect、OBB、直线扩展、类别映射和数据集划分。
 - 批量重命名、图片压缩、备份和目录结构保持等会修改用户文件的流程。
 - 训练/验证命令、模型目录、指标读取、输入源、结果标签和视频检测控制流。
+- 模型格式映射、临时导出与覆盖回滚、扩展清单安全、候选安装切换、动态激活和打包依赖分层。
 - 隐藏后台子进程、日志清洗、运行环境状态、发布清单与路径安全。
 - 页面创建、项目切换、关闭保护、任务结束恢复和设置跨页面通知等关键 UI 工作流。
 - 服务/UI 依赖方向、旧入口禁用、模块体量和 Qt 延迟回调生命周期等架构围栏；模块行数采用宽松硬上限，接近原建议线时通过代码审查判断职责，不要求压缩排版或立即拆文件。

@@ -13,6 +13,7 @@ check = "python -m compileall src"
 
 [dependencies]
 python = "3.12.*"
+7zip = ">=24, <27"
 
 [pypi-dependencies]
 torch = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
@@ -29,4 +30,28 @@ pytest = ">=9.1.1, <10"
 matplotlib = ">=3.11.0, <4"
 pyinstaller = ">=6.17.0, <7"
 lap = ">=0.5.13, <0.6"
+onnx = ">=1.22.0, <2"
+onnxslim = ">=0.1.94, <0.2"
+py7zr = ">=1.0.0, <2"
+openvino = ">=2026.2.1, <2027"
+openvino-telemetry = ">=2025.2.0, <2027"
+ncnn = ">=1.0.20260526"
+pnnx = ">=20260526"
+tqdm = ">=4.69.0, <5"
+portalocker = ">=3.2.0, <4"
+
+[feature.release-base.pypi-dependencies]
+onnxruntime = ">=1.27.0, <2"
+
+[feature.export-full.pypi-dependencies]
+onnxruntime-gpu = ">=1.27.0, <2"
+tensorrt = ">=11.1.0.106, <12"
+tensorrt-cu13 = { version = "==11.1.0.106", index = "https://pypi.nvidia.com" }
+tensorrt-cu13-libs = { version = "==11.1.0.106", index = "https://pypi.nvidia.com" }
+tensorrt-cu13-bindings = { version = "==11.1.0.106", index = "https://pypi.nvidia.com" }
+
+[environments]
+default = ["export-full"]
+release-base = ["release-base"]
+export-full = ["export-full"]
 

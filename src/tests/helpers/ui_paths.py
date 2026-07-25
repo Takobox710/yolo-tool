@@ -34,6 +34,8 @@ ANNOTATION_CANVAS_VIEW = Path("src/ui/features/annotation/canvas/widget.py")
 PACKAGING_SPEC = Path("installer/YOLOTool.spec")
 PACKAGING_SCRIPT = Path("installer/build_windows.ps1")
 PACKAGING_ONE_CLICK_SCRIPT = Path("installer/打包程序.ps1")
+PACKAGING_FULL_BAT = Path("打包程序.bat")
+PACKAGING_PROGRAM_ONLY_BAT = Path("打包更新程序.bat")
 INSTALLER_ISS = Path("installer/yolo_tool.iss")
 PACKAGING_DOC = Path("docs/packaging-windows.md")
 

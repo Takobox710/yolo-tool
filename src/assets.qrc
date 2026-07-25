@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/yolotool">
+    <file alias="app_icon.png">assets/app_icon.png</file>
+    <file alias="app_icon.ico">assets/app_icon.ico</file>
+</qresource>
+</RCC>

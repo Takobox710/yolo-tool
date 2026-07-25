@@ -45,6 +45,7 @@ yolo_tool/
     │   ├── annotation/
     │   ├── conversion/
     │   ├── data_ops/
+    │   ├── model_export/
     │   ├── models/
     │   ├── runtime/
     │   ├── settings/
@@ -62,12 +63,12 @@ yolo_tool/
 
 ## 分层边界
 
-- `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label` 等隐藏 CLI。
+- `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-export-probe`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label` 等隐藏 CLI。
 - `src/app.py` 与 `src/bootstrap/app_factory.py` 负责 GUI 应用创建，不承载业务规则。
 - `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。
 - `src/shared/` 放跨层共享基础能力，例如路径、Qt 导出、主题和共享类型。
 - `src/shared/paths.py` 在开发态必须把 `ROOT` 解析到仓库根目录，而不是 `src/` 子目录；隐藏 CLI 与后台 worker 依赖这个根目录作为 `python -m src.main` 的工作目录。
-- `src/shared/paths.py` 同时维护应用数据根目录和静态资源根目录；开发态资源从仓库 `src/assets/` 读取，PyInstaller 冻结态资源从 EXE 同级的 `app_assets/` 读取，而 `data/` 仍从 EXE 所在目录读取。GUI 启动时 `QApplication` 和 `WorkbenchWindow` 都应通过这里的 `ICON_PNG` 加载图标，不要在 UI 层硬编码相对目录。顶部导航图标由 `src/ui/shared/widgets/base.py` 按当前屏幕设备像素比生成物理 pixmap 并设置对应 DPR；主窗口屏幕变化时重新取样，保持 `28 x 28` 逻辑尺寸下的清晰度。
+- `src/shared/paths.py` 同时维护应用数据根目录和资源路径常量；`src/assets.qrc` 与生成的 `src/assets_rc.py` 将 PNG/ICO 编译为 Qt 内嵌资源，冻结态不再依赖 EXE 同级的 `app_assets/`，而 `data/` 仍从 EXE 所在目录读取。GUI 启动时通过 `src/ui/shared/assets.py` 读取内嵌图标；安装器只在升级旧版本时清理历史 `app_assets` 目录。顶部导航图标由 `src/ui/shared/widgets/base.py` 按当前屏幕设备像素比生成物理 pixmap 并设置对应 DPR；主窗口屏幕变化时重新取样，保持 `28 x 28` 逻辑尺寸下的清晰度。
 - `src/services/<domain>/` 是唯一业务实现层。这里允许依赖标准库、第三方库、其他服务包和 `src/shared/`，不得依赖 `src/ui/`。
 - `src/services/home/` 负责主页的大目录扫描、统计汇总与训练历史整理；这些逻辑必须通过后台 worker 调用，避免主线程同步 I/O 卡住首页。主页切回时若界面上已有上一轮统计值，应优先保留旧值，待新汇总返回后再替换，避免反复闪出“加载中”。
 - 主页类别分布优先读取数据集 `data.yaml` 的 `names`，关闭多类别模式时使用普通图片分布，开启多类别模式时按总标注和各类别标注对象数量展示；数据集与设置均无类别名称时使用“目标名称”作为兜底。
@@ -83,7 +84,7 @@ yolo_tool/
 - `src/tests/services/` 按领域保护文件读写、转换、设置、命令构造和运行时安全等业务规则。
 - `src/tests/ui/` 按业务域和 shell 分目录保留关键页面工作流与服务接线；数据处理 UI 测试使用 `data_processing/`，避免与项目级 `data/` 忽略规则冲突；精确布局、颜色、尺寸与提示文本改由发布前人工检查。
 - `src/tests/integration/` 放开发/冻结入口、隐藏 CLI 和 Windows 打包契约回归。
-- 默认 `pixi run test` 固定收集 88 项核心测试，不另设隐藏的慢速或完整测试套件。
+- 默认 `pixi run test` 当前收集 127 项核心测试，不另设隐藏的慢速或完整测试套件。
 
 ## 服务层说明
 
@@ -95,6 +96,7 @@ yolo_tool/
 - 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
 - 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
 - `src/runtime/settings.json` 仅作为源码内默认配置参考。
+- `model_export` 节点保存 `model_path`、`output_dir`、`format`、`imgsz` 和 `simplify`；扩展安装状态从当前安装实例 `%LOCALAPPDATA%/YOLOTool/instances/<实例ID>/extensions/` 下的活动清单读取，不写入项目设置。
 - 标注页名称显示由项目设置 `annotation.show_annotation_names` 控制，默认值为 `false`。
 - 标注页未配置 `dataset.class_names` 时类别下拉框保持为空，不再自动添加 `weld`；进入项目标注目录时会按文件顺序读取所有 Labelme JSON 的非空 `label`，将缺少的类别追加到当前项目 `data/runtime/settings.json`。
 
@@ -102,7 +104,8 @@ yolo_tool/
 
 - `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程。
 - `windows_spawn.py` 提供 Windows 隐藏窗口参数，确保打包后的后台任务不弹终端。
-- `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测。
+- `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测；依赖版本优先读取 `importlib.metadata`，冻结态缺少发行版元数据时回退读取模块的 `__version__`。安装器调用的 `--runtime-probe` 不加载这些模块，只比较程序清单要求的运行时版本与 `_internal` 基础环境清单中的版本。
+- `installer/YOLOTool.spec` 在 `YOLO_TOOL_PROGRAM_ONLY=1` 时只分析应用代码，第三方运行时模块由基础包 `_internal/` 提供；程序本体明确收集 `ctypes.util` 和 `ctypes.wintypes`，兼容 Cryptodome 在 Python 3.12 Windows 下从 CFFI 回退到 ctypes 的导入链。`installer/hooks/program_external_runtime.py` 只注册固定的后端 DLL 目录和基础包路径，不递归扫描运行时目录。基础环境构建时，`src/devtools/release_package.py` 将 PyInstaller 通常嵌入 PYZ 的动态导入标准库打入 `python_stdlib.zip`，并补齐第三方纯 Python 源码，避免程序-only 启动时出现 Python DLL 或动态导入模块缺失。完整环境构建才执行后端子模块、动态库和发行版元数据收集。
 - GUI 日志写入前必须通过这里的终端输出清洗逻辑去掉 ANSI/控制字符。
 
 ### `src/services/training/`
@@ -111,6 +114,16 @@ yolo_tool/
 - `commands.py` 负责训练 / 导出 / 验证命令构造与 `data.yaml` 的验证路径修复。
 - `results_reader.py` 负责 `results.csv` 曲线与指标摘要读取。
 - 基础模型目录统一是 `data/models/`。
+
+### `src/services/model_export/`
+
+- `formats.py` 定义五种显示名称到 Ultralytics 参数 `onnx`、`torchscript`、`openvino`、`engine`、`ncnn` 的固定映射、产物路径和模型扫描规则。
+- `commands.py` 构建统一的 `YOLOTool.exe --yolo-export` 命令；训练服务保留 `build_export_command` 转发以兼容旧导入。
+- `execute.py` 在输出目录的临时工作区导出，成功后替换最终产物；失败或停止时清理临时文件并保留旧结果。
+- `runtime.py` 区分内置 ONNX/TorchScript、开发态 Pixi 后端和冻结态增量扩展，并单独判断 TensorRT 的 NVIDIA GPU 能力。
+- `package.py` 导入纯 `.7z` 或兼容 `.zip` 附加包，校验扩展 schema、协议、平台、安全相对路径、符号链接和文件清单，管理候选安装、原子活动指针、失败回滚和“当前 + 上一版本”保留策略；`.7z` 优先调用基础环境随附的原生 `7z.exe`，利用解压过程的 CRC 校验避免解压后再次逐文件读取 1.7 GB 内容，没有原生工具时才回退到 `py7zr + SHA-256`。原生 7-Zip 的百分比输出会通过进度回调映射到附加包安装的解压区间，`inspection.py` 的快速入口只读取清单并按压缩包指纹缓存，安装阶段再报告检查、解压、校验、探测和切换。
+- `activation.py` 在隐藏导出子进程启动早期追加活动扩展的 `packages/` 到 `sys.path`，并通过清单注册 DLL 目录；主程序本体与扩展共用同一个 Python、Torch、CUDA、Ultralytics、ONNX 和 ONNX Runtime，不复制这些基础库。
+- `src/devtools/model_export_package.py` 依据 `importlib.metadata` 的 distribution 文件清单只收集 TensorRT 四个发行包，不使用 PyInstaller `collect_all(...)` 或复制完整运行环境；OpenVINO、NCNN、PNNX、tqdm 和 portalocker 随基础环境发布。附加产物使用 LZMA2 极限压缩生成纯 `.7z`，不包含安装程序。
 
 ### `src/services/validation/`
 
@@ -172,6 +185,7 @@ yolo_tool/
 - `WorkbenchWindow` 默认尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`；项目内路径在 UI 中优先显示为相对路径，写入文件时由设置存储层解析/序列化。
 - `BasePage.update_setting()` 保存项目设置后，通过 `WorkbenchWindow.notify_setting_changed()` 广播设置键路径；已创建页面必须立即刷新镜像路径控件，控件刷新期间阻断信号，避免重复保存。
 - 项目路径字段分为三组共享路径：`paths.images_dir`（数据集划分、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、数据集划分、批量重命名）和 `paths.labels_dir`（标注预览、数据集划分）；图片压缩源目录单独使用 `image_resize.source_dir`。
+- 数据处理页的 `ModelExportTab` 只负责控件状态、预览、确认和结构化日志；格式、路径、依赖、进程命令和扩展安装规则均由 `src/services/model_export/` 提供。模型转换页与系统设置页共用附加包拖放处理，识别 `.7z/.zip` 清单并确认后再在后台安装。
 - 标注页“更多设置”使用等权垂直伸缩项承接窗口额外高度，保证各设置行之间的间隔一致；复合设置内部（如直线扩展像素标题与数值框）不参与外层间隔分配。
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
 - worker 真实实现只放在 `src/ui/shared/workers/`，页面持有 worker 时必须在原生 `finished` 信号后再清理对象。
@@ -200,10 +214,12 @@ yolo_tool/
 ## 打包链路
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
-- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json` 和 `app_assets/`。
-- 打包模型来源统一为 `data/models/*.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集模型文件，项目根目录 `.pt` 也不再复制，避免模型落入 `_internal/` 或形成重复副本。
-- `src/services/runtime/release_manifest.py` 负责发布清单、环境版本校验和 SHA-256 校验；`src/devtools/release_package.py` 按 `Full`、`AppUpdate`、`RuntimeFull` 生成 staging。
-- 安装包脚本 `installer/yolo_tool.iss` 通过 `PackageType` 编译参数封装三种安装程序。更新包在临时目录完成文件准备后再切换程序层或程序加环境层，用户数据层不参与更新。
+- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；图标资源由 PyInstaller/Qt 资源模块随程序本体提供。
+- 基础包模型来源固定为 `data/models/yolo11s.pt`、`data/models/yolo26n.pt` 和 `data/models/yolov8n.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集模型文件，项目根目录其他 `.pt` 也不再复制，避免模型落入 `_internal/` 或形成重复副本。
+- `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容和 SHA-256，`install_instance.py` 隔离附加环境，`managed_models.py` 只清理清单登记的官方模型。
+- `src/devtools/release_package.py` 分别生成 `Program` staging 和 `BaseRuntimeModels` staging/`.7z`；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、压缩大小、哈希和解压体积。
+- `installer/yolo_tool.iss` 生成统一的小型 `YOLOTool_Setup_<版本>.exe`。组件页只做名称和大小候选检查，SHA-256 延后到正式安装；程序与必选基础环境在 staging/backup 事务中切换并执行冻结启动探测。
+- 每个实例的 `install-instance.ini` 与其他安装清单存放在 `_internal/yolotool_metadata/`；基础包维护规范模型 `data/models/yolo26n.pt` 和受管的根目录兼容副本。
 - 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py` 与 `src/bootstrap/cli_dispatch.py`。
 
 ## 维护建议

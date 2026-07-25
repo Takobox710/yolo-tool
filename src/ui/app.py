@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from src.services.runtime import check_runtime_compatibility
-from src.shared.paths import ICON_PNG
-from src.shared.qt import QApplication, QFont, QIcon, QMessageBox, Qt
+from src.shared.qt import QApplication, QFont, QMessageBox, Qt
 from src.ui.shell.window import WorkbenchWindow, build_style
+from src.ui.shared.assets import load_app_icon
 
 
 def run_app() -> None:
@@ -18,8 +18,9 @@ def run_app() -> None:
         raise SystemExit(78)
 
     app = QApplication.instance() or QApplication([])
-    if ICON_PNG.exists():
-        app.setWindowIcon(QIcon(str(ICON_PNG)))
+    app_icon = load_app_icon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
     app.setFont(QFont("Microsoft YaHei UI", 10))
     app.setEffectEnabled(Qt.UIEffect.UI_AnimateTooltip, False)
     app.setStyleSheet(build_style())

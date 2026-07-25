@@ -89,12 +89,9 @@ def repair_validation_path_if_needed(dataset_yaml: str | Path | None) -> bool:
 def build_export_command(
     model_path: str, export_format: str, imgsz: int | str = 640
 ) -> list[str]:
-    return app_cli_command(
-        "--yolo-export",
-        f"model={model_path}",
-        f"format={export_format}",
-        f"imgsz={imgsz}",
-    )
+    from src.services.model_export.commands import build_export_command as build
+
+    return build(model_path, export_format, imgsz)
 
 
 def build_val_command(config: dict) -> list[str]:

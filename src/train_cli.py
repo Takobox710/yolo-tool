@@ -94,17 +94,131 @@ def run_train_cli(argv: list[str]) -> int:
 
 
 def run_export_cli(argv: list[str]) -> int:
+    os.environ["YOLO_AUTOINSTALL"] = "false"
     from src.services.ultralytics_compat import ensure_cv2_highgui_compat
+    from src.services.model_export import export_model_to_directory
 
     ensure_cv2_highgui_compat()
     from ultralytics import YOLO
 
     options = _parse_key_values(argv)
-    model_path = options.pop("model", None)
-    if not model_path:
+    if not options.get("model"):
         raise SystemExit("Missing model=... for export")
-    model = YOLO(str(model_path))
-    model.export(**options)
+    try:
+        result = export_model_to_directory(
+            options,
+            yolo_factory=YOLO,
+            progress=lambda message: _emit_structured("progress", message=message),
+        )
+        _emit_structured("done", ok=True, result_path=str(result))
+        return 0
+    except Exception as exc:
+        _emit_structured("error", message=str(exc))
+        return 1
+
+
+def run_export_probe_cli(argv: list[str]) -> int:
+    from importlib import metadata
+    import importlib
+    from src.services.model_export.package import EXPORT_PROTOCOL_VERSION
+
+    del argv
+    distributions = {
+        "tensorrt": "tensorrt",
+    }
+    versions: dict[str, str] = {}
+    missing: list[str] = []
+    for module_name, distribution in distributions.items():
+        try:
+            importlib.import_module(module_name)
+        except Exception as exc:
+            missing.append(module_name)
+            versions[module_name] = f"不可用：{exc}"
+            continue
+        try:
+            versions[module_name] = metadata.version(distribution)
+        except metadata.PackageNotFoundError:
+            versions[module_name] = "已安装"
+    payload = {
+        "protocol_version": EXPORT_PROTOCOL_VERSION,
+        "ok": not missing,
+        "modules": versions,
+        "missing": missing,
+    }
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
+    return 0 if not missing else 1
+
+
+def run_install_model_export_package_cli(argv: list[str]) -> int:
+    from src.services.model_export import install_extension_package
+
+    options = _parse_key_values(argv)
+    package_path = str(options.get("package") or "").strip()
+    if not package_path:
+        raise SystemExit("Usage: --install-model-export-package package=<archive>")
+    try:
+        installed = install_extension_package(package_path)
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
+    print(
+        json.dumps(
+            {"ok": True, "version": installed.version, "root": str(installed.root)},
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def run_migrate_legacy_extension_cli(argv: list[str]) -> int:
+    from src.services.runtime import migrate_legacy_extensions
+
+    del argv
+    try:
+        migrated = migrate_legacy_extensions()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
+    print(json.dumps({"ok": True, "migrated": migrated}, ensure_ascii=False))
+    return 0
+
+
+def run_runtime_probe_cli(argv: list[str]) -> int:
+    from src.services.runtime.release_manifest import check_runtime_compatibility
+
+    del argv
+    compatibility = check_runtime_compatibility()
+    print(
+        json.dumps(
+            {
+                "ok": compatibility.compatible,
+                "runtime_version": compatibility.runtime_version,
+                "required_runtime_version": compatibility.required_runtime_version,
+                "reason": compatibility.reason,
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+    return 0 if compatibility.compatible else 1
+
+
+def run_remove_managed_models_cli(argv: list[str]) -> int:
+    from src.services.runtime import remove_managed_models
+    from src.shared.paths import ROOT
+
+    del argv
+    try:
+        removed = remove_managed_models(ROOT)
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
+    print(
+        json.dumps(
+            {"ok": True, "removed": [str(path) for path in removed]},
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 

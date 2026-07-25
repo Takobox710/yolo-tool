@@ -1,11 +1,10 @@
-
 from __future__ import annotations
-
 from src.services.runtime.environment_probe import (
     application_version,
     cached_call,
     dependency_versions,
     detect_modules,
+    invalidate_cache,
     pixi_available,
     preload_torch_runtime,
     python_version,
@@ -13,6 +12,14 @@ from src.services.runtime.environment_probe import (
     system_status,
     torch_cuda_summary,
 )
+from src.services.runtime.install_instance import (
+    instance_extensions_root,
+    instance_id_for_path,
+    load_install_instance,
+    migrate_legacy_extensions,
+    write_install_instance,
+)
+from src.services.runtime.managed_models import remove_managed_models
 from src.services.runtime.process_runner import (
     ProcessHandle,
     STRUCTURED_OUTPUT_PREFIX,
@@ -42,7 +49,13 @@ __all__ = [
     "cached_call",
     "dependency_versions",
     "detect_modules",
+    "invalidate_cache",
     "hidden_subprocess_kwargs",
+    "instance_extensions_root",
+    "instance_id_for_path",
+    "load_install_instance",
+    "migrate_legacy_extensions",
+    "remove_managed_models",
     "ReleaseManifestError",
     "RuntimeCompatibility",
     "check_runtime_compatibility",
@@ -63,4 +76,5 @@ __all__ = [
     "system_status",
     "torch_cuda_summary",
     "verify_file_hashes",
+    "write_install_instance",
 ]

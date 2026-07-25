@@ -38,8 +38,8 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
         },
         "training": {
             "model_yaml": "",
-            "base_model": "yolov8s.pt",
-            "pretrained": str(models_root / "yolov8s.pt"),
+            "base_model": "yolo11s.pt",
+            "pretrained": str(models_root / "yolo11s.pt"),
             "data": str(data_root / "data.yaml"),
             "project": str(project_root / "result"),
             "export_format": "onnx",
@@ -79,6 +79,13 @@ def build_default_settings(project_root: Path = ROOT) -> dict[str, Any]:
             "use_labelme": True,
             "backup_yolo_files": False,
             "class_name_mappings": {},
+        },
+        "model_export": {
+            "model_path": "",
+            "output_dir": str(project_root / "data" / "models" / "model_exports"),
+            "format": "onnx",
+            "imgsz": 640,
+            "simplify": True,
         },
         "annotation": {
             "auto_save": True,

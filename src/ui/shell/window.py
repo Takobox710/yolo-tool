@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import deque
 from pathlib import Path
 
-from src.shared.paths import ICON_PNG
 from src.shared.theme import STYLE
 from src.services.runtime import stop_process
 from src.services.settings import SettingsService
@@ -13,6 +12,7 @@ from src.ui.shell.navigation import ensure_page, reload_pages, show_page
 from src.ui.shell.page_registry import PAGE_ORDER, PAGE_TITLES, create_page
 from src.ui.shell.program_log import append_program_log, program_log_text, should_log_background_kind
 from src.ui.shared.page_base import BasePage
+from src.ui.shared.assets import load_app_icon
 from src.ui.shared.widgets.base import load_nav_icon
 from src.ui.shared.workers import Worker
 
@@ -38,8 +38,8 @@ class WorkbenchWindow(QMainWindow):
         self._page_warmup_timer.timeout.connect(self._warm_up_next_page)
         self._nav_icon_label = None
         self._nav_window_handle = None
-        if ICON_PNG.exists():
-            app_icon = QIcon(str(ICON_PNG))
+        app_icon = load_app_icon()
+        if not app_icon.isNull():
             self.setWindowIcon(app_icon)
         self.setWindowTitle("YOLO 本地训练工作台")
         self.resize(1100, 740)

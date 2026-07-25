@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QScrollArea, QVBoxLay
 
 from PIL import Image
 
-from src.shared.paths import ICON_PNG
+from src.ui.shared.assets import load_app_pixmap
 
 
 def pil_to_pixmap(image: Image.Image) -> QPixmap:
@@ -18,11 +18,8 @@ def pil_to_pixmap(image: Image.Image) -> QPixmap:
 
 
 def load_nav_icon() -> QPixmap | None:
-    if ICON_PNG.exists():
-        pix = QPixmap(str(ICON_PNG))
-        if not pix.isNull():
-            return pix.scaled(28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-    return None
+    pix = load_app_pixmap(28)
+    return pix if not pix.isNull() else None
 
 
 class Card(QFrame):

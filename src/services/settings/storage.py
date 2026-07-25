@@ -21,6 +21,8 @@ PROJECT_PATH_FIELDS: dict[tuple[str, ...], dict[str, bool]] = {
     ("training", "model_yaml"): {},
     ("training", "project"): {},
     ("training", "pretrained"): {"keep_bare_name": True},
+    ("model_export", "model_path"): {"keep_bare_name": True},
+    ("model_export", "output_dir"): {},
     ("validation", "model_path"): {"keep_bare_name": True},
     ("validation", "source_path"): {},
     ("validation", "save_dir"): {},

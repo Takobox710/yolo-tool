@@ -13,9 +13,10 @@ dist/
 installer/output/
 
 # Local working data and outputs
-data/
-labels/
-result/
+/data/
+/src/data/
+/labels/
+/result/
 
 # Local screenshots
 *_preview.png
@@ -24,4 +25,4 @@ result/
 *.pt
 
 # Image data
-images/
+/images/

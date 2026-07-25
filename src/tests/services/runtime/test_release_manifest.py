@@ -4,12 +4,15 @@ import json
 from pathlib import Path
 
 import pytest
+import py7zr
 
 
 def test_runtime_compatibility_requires_matching_manifests(tmp_path):
     from src.services.runtime.release_manifest import check_runtime_compatibility
 
-    (tmp_path / "release-manifest.json").write_text(
+    metadata = tmp_path / "_internal" / "yolotool_metadata"
+    metadata.mkdir(parents=True)
+    (metadata / "release-manifest.json").write_text(
         json.dumps(
             {
                 "schema_version": 1,
@@ -20,7 +23,7 @@ def test_runtime_compatibility_requires_matching_manifests(tmp_path):
         ),
         encoding="utf-8",
     )
-    (tmp_path / "runtime-manifest.json").write_text(
+    (metadata / "runtime-manifest.json").write_text(
         json.dumps({"schema_version": 1, "runtime_version": "runtime-1", "files": {}}),
         encoding="utf-8",
     )
@@ -30,6 +33,17 @@ def test_runtime_compatibility_requires_matching_manifests(tmp_path):
     assert result.compatible is False
     assert "runtime-1" in result.reason
     assert "runtime-2" in result.reason
+
+
+def test_manifest_paths_fall_back_to_legacy_root_files(tmp_path):
+    from src.services.runtime.release_manifest import load_release_manifest
+
+    legacy = {"schema_version": 1, "required_runtime_version": "runtime-1"}
+    (tmp_path / "release-manifest.json").write_text(
+        json.dumps(legacy), encoding="utf-8"
+    )
+
+    assert load_release_manifest(tmp_path) == legacy
 
 
 def test_manifest_paths_reject_traversal_and_absolute_paths():
@@ -45,8 +59,8 @@ def test_manifest_paths_reject_traversal_and_absolute_paths():
     assert validate_relative_path("folder\\file.dll") == "folder/file.dll"
 
 
-def test_release_package_builds_app_update_without_runtime_or_user_data(tmp_path):
-    from src.devtools.release_package import build_package
+def test_release_package_builds_program_without_runtime_or_user_data(tmp_path):
+    from src.devtools.release_package import build_program_package
 
     app_root = tmp_path / "app"
     (app_root / "_internal").mkdir(parents=True)
@@ -60,57 +74,89 @@ def test_release_package_builds_app_update_without_runtime_or_user_data(tmp_path
     (app_root / "data" / "runtime" / "settings.json").write_text("{}", encoding="utf-8")
 
     output = tmp_path / "update"
-    build_package(
+    build_program_package(
         app_root,
         output,
-        package_type="AppUpdate",
         app_version="1.3.0",
-        runtime_version="runtime-1",
         required_runtime_version="runtime-1",
     )
 
     assert (output / "YOLOTool.exe").exists()
-    assert (output / "app_assets" / "app_icon.png").exists()
+    assert not (output / "app_assets").exists()
     assert not (output / "_internal").exists()
     assert not (output / "data").exists()
     assert (output / "release-manifest.json").exists()
-    assert (output / "package-info.ini").exists()
+    assert not (output / "runtime-manifest.json").exists()
+    assert (output / "program-package-info.ini").exists()
+    release = json.loads((output / "release-manifest.json").read_text(encoding="utf-8"))
+    assert release["schema_version"] == 2
+    assert release["required_runtime_version"] == "runtime-1"
+    assert "runtime_files" not in release
 
 
-def test_release_package_supports_full_and_runtime_upgrade_layers(tmp_path):
-    from src.devtools.release_package import build_package
+def test_base_runtime_layer_contains_environment_and_managed_models(tmp_path):
+    from src.devtools.release_package import (
+        BASE_MANIFEST_NAME,
+        MANAGED_MODELS_NAME,
+        build_base_runtime_layer,
+    )
 
     app_root = tmp_path / "app"
     (app_root / "_internal").mkdir(parents=True)
     (app_root / "data" / "models").mkdir(parents=True)
-    (app_root / "YOLOTool-dev.exe").write_bytes(b"dev-exe")
     (app_root / "_internal" / "torch.dll").write_bytes(b"torch")
-    (app_root / "data" / "models" / "model.pt").write_bytes(b"model")
+    for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt"):
+        (app_root / "data" / "models" / name).write_bytes(b"model")
 
-    full = tmp_path / "full"
-    build_package(
+    layer = tmp_path / "base-layer"
+    manifest_path = build_base_runtime_layer(
         app_root,
-        full,
-        package_type="Full",
-        app_version="1.3.0",
+        layer,
+        package_version="v1",
         runtime_version="runtime-1",
-        required_runtime_version="runtime-1",
-        exe_name="YOLOTool-dev.exe",
-    )
-    runtime_full = tmp_path / "runtime-full"
-    build_package(
-        app_root,
-        runtime_full,
-        package_type="RuntimeFull",
-        app_version="1.3.0",
-        runtime_version="runtime-2",
-        required_runtime_version="runtime-2",
-        exe_name="YOLOTool-dev.exe",
     )
 
-    assert (full / "YOLOTool-dev.exe").exists()
-    assert (full / "_internal" / "torch.dll").exists()
-    assert (full / "data" / "models" / "model.pt").exists()
-    assert (runtime_full / "_internal" / "torch.dll").exists()
-    assert (runtime_full / "YOLOTool-dev.exe").exists()
-    assert not (runtime_full / "data").exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    managed = json.loads((layer / MANAGED_MODELS_NAME).read_text(encoding="utf-8"))
+    runtime = json.loads((layer / "runtime-manifest.json").read_text(encoding="utf-8"))
+    assert manifest_path.name == BASE_MANIFEST_NAME
+    assert manifest["package_id"] == "yolo-tool-base-runtime-models"
+    assert manifest["runtime_version"] == "runtime-1"
+    assert "_internal/torch.dll" in manifest["files"]
+    assert "data/models/yolo26n.pt" in manifest["files"]
+    expected_model_hash = __import__("hashlib").sha256(b"model").hexdigest()
+    assert managed["files"] == {
+        name: expected_model_hash
+        for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")
+    }
+    assert runtime["files"] == {
+        "torch.dll": __import__("hashlib").sha256(b"torch").hexdigest()
+    }
+    assert not (layer / "YOLOTool.exe").exists()
+
+
+def test_base_runtime_archive_excludes_program_and_uses_expected_name(tmp_path):
+    from src.devtools.release_package import build_base_runtime_archive
+
+    app_root = tmp_path / "app"
+    (app_root / "_internal").mkdir(parents=True)
+    (app_root / "data" / "models").mkdir(parents=True)
+    (app_root / "YOLOTool.exe").write_bytes(b"program")
+    (app_root / "_internal" / "runtime.dll").write_bytes(b"runtime")
+    for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt"):
+        (app_root / "data" / "models" / name).write_bytes(b"model")
+
+    archive_path = build_base_runtime_archive(
+        app_root,
+        tmp_path / "staging",
+        tmp_path / "output",
+        package_version="v1",
+        runtime_version="runtime-1",
+    )
+
+    assert archive_path.name == "YOLOTool_BaseEnv_v1.7z"
+    with py7zr.SevenZipFile(archive_path, "r") as archive:
+        names = set(archive.getnames())
+    assert "_internal/runtime.dll" in names
+    assert "data/models/yolo26n.pt" in names
+    assert "YOLOTool.exe" not in names

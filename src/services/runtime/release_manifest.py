@@ -7,13 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from src.services.runtime.metadata import resolve_metadata_path
 from src.shared.paths import ROOT
 
 
 RELEASE_MANIFEST_NAME = "release-manifest.json"
 RUNTIME_MANIFEST_NAME = "runtime-manifest.json"
 PACKAGE_INFO_NAME = "package-info.ini"
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
+SUPPORTED_MANIFEST_SCHEMA_VERSIONS = {1, MANIFEST_SCHEMA_VERSION}
 
 
 class ReleaseManifestError(ValueError):
@@ -29,11 +31,11 @@ class RuntimeCompatibility:
 
 
 def release_manifest_path(root: Path = ROOT) -> Path:
-    return Path(root) / RELEASE_MANIFEST_NAME
+    return resolve_metadata_path(root, RELEASE_MANIFEST_NAME)
 
 
 def runtime_manifest_path(root: Path = ROOT) -> Path:
-    return Path(root) / RUNTIME_MANIFEST_NAME
+    return resolve_metadata_path(root, RUNTIME_MANIFEST_NAME)
 
 
 def _load_json(path: Path) -> dict:
@@ -45,7 +47,7 @@ def _load_json(path: Path) -> dict:
         raise ReleaseManifestError(f"清单文件无法读取: {path.name}") from exc
     if not isinstance(payload, dict):
         raise ReleaseManifestError(f"清单文件格式无效: {path.name}")
-    if payload.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+    if payload.get("schema_version") not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS:
         raise ReleaseManifestError(f"不支持的清单版本: {path.name}")
     return payload
 

@@ -4,9 +4,9 @@ STATUS_CARD_LABELS = [
     "Python",
     "Torch",
     "Ultralytics",
-    "PySide6",
     "OpenCV",
     "Pillow",
-    "psutil",
+    "ONNX",
+    "TensorRT",
     "程序版本",
 ]

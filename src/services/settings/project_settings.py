@@ -65,12 +65,29 @@ class SettingsService:
             payload = json.loads(self.settings_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             payload = {}
+        self._migrate_model_export_output(payload)
         settings = deserialize_settings_from_storage(
             deep_merge(defaults, payload), self.project_root
         )
         settings.setdefault("project", {})["root"] = str(self.project_root)
         self.save(settings)
         return settings
+
+    def _migrate_model_export_output(self, payload: dict[str, Any]) -> None:
+        model_export = payload.get("model_export")
+        if not isinstance(model_export, dict):
+            return
+        current = str(model_export.get("output_dir") or "").strip()
+        if not current:
+            return
+        current_path = Path(current).expanduser()
+        if not current_path.is_absolute():
+            current_path = self.project_root / current_path
+        legacy = (self.project_root / "result" / "model_exports").resolve()
+        if current_path.resolve() == legacy:
+            model_export["output_dir"] = str(
+                self.project_root / "data" / "models" / "model_exports"
+            )
 
     def reset_to_defaults(self) -> dict[str, Any]:
         defaults = build_default_settings(self.project_root)
