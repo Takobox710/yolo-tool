@@ -1,20 +1,14 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
+
+from src.services.data_ops.sorting import natural_sort_key
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
 SOURCE_SUFFIXES = IMAGE_SUFFIXES | VIDEO_SUFFIXES
 LIVE_SOURCE_MODES = {"摄像头", "摄像头检测"}
-
-
-def natural_sort_key(path: Path) -> list[object]:
-    return [
-        int(part) if part.isdigit() else part.lower()
-        for part in re.split(r"(\d+)", path.name)
-    ]
 
 
 def scan_candidate_models(result_dir: Path) -> list[Path]:

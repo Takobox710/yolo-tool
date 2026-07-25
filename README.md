@@ -180,7 +180,7 @@ python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=..
 
 ### 6. 系统设置
 
-- 页面顶部显示 Pixi、Torch/CUDA、GPU、显存、CPU、内存、磁盘、模块检测结果。
+- 页面顶部显示 Python、Torch/CUDA、Ultralytics、OpenCV、Pillow、ONNX、TensorRT 和程序版本；GPU、显存、CPU、内存状态在训练页后台刷新。
 - 系统信息下方同一行放置“多类别分布模式”“训练前显示自定义命令框”“显示配置解释符号”“训练模型显示 last”“恢复默认设置”。
 - 控制字段名后的 `ⓘ` 解释符号显示，但不会移除 tooltip。
 - “训练模型显示 last”默认关闭，只影响模型验证页的“选择模型”下拉框。
@@ -220,7 +220,6 @@ yolo_tool/
 │   ├── yolo_tool.iss
 │   ├── YOLOTool.spec
 │   ├── build_windows.ps1
-│   ├── 打包程序.ps1
 │   └── hooks/
 └── src/
     ├── main.py
@@ -289,10 +288,10 @@ powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1
 
 双击根目录 `打包更新程序.bat` 只重建程序安装器，并复用 `installer/output/` 中已有的基础环境包和附加环境包。基础包必须存在，附加包仍为可选。
 
-双击根目录 `打包程序.bat` 会执行完整发布，同时重新生成程序安装器、基础环境和模型包、可选模型转换附加包。对应 PowerShell 命令为：
+双击根目录 `打包程序.bat` 会执行完整发布。基础环境包和模型转换附加包会按输入文件的路径、大小和修改时间复用未变化的已有归档；只有首次构建、版本或运行时输入变化时才重新复制和压缩。对应 PowerShell 命令为：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
+powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
 ```
 
 PowerShell 下也可分别使用 `-SkipBaseRuntimeModels`、`-SkipModelExportRuntime` 跳过未变化的运行包。本地快速验证仍可构建开发快包：
@@ -300,6 +299,8 @@ PowerShell 下也可分别使用 `-SkipBaseRuntimeModels`、`-SkipModelExportRun
 ```powershell
 powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
+
+缓存只优化重复构建流程，不改变基础包的 7-Zip `mx=9` 或附加包的极限 LZMA2 压缩参数。需要完全重建时，在完整命令后增加 `-Clean`；该选项会同时强制重新冻结程序和重新生成两个运行包。
 
 面向用户的发布物固定为：
 
@@ -311,7 +312,7 @@ YOLOTool_ExtraEnv_<附加包版本>.7z
 
 程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`。当前环境包文件名为 `YOLOTool_BaseEnv_v1.7z` 和 `YOLOTool_ExtraEnv_v1.7z`，运行时兼容协议仍独立使用 `runtime-1`。首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时必须提供基础包；已有兼容环境时可只更新程序。默认目录为 `YOLOTool`，有效旧实例才会成为下次安装默认目录。
 
-附加包始终可选，仅收集 TensorRT 运行库。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装期间显示进度；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复哈希读取；每个安装实例独立保存到 `%LOCALAPPDATA%\YOLOTool\instances\<实例ID>\extensions\`，不会写入 Program Files 或与其他并行实例共用活动版本。
+附加包始终可选，仅收集 TensorRT 运行库。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装期间显示进度；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复哈希读取；附加环境安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时会保留该目录，旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展会在升级时迁移。
 
 组件页只按名称、扩展名和压缩大小识别本地包，完整 SHA-256 在点击安装后执行，避免扫描大型压缩包时卡住界面。安装器校验完成后使用普通百分比进度条显示文件安装进度；提交完成前的 `--runtime-probe` 只比较程序清单要求的运行时版本与 `_internal` 基础环境清单版本，不导入 Torch、PySide6 或 ONNX。程序-only 本体明确包含 `ctypes.util`，兼容 Python 3.12 Windows 下 Cryptodome 的 ctypes 回退路径；七个安装清单保存到 `_internal/yolotool_metadata/`，旧根目录清单可自动迁移。基础包同时维护 `data/models/yolo26n.pt` 和根目录兼容副本 `yolo26n.pt`。用户模型和 `data/runtime/`、`images/`、`labels/`、`result/` 均保留。
 
@@ -319,11 +320,22 @@ YOLOTool_ExtraEnv_<附加包版本>.7z
 
 ## 测试与检查
 
-运行测试：
+日常快速回归：
 
 ```powershell
 pixi run test
 ```
+
+默认测试为完整回归，当前 162 项。快速回归与分层测试按需执行：
+
+```powershell
+pixi run test-fast        # 服务层、架构围栏和统一入口快速回归
+pixi run test-full        # 完整测试兼容别名
+pixi run test-ui          # Qt UI 测试
+pixi run test-integration # 入口、安装器和打包集成测试
+```
+
+pytest 的临时缓存写入 `.pixi/pytest-cache`，不会在项目根目录生成 `.pytest_cache`。
 
 静态编译检查：
 
@@ -364,7 +376,7 @@ AI 智能预标注弹窗默认尺寸为 `700 x 620`，最小尺寸为 `650 x 520
 
 ## 已覆盖测试
 
-默认套件当前包含 127 项核心测试，主要覆盖以下内容：
+完整回归当前包含 162 项测试，主要覆盖以下内容：
 
 - 设置深合并、项目路径、恢复默认值与可移植模型路径。
 - Labelme/YOLO 标注读写，以及 detect、OBB、直线扩展、类别映射和数据集划分。
@@ -374,9 +386,9 @@ AI 智能预标注弹窗默认尺寸为 `700 x 620`，最小尺寸为 `650 x 520
 - 隐藏后台子进程、日志清洗、运行环境状态、发布清单与路径安全。
 - 页面创建、项目切换、关闭保护、任务结束恢复和设置跨页面通知等关键 UI 工作流。
 - 服务/UI 依赖方向、旧入口禁用、模块体量和 Qt 延迟回调生命周期等架构围栏；模块行数采用宽松硬上限，接近原建议线时通过代码审查判断职责，不要求压缩排版或立即拆文件。
-- 开发态/冻结态入口、隐藏 CLI、PyInstaller 与 Windows 分层打包的关键契约。
+- 开发态/冻结态统一入口和隐藏 CLI；完整测试另外覆盖 PyInstaller、Windows 安装器和分层打包契约。
 
-精确边距、颜色、控件尺寸、帮助提示和其他纯视觉细节不进入默认自动化套件，在发布前通过桌面界面人工检查。
+快速回归不包含全部 UI 工作流，可分别通过 `pixi run test-ui`、`pixi run test-integration` 或统一的 `pixi run test`/`pixi run test-full` 执行。精确边距、颜色、控件尺寸、帮助提示和其他纯视觉细节在发布前通过桌面界面人工检查。
 
 ## 注意事项
 

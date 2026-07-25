@@ -23,6 +23,7 @@ from src.services.data_ops.resize import (
     preview_resize,
     run_resize,
 )
+from src.services.data_ops.sorting import natural_sort_key
 
 __all__ = [
     "RenamePlanItem",

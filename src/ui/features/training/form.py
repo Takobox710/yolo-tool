@@ -13,7 +13,7 @@ def build_training_layout(page) -> None:
     top.setColumnStretch(0, 115)
     top.setColumnStretch(1, 85)
     layout.addLayout(top)
-    training = page.app.settings["training"]
+    training = page.context.settings.training
 
     left = Card("数据集与增强配置")
     right = Card("训练参数")
@@ -26,10 +26,10 @@ def build_training_layout(page) -> None:
     left_form.setVerticalSpacing(10)
     left.layout.addLayout(left_form)
 
-    current_pretrained = training.get("pretrained", "")
+    current_pretrained = training.pretrained
     current_name = Path(current_pretrained).name if current_pretrained else ""
     model_files = find_training_model_names(
-        Path(page.app.settings["project"]["root"])
+        Path(page.context.settings.project.root)
     )
     base_box, page.pretrained_combo = page.stacked_combo_field(
         "基础模型",
@@ -45,7 +45,7 @@ def build_training_layout(page) -> None:
     page.edits["data"], _ = None, None
     data_box, data_edit = page.stacked_path_field(
         "数据集YAML",
-        training.get("data", ""),
+        training.data,
         page.choose_file,
         "选择训练数据集 data.yaml",
     )
@@ -54,7 +54,7 @@ def build_training_layout(page) -> None:
 
     model_yaml_box, model_yaml_edit = page.stacked_path_field(
         "模型YAML",
-        training.get("model_yaml", ""),
+        training.model_yaml,
         page.choose_file,
         "可选，留空使用基础模型",
     )
@@ -63,7 +63,7 @@ def build_training_layout(page) -> None:
 
     project_box, project_edit = page.stacked_path_field(
         "项目输出",
-        training.get("project", ""),
+        training.project,
         page.choose_dir,
         "选择训练结果输出目录",
     )
@@ -95,7 +95,7 @@ def build_training_layout(page) -> None:
             "mixup": "MixUp 混合增强（mixup）；将两张图按比例混合，提升泛化能力，但可能拉长收敛时间。",
         }[key]
         box, check = page.checkbox_with_help(
-            label, float(training.get(key, 0)) > 0, help_text=help_text
+            label, float(getattr(training, key)) > 0, help_text=help_text
         )
         page.checks[key] = check
         aug.addWidget(box, index // 4, index % 4)
@@ -106,19 +106,19 @@ def build_training_layout(page) -> None:
 
     optimizer_box, page.optimizer_combo = page.inline_combo_field(
         "优化器",
-        training.get("optimizer", "auto"),
+        training.optimizer,
         ["auto", "SGD", "Adam", "AdamW", "RMSProp"],
         help_text="训练优化器（optimizer）；用于控制参数更新方式，auto 会交给 Ultralytics 自动决定。",
         label_width=80,
     )
-    current_opt = training.get("optimizer", "auto")
+    current_opt = training.optimizer
     if current_opt in ["auto", "SGD", "Adam", "AdamW", "RMSProp"]:
         page.optimizer_combo.setCurrentText(current_opt)
     params.addWidget(optimizer_box, 0, 0)
 
     lr_box, lr_edit = page.inline_field(
         "学习率",
-        training.get("lr", ""),
+        training.lr,
         placeholder="例如 0.001",
         help_text="优化器步长（lr0）；过大可能震荡，过小会收敛变慢。",
         label_width=80,
@@ -147,7 +147,7 @@ def build_training_layout(page) -> None:
         }[key]
         box, edit = page.inline_field(
             label,
-            training.get(key, ""),
+            getattr(training, key),
             placeholder=placeholder,
             help_text=help_text,
             label_width=80,
@@ -157,7 +157,7 @@ def build_training_layout(page) -> None:
 
     imgsz_box, page.imgsz_combo = page.inline_combo_field(
         "图片尺寸",
-        str(training.get("imgsz", 640)),
+        str(training.imgsz),
         ["640", "960", "1280"],
         help_text="训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。",
         editable=True,
@@ -169,7 +169,7 @@ def build_training_layout(page) -> None:
 
     page.device_box, page.device_combo = page.inline_combo_field(
         "设备",
-        str(training.get("device", "0")),
+        str(training.device),
         ["0", "cpu", "0,1"],
         help_text="训练设备（device）；0 表示首张 GPU，cpu 表示使用处理器，也可填写多个 GPU 编号。",
         label_width=80,
@@ -216,5 +216,3 @@ def build_training_layout(page) -> None:
     page.prepare_readonly_text(page.log)
     log_panel.layout.addWidget(page.log, 1)
     layout.addWidget(log_panel, 1)
-
-

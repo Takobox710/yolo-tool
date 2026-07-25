@@ -16,7 +16,7 @@ class AnnotationClassPanelMixin:
     def class_names(self) -> list[str]:
         names = [
             str(name).strip()
-            for name in self.app.settings.get("dataset", {}).get("class_names", [])
+            for name in self.context.settings.dataset.class_names
             if str(name).strip()
         ]
         return names
@@ -35,23 +35,23 @@ class AnnotationClassPanelMixin:
         if hasattr(self, "canvas"):
             self.canvas.set_current_class(self.current_class_id)
             self.canvas.set_class_names(names)
-            annotation_settings = self.app.settings.get("annotation", {})
+            annotation_settings = self.context.settings.annotation
             self.canvas.set_line_expand_config(
-                annotation_settings.get("line_expand_enabled", False),
-                annotation_settings.get("line_expand_pixels", 10),
+                annotation_settings.line_expand_enabled,
+                annotation_settings.line_expand_pixels,
             )
             self.canvas.set_optimize_mirror_edit(
-                annotation_settings.get("optimize_mirror_edit", False)
+                annotation_settings.optimize_mirror_edit
             )
             self.canvas.set_interaction_config(
-                annotation_settings.get("continuous_draw", False),
-                annotation_settings.get("quick_draw", True),
+                annotation_settings.continuous_draw,
+                annotation_settings.quick_draw,
             )
             self.canvas.set_show_annotation_names(
-                annotation_settings.get("show_annotation_names", False)
+                annotation_settings.show_annotation_names
             )
             self.canvas.set_show_canvas_status(
-                annotation_settings.get("show_canvas_status", True)
+                annotation_settings.show_canvas_status
             )
             sync_target_type = getattr(self, "_sync_target_type_to_selection", None)
             if callable(sync_target_type):

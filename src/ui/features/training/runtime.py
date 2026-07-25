@@ -11,18 +11,6 @@ from src.ui.shared.dialogs import CommandDialog
 from src.shared.qt import QDialog
 
 
-def _spawn_logged_process():
-    from src.ui.features.training import page as training_module
-
-    return getattr(training_module, "spawn_logged_process", spawn_logged_process)
-
-
-def _stop_process():
-    from src.ui.features.training import page as training_module
-
-    return getattr(training_module, "stop_process", stop_process)
-
-
 def start_training(page):
     if page.is_training:
         return
@@ -32,7 +20,7 @@ def start_training(page):
     command = build_train_command(config)
     command = page._normalize_command_model_targets(command)
 
-    if page.app.settings.get("features", {}).get("custom_command_dialog", True):
+    if page.context.settings.features.custom_command_dialog:
         dialog = CommandDialog(command, page)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -49,7 +37,19 @@ def start_training(page):
         page.log.append("已自动修复 data.yaml 中未还原的 val 路径。")
     page.log.append(" ".join(command))
     page.log_queue = Queue()
-    page.app.training_handle = _spawn_logged_process()(command, str(ROOT), page.log_queue)
+    process = spawn_logged_process(command, str(ROOT), page.log_queue)
+    lease = page.context.tasks.begin(
+        "train", generation=page.context.generation, stop=lambda: stop_process(process)
+    )
+    if lease is None:
+        stop_process(process)
+        page.is_training = False
+        page.start_btn.setEnabled(True)
+        page.stop_btn.setEnabled(False)
+        page.log_queue = None
+        return
+    page._training_process = process
+    page._training_lease = lease
     page.poll_timer.start(150)
     page.set_status_text("训练中")
 
@@ -76,12 +76,12 @@ def stop_training(page):
     page.stop_requested = True
     page.stop_btn.setEnabled(False)
     page.set_status_text("停止训练中")
-    _stop_process()(page.app.training_handle)
+    stop_process(page._training_process)
     page.log.append("已请求停止训练。")
 
 
 def recover_training_state_if_process_exited(page):
-    handle = getattr(page.app, "training_handle", None)
+    handle = page._training_process
     if not page.is_training or handle is None:
         return
     exit_code = handle.process.poll()
@@ -103,16 +103,16 @@ def finish_training(page, exit_code: int):
     page.start_btn.setEnabled(True)
     page.stop_btn.setEnabled(False)
     page.log_queue = None
-    page.app.training_handle = None
+    page.context.tasks.finish(page._training_lease)
+    page._training_lease = None
+    page._training_process = None
 
 
 def open_result(page):
     path = Path(
         page.resolve_path_text(page.edits["project"])
         if page.edits.get("project")
-        else page.app.settings["paths"]["result_dir"]
+        else page.context.settings.paths.result_dir
     )
     if path.exists():
         os.startfile(path)
-
-

@@ -33,7 +33,19 @@ def start_dataset_validation(
     command = build_command(config)
     page.append_active_log(" ".join(command))
     page.log_queue = Queue()
-    page.app.validation_handle = spawn_process(command, str(root), page.log_queue)
+    process = spawn_process(command, str(root), page.log_queue)
+    lease = page.context.tasks.begin(
+        "validate", generation=page.context.generation, stop=lambda: stop_process(process)
+    )
+    if lease is None:
+        stop_process(process)
+        page.is_detecting = False
+        page.start_det_btn.setEnabled(True)
+        page.stop_det_btn.setEnabled(False)
+        page.log_queue = None
+        return
+    page._validation_process = process
+    page._validation_lease = lease
     page.poll_timer.start()
     page.table.setRowCount(0)
     page.counter.setText("验证中")
@@ -42,7 +54,7 @@ def start_dataset_validation(
 def stop_dataset_validation(page, stop_process: Callable) -> None:
     page.stop_requested = True
     page.stop_det_btn.setEnabled(False)
-    stop_process(getattr(page.app, "validation_handle", None))
+    stop_process(page._validation_process)
     page.append_active_log("已请求停止验证。")
 
 
@@ -63,7 +75,7 @@ def poll_dataset_validation_queue(page) -> None:
 
 
 def recover_dataset_validation_state(page) -> None:
-    handle = getattr(page.app, "validation_handle", None)
+    handle = page._validation_process
     if not page.is_detecting or handle is None or not page.is_val_mode():
         return
     exit_code = handle.process.poll()
@@ -84,7 +96,7 @@ def finish_dataset_validation(page, exit_code: int) -> None:
     page.start_det_btn.setEnabled(True)
     page.stop_det_btn.setEnabled(False)
     page.log_queue = None
-    page.app.validation_handle = None
+    page.context.tasks.finish(page._validation_lease)
+    page._validation_lease = None
+    page._validation_process = None
     page.counter.setText("验证模式")
-
-

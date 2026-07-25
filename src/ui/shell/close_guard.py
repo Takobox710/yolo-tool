@@ -25,22 +25,11 @@ def collect_close_warnings(window) -> list[str]:
     has_unsaved_annotations = getattr(annotation_target, "has_unsaved_annotations", None)
     if callable(has_unsaved_annotations) and has_unsaved_annotations():
         warnings.append("当前有未保存的标注")
-    if is_training_active(window):
-        warnings.append("模型训练尚未结束")
+    active_tasks = window.context.tasks.active()
+    if active_tasks:
+        warnings.append("后台任务尚未结束：" + "、".join(sorted(item.kind for item in active_tasks)))
     return warnings
 
 
 def is_training_active(window) -> bool:
-    train_page = window.pages.get("train")
-    train_target = getattr(train_page, "inner_page", train_page)
-    if bool(getattr(train_target, "is_training", False)):
-        return True
-    handle = getattr(window, "training_handle", None)
-    if handle is None:
-        return False
-    process = getattr(handle, "process", None)
-    poll = getattr(process, "poll", None)
-    if callable(poll):
-        return poll() is None
-    return True
-
+    return window.context.tasks.is_active("train")

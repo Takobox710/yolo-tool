@@ -22,16 +22,14 @@ from src.shared.qt import QTimer
 
 
 class SettingsPage(ModelExportPackageDropMixin, BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self.setup_model_export_package_drop()
         self._refresh_count = 0
         build_settings_layout(self)
         self.finalize_model_export_package_drop()
         self.distribution_mode_check.setChecked(
-            self.app.settings.get("features", {}).get(
-                "distribution_multi_class_mode", False
-            )
+            self.context.settings.features.distribution_multi_class_mode
         )
 
         self._auto_refresh_timer = QTimer(self)
@@ -96,5 +94,3 @@ class SettingsPage(ModelExportPackageDropMixin, BasePage):
             f"已启用模型转换附加环境 {installed.version}。"
         )
         self.on_show()
-
-

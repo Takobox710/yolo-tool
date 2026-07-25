@@ -46,6 +46,15 @@ def instance_extensions_root(
     *,
     local_app_data: str | Path | None = None,
 ) -> Path:
+    del local_app_data
+    return Path(root) / "_internal" / "extensions"
+
+
+def legacy_instance_extensions_root(
+    root: str | Path = ROOT,
+    *,
+    local_app_data: str | Path | None = None,
+) -> Path:
     local_root = Path(local_app_data or LOCAL_APP_DATA_ROOT)
     return local_root / "YOLOTool" / "instances" / installed_instance_id(root) / "extensions"
 
@@ -87,9 +96,15 @@ def migrate_legacy_extensions(
     *,
     local_app_data: str | Path | None = None,
 ) -> bool:
-    source = legacy_extensions_root(local_app_data)
-    target = instance_extensions_root(root, local_app_data=local_app_data)
-    if not source.is_dir() or target.exists():
+    target = instance_extensions_root(root)
+    if target.exists():
+        return False
+    sources = (
+        legacy_instance_extensions_root(root, local_app_data=local_app_data),
+        legacy_extensions_root(local_app_data),
+    )
+    source = next((candidate for candidate in sources if candidate.is_dir()), None)
+    if source is None:
         return False
     target.parent.mkdir(parents=True, exist_ok=True)
     source.replace(target)

@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.services.data_ops import execute_rename, preview_rename
-from src.ui.helpers import _parse_padding_text
+from src.ui.helpers import parse_padding_text
 from src.ui.shared.page_base import BasePage
 from src.shared.qt import Qt, QGridLayout, QHBoxLayout, QHeaderView, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTimer, QVBoxLayout
 
 class RenameTab(BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self.plan = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -18,35 +18,35 @@ class RenameTab(BasePage):
         grid.setVerticalSpacing(10)
         self.folder_box, self.folder_edit = self.path_field(
             "图片文件夹",
-            app.settings["paths"]["images_dir"],
+            context.settings.paths.images_dir,
             self.choose_dir,
             "选择待重命名的图片目录",
         )
         self.labelme_box, self.labelme_edit = self.path_field(
             "Labelme 标注文件夹",
-            app.settings["paths"]["annotations_dir"],
+            context.settings.paths.annotations_dir,
             self.choose_dir,
             "选择可选的 Labelme 标注目录",
         )
         self.yolo_box, self.yolo_edit = self.path_field(
             "YOLO 标注文件夹",
-            app.settings["paths"]["labels_dir"],
+            context.settings.paths.labels_dir,
             self.choose_dir,
             "选择可选的 YOLO 标注目录",
         )
         self.prefix_box, self.prefix_edit = self.field(
             "命名前缀",
-            str(app.settings.get("rename", {}).get("prefix", "A")),
+            str(context.settings.rename.prefix),
             placeholder="例如 A",
         )
         self.start_box, self.start_edit = self.field(
             "起始编号",
-            str(app.settings.get("rename", {}).get("start_index", 1)),
+            str(context.settings.rename.start_index),
             placeholder="例如 1",
         )
         self.padding_box, self.padding_combo = self.combo_field(
             "编号位数",
-            str(app.settings.get("rename", {}).get("padding", 1)),
+            str(context.settings.rename.padding),
             ["1", "2", "3", "4"],
         )
         for index, widget in enumerate(
@@ -62,11 +62,11 @@ class RenameTab(BasePage):
             grid.addWidget(widget, index // 3, index % 3)
         include_labelme_box, self.include_labelme = self.checkbox_with_help(
             "Labelme 标注文件一并更改",
-            bool(app.settings.get("rename", {}).get("include_labelme", False)),
+            context.settings.rename.include_labelme,
         )
         include_yolo_box, self.include_yolo = self.checkbox_with_help(
             "YOLO 标注文件一并更改",
-            bool(app.settings.get("rename", {}).get("include_yolo", False)),
+            context.settings.rename.include_yolo,
         )
         grid.addWidget(include_labelme_box, 2, 0)
         grid.addWidget(include_yolo_box, 2, 1)
@@ -135,7 +135,7 @@ class RenameTab(BasePage):
                 self.path_from_edit(self.folder_edit),
                 self.prefix_edit.text(),
                 int(self.start_edit.text()),
-                _parse_padding_text(self.padding_combo.currentText()),
+                parse_padding_text(self.padding_combo.currentText()),
                 labelme_dir=self.path_from_edit(self.labelme_edit),
                 include_labelme=self.include_labelme.isChecked(),
                 labels_dir=self.path_from_edit(self.yolo_edit),

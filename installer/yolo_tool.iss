@@ -143,6 +143,7 @@ var
   UpdateCommitStarted: Boolean;
   UpdateCommitted: Boolean;
   RollbackPerformed: Boolean;
+  ExtensionPreserved: Boolean;
   WizardInitialized: Boolean;
   TransactionInitialized: Boolean;
   TransactionAppDir: String;
@@ -263,6 +264,11 @@ begin
 end;
 
 function InstanceExtensionRoot(): String;
+begin
+  Result := ExpandConstant('{app}\_internal\extensions');
+end;
+
+function LegacyInstanceExtensionRoot(): String;
 begin
   Result := ExpandConstant('{localappdata}\YOLOTool\instances\') +
     CurrentInstanceId() + '\extensions';
@@ -404,8 +410,10 @@ begin
   ExistingExtensionVersion := ReadExtensionVersionAt(InstanceExtensionRoot());
   if ExistingExtensionVersion = '' then
   begin
-    LegacyExtensionVersion := ReadExtensionVersionAt(
-      ExpandConstant('{localappdata}\YOLOTool\extensions'));
+    LegacyExtensionVersion := ReadExtensionVersionAt(LegacyInstanceExtensionRoot());
+    if LegacyExtensionVersion = '' then
+      LegacyExtensionVersion := ReadExtensionVersionAt(
+        ExpandConstant('{localappdata}\YOLOTool\extensions'));
     if ExistingInstall then
       ExistingExtensionVersion := LegacyExtensionVersion;
   end;
@@ -960,6 +968,50 @@ begin
     InstalledMetadataPath('install-instance.ini'));
 end;
 
+function PreservedExtensionPath(): String;
+begin
+  Result := BackupPath('preserved-model-export-runtime');
+end;
+
+function PreserveExtensionForBaseInstall(): Boolean;
+var
+  Source, Destination: String;
+begin
+  Source := InstanceExtensionRoot();
+  Destination := PreservedExtensionPath();
+  if not DirExists(Source) then
+  begin
+    Result := True;
+    exit;
+  end;
+  if DirExists(Destination) then
+    DelTree(Destination, True, True, True);
+  ForceDirectories(ExtractFileDir(Destination));
+  Result := RenameFile(Source, Destination);
+  if Result then
+    ExtensionPreserved := True;
+end;
+
+function RestorePreservedExtension(): Boolean;
+var
+  Source, Destination: String;
+begin
+  Result := True;
+  if not ExtensionPreserved then
+    exit;
+  Source := PreservedExtensionPath();
+  Destination := InstanceExtensionRoot();
+  if not DirExists(Source) then
+  begin
+    Result := False;
+    exit;
+  end;
+  if DirExists(Destination) then
+    DelTree(Destination, True, True, True);
+  ForceDirectories(ExtractFileDir(Destination));
+  Result := RenameFile(Source, Destination);
+end;
+
 function CommitMainInstall(): Boolean;
 begin
   UpdateCommitStarted := True;
@@ -967,14 +1019,16 @@ begin
     BackupExisting('app_assets') and
     BackupLegacyMetadata();
   if Result and ShouldInstallBase() then
-    Result := BackupExisting('_internal') and
+    Result := PreserveExtensionForBaseInstall() and
+      BackupExisting('_internal') and
       MergeModels()
   else if Result then
     Result := BackupProgramMetadata() and MigrateLegacyBaseMetadata();
   if Result then
     Result := MoveStaged(ProgramStagePath('YOLOTool.exe'), 'YOLOTool.exe');
   if Result and ShouldInstallBase() then
-    Result := MoveStaged(BaseStagePath('_internal'), '_internal');
+    Result := MoveStaged(BaseStagePath('_internal'), '_internal') and
+      RestorePreservedExtension();
   if Result then
     Result := MoveStaged(ProgramStagePath('app-version.txt'),
         MetadataRelativePath('app-version.txt')) and
@@ -1003,8 +1057,16 @@ begin
   RestoreExisting('app_assets');
   if ShouldInstallBase() then
   begin
+    if ExtensionPreserved and DirExists(InstanceExtensionRoot()) then
+    begin
+      if DirExists(PreservedExtensionPath()) then
+        DelTree(PreservedExtensionPath(), True, True, True);
+      ForceDirectories(ExtractFileDir(PreservedExtensionPath()));
+      RenameFile(InstanceExtensionRoot(), PreservedExtensionPath());
+    end;
     RestoreMergedModels();
     RestoreExisting('_internal');
+    RestorePreservedExtension();
   end
   else
   begin
@@ -1045,8 +1107,9 @@ end;
 function ShouldMigrateLegacyExtension(): Boolean;
 begin
   Result := ExistingInstall and
-    DirExists(ExpandConstant('{localappdata}\YOLOTool\extensions')) and
-    not DirExists(InstanceExtensionRoot());
+    not DirExists(InstanceExtensionRoot()) and
+    (DirExists(LegacyInstanceExtensionRoot()) or
+      DirExists(ExpandConstant('{localappdata}\YOLOTool\extensions')));
 end;
 
 procedure InstallOptionalExtension();

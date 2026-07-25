@@ -167,5 +167,3 @@ def show_cached_source_result(page, path: Path) -> bool:
     page.detect_index = page.detect_results.index(cached)
     page.show_detection_payload(cached)
     return True
-
-

@@ -16,12 +16,12 @@
 - 测试代码放在 `src/tests/` 目录下。
 - UI 测试按 `src/tests/ui/<domain>/` 分目录维护；服务层测试按 `src/tests/services/<domain>/` 分目录维护；结构围栏测试放在 `src/tests/architecture/`。
 - 不要把 `.pixi/`、`dist/`、`build/`、缓存目录、模型训练产物加入 git。
-- 需要提交 git 时，必须完成所有任务后再做一次总提交，不要中途零散提交。
+- 需要提交或推送改动时使用 `github-push-workflow` skill；完成所有任务后只做一次总提交，不要中途零散提交。
 - 修改任何会影响行为、结构、入口、打包方式、设置字段、测试组织、页面布局或用户操作流程的代码后，必须同步检查并更新受影响文档；至少包括 `docs/spec/*.md`、`docs/architecture.md`、`docs/packaging-windows.md`、`README.md` 与 `docs/code-inventory.md` 中相关文件。禁止只改代码不更新文档。
-- 每次完成一批可感知改动后，必须同步更新根目录 `CHANGELOG.md`；日常开发阶段只允许在文件最上方的 `# [Unreleased] > ## 待提交改动` 顶部追加简短记录，格式固定为 `- YYYY/MM/DD HH:mm：本次改动`，最新记录必须放最前面。每次新增记录前必须先执行 `Get-Date -Format 'yyyy/MM/dd HH:mm'` 或等效的当前本地时间命令，并使用读取到的实际时间；禁止复制旧记录时间、沿用会话日期或使用默认时间。后续任何 AI 在准备 git 提交说明、GitHub 提交说明或版本更新说明前，必须先阅读该文件，再结合当前 `git diff` 生成总结，不能只依赖当前对话上下文。
+- 每次对话产生改动后都必须检查根目录 `CHANGELOG.md`；用户可见行为、维护结构、入口、打包、设置字段、测试组织或版本结果变化必须记录。记录格式和提交前归并规则统一由 `github-push-workflow` skill 执行。
 - 如果编译或测试错误连续出现 5 次仍未解决，必须立即停止并向人类报告，严禁盲猜死循环。
-- 不改变公开入口：`pixi run app`、`pixi run test`、`pixi run check`、`python -m src.main`。
-- 打包后训练/导出/验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py`。
+- 不改变公开入口：`pixi run app`、`pixi run test`、`pixi run check`、`python -m src.main`；`pixi run app-qt` 只是同一 GUI 入口的兼容别名。
+- 打包后训练/导出/验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val`，由 `src/bootstrap/cli_dispatch.py` 转发到 `src/train_cli.py`。
 
 ## 目录职责地图
 
@@ -35,11 +35,15 @@ yolo_tool/
 │   └── spec/                  # 页面与功能规格
 ├── installer/                 # PyInstaller / Inno Setup 打包脚本
 └── src/
+    ├── app.py                # GUI 应用装配
     ├── main.py                # GUI 与隐藏 CLI 统一入口
     ├── train_cli.py           # 打包后训练、导出、验证入口
+    ├── bootstrap/             # CLI 分发与运行上下文
+    ├── devtools/              # 发布包、伴随包与开发工具
     ├── services/              # 可测试业务逻辑
     ├── ui/                    # Qt UI、页面、控件和 worker
     ├── runtime/               # 源码内默认配置参考
+    ├── shared/                # 跨服务和 UI 的共享类型与路径
     ├── assets/                # 应用图标资源
     └── tests/                 # pytest 测试（architecture / services / ui / integration）
 ```
@@ -58,13 +62,29 @@ yolo_tool/
 
 改功能前先读对应 spec；改共享逻辑前先读 `docs/architecture.md`。
 
+## GitHub 推送流程 Skill
+
+- 本项目使用 `github-push-workflow` skill 处理 Git 提交、GitHub 推送、CHANGELOG 归并、普通提交哈希回填和 `X.Y.Z` 版本归档；准备提交前必须先阅读根目录 `CHANGELOG.md`，再结合当前 `git diff` 汇总，不能只依赖对话记忆。
+- 完成一批任务后只创建一次总提交，只纳入当前任务相关文件；已有用户改动、无关文件、缓存、构建产物和训练产物不得擅自纳入。
+- 每次对话产生改动后都要检查 `CHANGELOG.md`。用户可见行为、维护结构、入口、打包、设置字段、测试组织或版本结果变化必须记录；只运行测试/检查、阅读分析、格式修正、空白或注释调整，以及不改变行为的内部整理通常不单独记录。
+- 用户明确调用该 skill 后，可以直接要求“提交改动”或“更新项目版本为 `X.Y.Z`”；不要求先执行初始化对话。第一次在项目中使用时，skill 负责补齐本节规则和 `CHANGELOG.md` 初始结构。
+- 普通提交的稳定哈希只允许直接回填到本地工作树，不为回填创建第二次提交或推送；版本归档提交自身不写入 `CHANGELOG.md`，也不回填该提交哈希。
+- 详细执行顺序、提交标题与正文格式、推送限制、版本归档和哈希处理规则只维护在 skill 中；本文件只保留本项目约束。
+
+## 版本发布适配
+
+- 用户要求“更新项目版本为 `X.Y.Z`”时，除更新 `CHANGELOG.md` 版本块外，必须同步更新程序版本源 `src/__init__.py` 的 `APP_VERSION` 与安装器版本源 `installer/yolo_tool.iss` 的 `MyAppVersion`。
+- 同步检查并更新受影响的版本断言、发布脚本、安装器配置和文档；`installer/package_windows.ps1` 会从 `APP_VERSION` 传递安装器版本，但 `yolo_tool.iss` 的默认兜底值仍必须保持一致。
+- 版本归档提交前必须执行完整正式打包：`powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Clean -BuildBaseRuntimeModels -BuildModelExportRuntime`。该命令生成程序安装器、基础环境包和附加环境包；打包失败时停止版本归档，不提交、不推送，并报告失败原因。
+- 基础环境、运行时协议和附加环境包版本只有在对应内容或协议实际变化时才更新，不因程序版本变更机械递增。
+
 ## AI 修改流程
 
 1. 先用 `rg` / `rg --files` 找相关代码、测试和规格文档。
 2. 读对应 `docs/spec/*.md` 与现有测试，确认用户请求是否改变既有约定。
 3. 优先修改服务层中的可测试逻辑，再让 UI 调用服务层。
 4. 保持公开类名与入口兼容，例如 `AnnotationPage`、`ValidatePage`、`TrainPage`、`HomePage`。
-5. 修改后同步更新受影响文档；如果改动会影响用户可见行为、维护结构、入口、打包、设置字段或测试组织，必须同时更新根目录 `CHANGELOG.md` 的 `Unreleased > 待提交改动`，并把最新记录插到最上方。
+5. 修改后同步更新受影响文档；如果改动会影响用户可见行为、维护结构、入口、打包、设置字段或测试组织，按 `github-push-workflow` skill 更新根目录 `CHANGELOG.md` 的 `Unreleased > 待提交改动`。
 6. 修改后至少运行 `pixi run check`；涉及行为变化时运行相关测试，收尾前优先运行 `pixi run test`。
 7. 如果连续 5 次编译或测试失败仍无法解决，停止并报告失败命令、错误摘要和已尝试方案。
 
@@ -92,29 +112,47 @@ yolo_tool/
 
 ## 常用命令
 
+开发 GUI：
+
 ```powershell
 pixi run app
-pixi run test
-pixi run check
+```
+
+等价的直接入口：
+
+```powershell
 pixi run python -m src.main
 ```
 
-Windows 绿色版打包：
+运行测试和静态检查：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release
+pixi run test
+pixi run check
 ```
 
-开发快速打包：
+构建程序更新用的冻结程序和 `Program` staging：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -PackageType Program -ProgramOnly -Clean
+```
+
+本地开发快包（输出到 `dist/YOLOTool-dev/`，不作为用户发布物）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
-一键打包：
+普通程序更新（复用已有基础环境包）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
+powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1
+```
+
+完整发布（程序安装器、基础环境包和附加环境包）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
 ```
 
 ## 测试重点
@@ -122,6 +160,7 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 - 设置加载、深合并、恢复默认值、最近项目恢复。
 - Labelme/YOLO 转换、类别识别、类别映射、数据集划分、备份。
 - 数据标注的 Labelme 读写、YOLO 同步导出、画布绘制与选择、AI 预标注。
+- 模型格式转换、导出能力探测、附加运行时包安装与失败回滚。
 - 训练命令生成、模型目录解析、停止流程、日志清洗。
 - 验证页模型扫描、单文件/批量/摄像头检测/数据集验证、结果保存、`best.pt / last.pt` 开关。
 - Windows 打包入口、隐藏后台子进程、图标资源。
@@ -133,7 +172,5 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 - 不为了清空 PyInstaller warning 恢复大包 `collect_all(...)` 全量扫描；只按真实运行缺失补依赖。
 - 新增功能先补服务层测试，再接 UI。
 - 使用 `QTimer.singleShot` 延迟调用 UI 页面或窗口方法时，必须传入所属 `QObject` 作为上下文，避免对象销毁后回调继续访问旧控件；Qt UI 测试必须在测试结束时清理顶层窗口并保持 `QApplication` 生命周期覆盖整个测试会话。
-- 需要准备 git 提交说明、GitHub 提交说明或软件版本更新说明时，先阅读根目录 `CHANGELOG.md`，再结合 `git diff` 汇总；不要只根据当前对话记忆生成说明。
-- `CHANGELOG.md` 的使用方式固定为：文件最上方始终保留 `# [Unreleased]`，其中 `## 待提交改动` 只维护当前尚未提交的日常记录，按时间倒序排列；准备 git 提交时，先检查最近一批待提交改动里是否存在同一主题的连续修订或覆盖关系，若后面的记录已经覆盖前面的记录，必须先归并成最终有效的 1 条或若干条结果，不能机械逐条照抄中间过程；然后再整理成一个提交标题，并将这批归并后、去除时间前缀的改动列表直接写入 `git commit` 的提交描述（body）；普通提交完成后，从 `## 待提交改动` 删除这些项，并追加到 `# [Unreleased] > ## 提交记录` 中。提交记录标题默认写为 `## 提交标题`；当该提交的最终 hash 已经稳定存在后，只允许直接在工作树中回填为 `## 提交标题（commit_hash）`，严禁为回填单独创建 commit，严禁因回填执行 git push；回填内容必须等待下一次正常提交时一并提交并推送。
-- 软件版本更新必须单独按版本归档流程处理：先在 `# [Unreleased]` 下方新增 `# [版本号] - YYYY-MM-DD` 版本块，写入最终版高层总结和 `## 本版本提交记录`；版本块只记录产品功能、缺陷修复、用户可见行为、测试和文档等版本内容，不得放入版本归档流程规则、CHANGELOG 维护规则或纯提交操作说明，这些规则只维护在 `AGENTS.md`。将本版本包含的全部 Git 提交记录及版本相关最终变更整体整理完成后，把最终内容的 `CHANGELOG.md` 与本版本全部改动放进同一次总提交，提交标题统一使用 `整理 X 版本更新说明`（例如 `整理 1.2.4 版本更新说明`），提交成功后立即推送 GitHub。版本提交不得在推送后另建 CHANGELOG 回填提交；若需记录该版本提交 hash，只能在下一次正常提交时同步，或在后续软件版本更新提交中统一处理。发版后新的未提交改动继续追加到最上方的 `# [Unreleased] > ## 待提交改动`。
+- Git 提交、推送、CHANGELOG 归并、哈希回填和版本归档统一按 `github-push-workflow` skill 执行；本项目的公开入口、文档同步范围、测试命令和产物排除规则以本文件其他章节为准。
 

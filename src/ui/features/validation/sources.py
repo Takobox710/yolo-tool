@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from src.services.settings import PathSettings
 from src.services.validation import collect_prediction_sources, is_live_source_mode
 
 SOURCE_SCOPE_OPTIONS = ["全部图片", "训练图片", "验证图片", "测试图片"]
@@ -16,18 +17,18 @@ def dataset_split_image_dir(dataset_dir: Path, split: str) -> Path:
     return (dataset_dir / split / "images").resolve()
 
 
-def scope_target_path(scope: str, paths_settings: dict) -> Path:
+def scope_target_path(scope: str, paths_settings: PathSettings) -> Path:
     scope = str(scope or "全部图片").strip()
-    dataset_dir = Path(paths_settings["dataset_dir"])
+    dataset_dir = Path(paths_settings.dataset_dir)
     if scope == "全部图片":
-        return Path(paths_settings["images_dir"]).resolve()
+        return Path(paths_settings.images_dir).resolve()
     if scope == "训练图片":
         return dataset_split_image_dir(dataset_dir, "train")
     if scope == "验证图片":
         return dataset_split_image_dir(dataset_dir, "val")
     if scope == "测试图片":
         return dataset_split_image_dir(dataset_dir, "test")
-    return Path(paths_settings["images_dir"]).resolve()
+        return Path(paths_settings.images_dir).resolve()
 
 
 def folder_source_path_for_selection(
@@ -62,4 +63,3 @@ def collect_validation_source_items(
         selected_source_path,
     )
     return collect_prediction_sources(mode, source_path)
-

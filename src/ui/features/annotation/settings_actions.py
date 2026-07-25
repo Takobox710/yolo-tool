@@ -26,20 +26,20 @@ class AnnotationPageSettingsMixin:
         dialog.exec()
 
     def open_annotation_settings(self) -> None:
-        current = self.app.settings.get("annotation", {})
+        current = self.context.settings.annotation
         dialog = AnnotationSettingsDialog(
-            current.get("line_expand_enabled", False),
-            current.get("line_expand_pixels", 10),
-            current.get("auto_save", True),
-            current.get("auto_convert_yolo", False),
-            current.get("show_yolo_save_in_context_menu", False),
-            current.get("continuous_draw", False),
-            current.get("quick_draw", False),
+            current.line_expand_enabled,
+            current.line_expand_pixels,
+            current.auto_save,
+            current.auto_convert_yolo,
+            current.show_yolo_save_in_context_menu,
+            current.continuous_draw,
+            current.quick_draw,
             self.display_path(self.path_from_setting("labels_dir")),
             self,
-            show_annotation_names=current.get("show_annotation_names", False),
-            show_canvas_status=current.get("show_canvas_status", True),
-            optimize_mirror_edit=current.get("optimize_mirror_edit", False),
+            show_annotation_names=current.show_annotation_names,
+            show_canvas_status=current.show_canvas_status,
+            optimize_mirror_edit=current.optimize_mirror_edit,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -56,21 +56,19 @@ class AnnotationPageSettingsMixin:
             show_canvas_status,
             optimize_mirror_edit,
         ) = dialog.values()
-        self.app.settings.setdefault("annotation", {})["line_expand_enabled"] = enabled
-        self.app.settings["annotation"]["line_expand_pixels"] = pixels
-        self.app.settings["annotation"]["auto_save"] = auto_save
-        self.app.settings["annotation"]["auto_convert_yolo"] = auto_convert_yolo
-        self.app.settings["annotation"]["show_yolo_save_in_context_menu"] = (
-            show_yolo_save_in_context_menu
-        )
-        self.app.settings["annotation"]["continuous_draw"] = continuous_draw
-        self.app.settings["annotation"]["quick_draw"] = quick_draw
-        self.app.settings["annotation"]["show_annotation_names"] = show_annotation_names
-        self.app.settings["annotation"]["show_canvas_status"] = show_canvas_status
-        self.app.settings["annotation"]["optimize_mirror_edit"] = optimize_mirror_edit
+        current.line_expand_enabled = enabled
+        current.line_expand_pixels = pixels
+        current.auto_save = auto_save
+        current.auto_convert_yolo = auto_convert_yolo
+        current.show_yolo_save_in_context_menu = show_yolo_save_in_context_menu
+        current.continuous_draw = continuous_draw
+        current.quick_draw = quick_draw
+        current.show_annotation_names = show_annotation_names
+        current.show_canvas_status = show_canvas_status
+        current.optimize_mirror_edit = optimize_mirror_edit
         if yolo_dir:
             resolved_yolo_dir = Path(resolve_project_path(yolo_dir, self.project_root()))
-            self.app.settings.setdefault("paths", {})["labels_dir"] = str(resolved_yolo_dir)
+            self.context.settings.paths.labels_dir = str(resolved_yolo_dir)
             resolved_yolo_dir.mkdir(parents=True, exist_ok=True)
         self.save_settings()
         self._refresh_class_state()
@@ -103,7 +101,7 @@ class AnnotationPageSettingsMixin:
         operations = dialog.conversion_operations
         if operations and self.current_image_path is not None and self.dirty:
             self.save_current(force=True, save_json=True)
-        self.app.settings.setdefault("dataset", {})["class_names"] = dialog.class_names
+        self.context.settings.dataset.class_names = dialog.class_names
         self.save_settings()
         for source_name, target_name in operations:
             convert_labelme_classes(

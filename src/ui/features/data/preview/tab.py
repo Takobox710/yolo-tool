@@ -10,8 +10,8 @@ from src.ui.shared.page_base import BasePage, ImageView, _IMAGE_SUFFIXES
 from src.shared.qt import QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox, QPushButton, QVBoxLayout
 
 class PreviewTab(BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self.preview_items: list[Path] = []
         self.preview_index = 0
         layout = QVBoxLayout(self)
@@ -19,13 +19,13 @@ class PreviewTab(BasePage):
         grid = QGridLayout()
         self.image_box, self.image_edit = self.path_field(
             "图片文件夹",
-            app.settings["paths"]["images_dir"],
+            context.settings.paths.images_dir,
             self.choose_dir,
             "选择待预览的图片目录",
         )
         self.label_box, self.label_edit = self.path_field(
             "标注文件夹",
-            app.settings["paths"]["labels_dir"],
+            context.settings.paths.labels_dir,
             self.choose_dir,
             "选择对应的 YOLO 标注目录",
         )
@@ -180,8 +180,8 @@ class PreviewTab(BasePage):
         annotations = load_yolo_annotations(
             image.size,
             label_path,
-            self.app.settings["task"]["mode"],
-            self.app.settings["dataset"]["class_names"],
+            self.context.settings.task.mode,
+            self.context.settings.dataset.class_names,
         )
         preview = render_annotation_preview(image_path, annotations)
         self.source_view.set_pil_image(image)

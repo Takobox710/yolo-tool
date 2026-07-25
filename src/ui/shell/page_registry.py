@@ -20,15 +20,15 @@ PAGE_TITLES = {
 
 
 def create_page(window, key: str):
+    context = window.context
     if key == "home":
-        return scroll_page(HomePage(window))
+        return scroll_page(HomePage(context))
     if key == "annotation":
-        return AnnotationPage(window)
+        return AnnotationPage(context)
     if key == "data":
-        return scroll_page(DataPage(window))
+        return scroll_page(DataPage(context))
     if key == "train":
-        return scroll_page(TrainPage(window))
+        return scroll_page(TrainPage(context))
     if key == "validate":
-        return scroll_page(ValidatePage(window))
-    return scroll_page(SettingsPage(window))
-
+        return scroll_page(ValidatePage(context))
+    return scroll_page(SettingsPage(context))

@@ -22,13 +22,13 @@ from src.services.model_export.package import (
     EXTENSION_SCHEMA_VERSION,
     ExtensionPackageError,
     inspect_extension_package,
-    inspect_extension_package_fast,
     install_extension_package,
     is_extension_package_path,
     load_extension_at,
     load_installed_extension,
     validate_extension_manifest,
 )
+from src.services.model_export.inspection import inspect_extension_package_fast
 from src.services.model_export.runtime import export_capability
 from src.services.model_export.types import (
     ExportCapability,

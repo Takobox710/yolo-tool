@@ -201,10 +201,10 @@ class ValidationPageActionsMixin:
 
     def choose_detection_source(self, combo: QComboBox):
         current_text = combo.currentText().strip()
-        validation = self.app.settings.get("validation", {})
-        saved_selection = validation.get("source_selection", "")
+        validation = self.context.settings.validation
+        saved_selection = validation.source_selection
         current = (
-            validation.get("source_path")
+            validation.source_path
             if saved_selection in SINGLE_FILE_SOURCE_OPTIONS
             else (
                 self.resolve_combo_path_text(current_text)
@@ -304,7 +304,7 @@ class ValidationPageActionsMixin:
         return folder_source_path_for_page(self)
 
     def on_show(self):
-        self.refresh_model_choices(self.app.settings["validation"].get("model_path", ""))
+        self.refresh_model_choices(self.context.settings.validation.model_path)
         self._connect_validation_persistence()
 
     def refresh_model_choices(self, preferred_model: str | None = None):

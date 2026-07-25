@@ -87,6 +87,17 @@ def test_installed_metadata_and_root_model_are_managed_by_installer():
     assert "BackupExisting('runtime-version.txt')" in source
 
 
+def test_model_export_extension_lives_inside_internal_and_survives_base_replacement():
+    source = INSTALLER.read_text(encoding="utf-8")
+
+    assert "Result := ExpandConstant('{app}\\_internal\\extensions');" in source
+    assert "function PreserveExtensionForBaseInstall" in source
+    assert "function RestorePreservedExtension" in source
+    assert "PreserveExtensionForBaseInstall() and" in source
+    assert "MoveStaged(BaseStagePath('_internal'), '_internal') and" in source
+    assert "RestorePreservedExtension();" in source
+
+
 def test_program_update_build_uses_program_only_output_without_runtime_layer():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
     build_script = Path("installer/build_windows.ps1").read_text(encoding="utf-8")
@@ -96,6 +107,19 @@ def test_program_update_build_uses_program_only_output_without_runtime_layer():
     assert 'Remove-Item -LiteralPath $AppDir -Recurse -Force' in build_script
     assert 'unexpectedly contains _internal' in build_script
     assert '"yolo11s.pt", "yolo26n.pt", "yolov8n.pt"' in build_script
+
+
+def test_full_packaging_reuses_unchanged_runtime_archives():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+    base_script = Path("installer/build_base_runtime_models.ps1").read_text(encoding="utf-8")
+    extension_script = Path("installer/build_model_export_runtime.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "--check-current" in package_script
+    assert "$BaseArchiveCurrent" in package_script
+    assert "--force" in base_script
+    assert "--force" in extension_script
 
 
 def test_program_only_spec_skips_external_runtime_analysis():

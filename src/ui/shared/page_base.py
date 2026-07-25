@@ -4,8 +4,10 @@ from pathlib import Path
 from typing import Any
 
 from src.services.data_ops import display_project_path, resolve_project_path
+from src.services.settings import settings_to_dict
 from src.ui.shared.forms import FormPageMixin
-from src.ui.helpers import _history_number_sort_key, _history_time_sort_key
+from src.ui.shared.context import WorkbenchContext
+from src.ui.helpers import history_number_sort_key, history_time_sort_key
 from src.ui.shared.widgets.base import Card, ImageView
 from src.shared.qt import (
     QCheckBox,
@@ -42,36 +44,27 @@ class _SortItem(QTableWidgetItem):
 
 
 class BasePage(FormPageMixin, QWidget):
-    def __init__(self, app):
+    def __init__(self, context):
         super().__init__()
-        self.app = app
+        self.context = context if isinstance(context, WorkbenchContext) else _legacy_context(context)
 
     def project_root(self) -> Path:
-        return Path(self.app.settings["project"]["root"])
+        return Path(self.context.settings.project.root)
 
     def save_settings(self):
-        self.app.settings_service.save(self.app.settings)
+        return self.context.save_settings(source=self)
 
     def set_status_text(self, text: str) -> None:
-        status = getattr(self.app, "status", None)
-        if status is not None and hasattr(status, "setText"):
-            status.setText(text)
-            return
-        status_bar = getattr(self.app, "statusBar", None)
-        if callable(status_bar):
-            status_bar().showMessage(text)
+        self.append_program_log(text)
 
     def update_setting(self, *keys: str, value: Any):
         if not keys:
             return
-        target = self.app.settings
+        target = self.context.settings
         for key in keys[:-1]:
-            target = target.setdefault(key, {})
-        target[keys[-1]] = value
+            target = getattr(target, key)
+        setattr(target, keys[-1], value)
         self.save_settings()
-        notify = getattr(self.app, "notify_setting_changed", None)
-        if callable(notify):
-            notify(tuple(keys), value, source=self)
 
     def on_setting_changed(self, keys: tuple[str, ...], value: Any) -> None:
         """Hook for controls that mirror shared project settings."""
@@ -87,15 +80,10 @@ class BasePage(FormPageMixin, QWidget):
         return Path(self.resolve_path_text(edit))
 
     def append_program_log(self, text: str, *, level: str | None = None) -> None:
-        hook = getattr(self.app, "append_program_log", None)
-        if callable(hook):
-            hook(text, level=level or self.infer_log_level(text))
+        self.context.append_program_log(text, level=level or self.infer_log_level(text))
 
     def program_log_text(self) -> str:
-        hook = getattr(self.app, "program_log_text", None)
-        if callable(hook):
-            return str(hook())
-        return "等待程序日志..."
+        return self.context.program_log_text()
 
     @staticmethod
     def infer_log_level(text: str) -> str:
@@ -148,7 +136,7 @@ class BasePage(FormPageMixin, QWidget):
 
     def help_icons_enabled(self) -> bool:
         return bool(
-            self.app.settings.get("features", {}).get("show_help_icons", True)
+            self.context.settings.features.show_help_icons
         )
 
     def refresh_help_icon_visibility(self):
@@ -166,3 +154,53 @@ class BasePage(FormPageMixin, QWidget):
         return cleaned or "待检测"
 
 
+def _legacy_context(host) -> WorkbenchContext:
+    """Temporary adapter for older third-party page constructors."""
+    settings = host.settings
+    service = host.settings_service
+    original_save = service.save
+
+    def save_legacy(value):
+        try:
+            original_save(value)
+        except (TypeError, AttributeError):
+            original_save(settings_to_dict(value))
+
+    host_background = getattr(host, "run_background", None)
+    run_background = (
+        (lambda kind, fn, receiver=None: host_background(kind, fn))
+        if callable(host_background)
+        else None
+    )
+
+    def refresh_validation_models() -> None:
+        for page in getattr(host, "pages", {}).values():
+            target = getattr(page, "inner_page", page)
+            hook = getattr(target, "refresh_model_choices", None)
+            if callable(hook):
+                hook()
+
+    def refresh_help_icons() -> None:
+        for page in getattr(host, "pages", {}).values():
+            target = getattr(page, "inner_page", page)
+            hook = getattr(target, "refresh_help_icon_visibility", None)
+            if callable(hook):
+                hook()
+
+    status = getattr(host, "status", None)
+    append_log = (
+        (lambda text, **_kwargs: status.setText(text))
+        if status is not None and callable(getattr(status, "setText", None))
+        else None
+    )
+    context = WorkbenchContext(
+        service,
+        type("LoadResult", (), {"settings": settings, "migrated": False, "issues": ()})(),
+        run_background=run_background,
+        append_log=append_log,
+        program_log=lambda: "等待程序日志...",
+        refresh_help_icons=refresh_help_icons,
+        refresh_validation_models=refresh_validation_models,
+    )
+    context.settings_service.save = save_legacy
+    return context

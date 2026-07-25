@@ -18,7 +18,7 @@ from src.tests.helpers.ui_paths import (
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
-    PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
     PAGE_BASE,
@@ -63,7 +63,7 @@ def test_validation_page_lists_training_best_and_last_models_by_feature_flag(tmp
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["features"]["show_last_training_models"] = True
+    settings.features.show_last_training_models = True
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),
@@ -79,7 +79,7 @@ def test_validation_page_lists_training_best_and_last_models_by_feature_flag(tmp
     assert "train-2\\best.pt" in items
     assert "train-2\\last.pt" in items
 
-    fake_app.settings["features"]["show_last_training_models"] = False
+    fake_app.settings.features.show_last_training_models = False
     page.refresh_model_choices()
     items = [page.model_combo.itemText(i) for i in range(page.model_combo.count())]
 
@@ -160,8 +160,8 @@ def test_validation_page_source_options_choose_single_media_files(tmp_path, monk
     page.source_combo.setCurrentText("单张图片")
     page.choose_detection_source(page.source_combo)
 
-    assert settings["validation"]["source_selection"] == "单张图片"
-    assert Path(settings["validation"]["source_path"]) == image.resolve()
+    assert settings.validation.source_selection == "单张图片"
+    assert Path(settings.validation.source_path) == image.resolve()
     assert page.source_items == [image.resolve()]
 
     page.mode_combo.setCurrentText("视频检测")
@@ -176,8 +176,8 @@ def test_validation_page_source_options_choose_single_media_files(tmp_path, monk
     page.source_combo.setCurrentText("单个视频")
     page.choose_detection_source(page.source_combo)
 
-    assert settings["validation"]["source_selection"] == "单个视频"
-    assert Path(settings["validation"]["source_path"]) == video.resolve()
+    assert settings.validation.source_selection == "单个视频"
+    assert Path(settings.validation.source_path) == video.resolve()
     assert page.source_items == [video.resolve()]
     page.close()
 
@@ -207,8 +207,8 @@ def test_validation_page_temporarily_rewrites_val_split_for_dataset_val(monkeypa
         ]
     ) + "\n"
     data_path.write_text(original_yaml, encoding="utf-8")
-    settings["validation"]["model_path"] = str(model_path)
-    settings["validation"]["data"] = str(data_path)
+    settings.validation.model_path = str(model_path)
+    settings.validation.data = str(data_path)
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),

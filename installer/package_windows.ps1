@@ -67,13 +67,34 @@ try {
 
     $BaseVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "base-runtime-models-version.txt") -Raw).Trim()
     $BaseArchive = Join-Path $InstallerOutputDir "YOLOTool_BaseEnv_${BaseVersion}.7z"
+    $BaseAppRoot = Join-Path $Root "dist\YOLOTool"
+    $BaseArchiveCurrent = $false
+    if ($BuildBaseRuntimeModels -and -not $Clean -and
+        (Test-Path -LiteralPath $BaseArchive) -and
+        (Test-Path -LiteralPath (Join-Path $BaseAppRoot "_internal"))) {
+        $BaseCacheCheck = & pixi run -e release-base python -m src.devtools.base_runtime_package `
+            --app-root $BaseAppRoot `
+            --staging-root (Join-Path $Root "dist\packages\BaseRuntimeModels") `
+            --output-dir $InstallerOutputDir `
+            --version $BaseVersion `
+            --runtime-version $RuntimeVersion `
+            --check-current
+        if ($LASTEXITCODE -eq 0 -and (($BaseCacheCheck -join "").Trim() -eq "true")) {
+            $BaseArchiveCurrent = $true
+            Write-Step "Base runtime archive is unchanged; reusing cached archive."
+        }
+    }
     if (-not $BuildBaseRuntimeModels -and -not (Test-Path -LiteralPath $BaseArchive)) {
         throw "Required base archive is missing: $BaseArchive. Run the full packaging entry first."
     }
 
-    $ProgramOnly = -not $BuildBaseRuntimeModels
+    $ProgramOnly = -not $BuildBaseRuntimeModels -or $BaseArchiveCurrent
     if ($ProgramOnly) {
-        Write-Step "[1/5] Building program-only EXE and Program staging..."
+        if ($BaseArchiveCurrent) {
+            Write-Step "[1/5] Building program-only EXE and reusing runtime archives..."
+        } else {
+            Write-Step "[1/5] Building program-only EXE and Program staging..."
+        }
     } else {
         Write-Step "[1/5] Building frozen application and Program staging..."
     }
@@ -86,11 +107,15 @@ try {
     }
 
     if ($BuildBaseRuntimeModels) {
-        Write-Step "[2/5] Building base runtime and models archive..."
-        & (Join-Path $PSScriptRoot "build_base_runtime_models.ps1") `
-            -Clean:$Clean -RuntimeVersion $RuntimeVersion
-        if ($LASTEXITCODE -ne 0) {
-            throw "Base runtime and models build failed with exit code $LASTEXITCODE"
+        if ($BaseArchiveCurrent) {
+            Write-Step "[2/5] Reusing unchanged base runtime and models archive..."
+        } else {
+            Write-Step "[2/5] Building base runtime and models archive..."
+            & (Join-Path $PSScriptRoot "build_base_runtime_models.ps1") `
+                -Clean:$Clean -RuntimeVersion $RuntimeVersion
+            if ($LASTEXITCODE -ne 0) {
+                throw "Base runtime and models build failed with exit code $LASTEXITCODE"
+            }
         }
     }
     if ($BuildModelExportRuntime) {

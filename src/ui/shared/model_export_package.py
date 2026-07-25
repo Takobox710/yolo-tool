@@ -95,7 +95,7 @@ class ModelExportPackageDropMixin:
             accepts_progress=True,
         )
         self.model_export_install_worker = worker
-        workers = getattr(self.app, "workers", None)
+        workers = getattr(self.context, "workers", None)
         if isinstance(workers, list):
             workers.append(worker)
         worker.finished_with_payload.connect(self._apply_model_export_install_result)
@@ -123,7 +123,7 @@ class ModelExportPackageDropMixin:
             hook(payload)
 
     def _clear_model_export_install_worker(self, worker: Worker) -> None:
-        workers = getattr(self.app, "workers", None)
+        workers = getattr(self.context, "workers", None)
         if isinstance(workers, list) and worker in workers:
             workers.remove(worker)
         if self.model_export_install_worker is worker:

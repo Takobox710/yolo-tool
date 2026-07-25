@@ -24,10 +24,14 @@ if ($Clean) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$ForceArgs = @()
+if ($Clean) {
+    $ForceArgs += "--force"
+}
 pixi run -e export-full python -m src.devtools.model_export_package `
     --staging-root $StagingRoot `
     --output-dir $OutputDir `
-    --version $Version
+    --version $Version @ForceArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Model export archive build failed with exit code $LASTEXITCODE"
 }

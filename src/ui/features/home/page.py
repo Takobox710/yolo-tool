@@ -6,9 +6,7 @@ from src.ui.shared.page_base import BasePage
 
 
 class HomePage(HomePageDataMixin, BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self._home_summary_request_id = 0
         build_home_layout(self)
-
-

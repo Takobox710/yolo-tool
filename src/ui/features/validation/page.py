@@ -12,13 +12,15 @@ from src.ui.shared.workers.detection import DetectionWorker
 
 
 class ValidatePage(ValidationPageActionsMixin, BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self.detect_results = []
         self.detect_index = -1
         self.detect_stop = threading.Event()
         self.detect_worker = None
         self.is_detecting = False
+        self._validation_process = None
+        self._validation_lease = None
         self.detection_started_for_source = False
         self.is_batch_detection = False
         self._all_model_paths: list[Path] = []
@@ -38,12 +40,10 @@ class ValidatePage(ValidationPageActionsMixin, BasePage):
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(150)
         self.poll_timer.timeout.connect(self.poll_validation_queue)
-        build_validation_layout(self, app)
+        build_validation_layout(self, context)
         for child in self.findChildren(QWidget):
             child.installEventFilter(self)
 
         self.mode_combo.currentTextChanged.connect(self.update_source_mode)
         self.update_source_mode(self.mode_combo.currentText())
         self.update_detection_button_text()
-
-

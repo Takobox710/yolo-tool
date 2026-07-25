@@ -20,7 +20,7 @@ class AnnotationPersistenceMixin:
         )
         if names == self.class_names():
             return
-        self.app.settings.setdefault("dataset", {})["class_names"] = names
+        self.context.settings.dataset.class_names = names
         self.save_settings()
         self._refresh_class_state()
 
@@ -44,10 +44,10 @@ class AnnotationPersistenceMixin:
                 image_size,
                 json_path,
                 self.class_names(),
-                self.app.settings.get("annotation", {}).get("line_expand_pixels", 10),
+                self.context.settings.annotation.line_expand_pixels,
             )
             if class_names != self.class_names():
-                self.app.settings.setdefault("dataset", {})["class_names"] = class_names
+                self.context.settings.dataset.class_names = class_names
                 self.save_settings()
                 self._refresh_class_state()
         else:
@@ -71,7 +71,7 @@ class AnnotationPersistenceMixin:
         should_save_yolo = (
             bool(save_yolo)
             if save_yolo is not None
-            else (self.annotation_settings().get("auto_convert_yolo", False) or force)
+            else (self.annotation_settings().auto_convert_yolo or force)
         )
         if not self.dirty and not force and not should_save_yolo:
             return False
@@ -112,10 +112,10 @@ class AnnotationPersistenceMixin:
         annotation_settings = self.annotation_settings()
         self._update_current_file_list_item()
         self._refresh_manual_action_buttons()
-        if annotation_settings.get("auto_save", True) or annotation_settings.get("auto_convert_yolo", False):
+        if annotation_settings.auto_save or annotation_settings.auto_convert_yolo:
             self.save_current(
-                save_json=annotation_settings.get("auto_save", True),
-                save_yolo=annotation_settings.get("auto_convert_yolo", False),
+                save_json=annotation_settings.auto_save,
+                save_yolo=annotation_settings.auto_convert_yolo,
             )
 
     def _annotation_file_paths(self, image_path: Path) -> tuple[Path, Path]:

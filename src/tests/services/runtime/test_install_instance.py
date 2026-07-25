@@ -38,28 +38,38 @@ def test_extensions_are_scoped_by_install_instance(tmp_path):
     second = instance_extensions_root(tmp_path / "app-two", local_app_data=local)
 
     assert first != second
-    assert first.parent.name != second.parent.name
-    assert first.name == second.name == "extensions"
+    assert first == tmp_path / "app-one" / "_internal" / "extensions"
+    assert second == tmp_path / "app-two" / "_internal" / "extensions"
 
 
 def test_legacy_extension_migration_is_atomic_and_does_not_replace_target(tmp_path):
     from src.services.runtime.install_instance import (
         instance_extensions_root,
+        legacy_instance_extensions_root,
         legacy_extensions_root,
         migrate_legacy_extensions,
     )
 
     app_root = tmp_path / "app"
     local = tmp_path / "local"
-    legacy = legacy_extensions_root(local)
+    legacy = legacy_instance_extensions_root(app_root, local_app_data=local)
     legacy.mkdir(parents=True)
     (legacy / "legacy.txt").write_text("legacy", encoding="utf-8")
 
     assert migrate_legacy_extensions(app_root, local_app_data=local) is True
-    target = instance_extensions_root(app_root, local_app_data=local)
+    target = instance_extensions_root(app_root)
     assert (target / "legacy.txt").read_text(encoding="utf-8") == "legacy"
     assert not legacy.exists()
 
     legacy.mkdir(parents=True)
     assert migrate_legacy_extensions(app_root, local_app_data=local) is False
     assert legacy.exists()
+
+    global_legacy = legacy_extensions_root(local)
+    global_legacy.mkdir(parents=True)
+    (global_legacy / "legacy.txt").write_text("legacy", encoding="utf-8")
+    fresh_app = tmp_path / "fresh-app"
+    assert migrate_legacy_extensions(fresh_app, local_app_data=local) is True
+    assert (instance_extensions_root(fresh_app) / "legacy.txt").read_text(
+        encoding="utf-8"
+    ) == "legacy"

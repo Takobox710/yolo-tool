@@ -12,6 +12,18 @@ from typing import Callable
 
 import py7zr
 
+from src.services.model_export.manifest import (
+    EXTENSION_PACKAGE_ID,
+    EXTENSION_SCHEMA_VERSION,
+    EXPORT_PROTOCOL_VERSION,
+    PACKAGE_MANIFEST_NAME,
+    ExtensionPackageError,
+    archive_fingerprint,
+    load_json,
+    read_7z_manifest,
+    safe_relative_path,
+    validate_extension_manifest,
+)
 from src.services.model_export.types import InstalledExtension
 from src.services.model_export.archive_extract import (
     ArchiveExtractionError,
@@ -23,18 +35,10 @@ from src.services.model_export.verification import verify_installed_extension
 from src.services.runtime.install_instance import instance_extensions_root
 
 
-EXTENSION_SCHEMA_VERSION = 1
-EXPORT_PROTOCOL_VERSION = 1
-EXTENSION_PACKAGE_ID = "yolo-tool-model-export-runtime"
 EXTENSION_DIR_NAME = "model-export-runtime"
 ACTIVE_MANIFEST_NAME = "active.json"
-PACKAGE_MANIFEST_NAME = "extension-manifest.json"
 PROBE_EXTENSION_ROOT_ENV = "YOLO_TOOL_MODEL_EXPORT_CANDIDATE_ROOT"
 _INSPECTION_CACHE: dict[tuple[str, int, int], dict] = {}
-
-
-class ExtensionPackageError(ValueError):
-    """Raised when a model export runtime package is invalid."""
 
 
 def _base_root(base_root: Path | None) -> Path:
@@ -43,66 +47,6 @@ def _base_root(base_root: Path | None) -> Path:
 
 def extension_root(base_root: Path | None = None) -> Path:
     return _base_root(base_root) / EXTENSION_DIR_NAME
-
-
-def _load_json(path: Path) -> dict:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ExtensionPackageError(f"无法读取环境包清单：{path.name}") from exc
-    if not isinstance(payload, dict):
-        raise ExtensionPackageError(f"环境包清单格式无效：{path.name}")
-    return payload
-
-
-def _archive_fingerprint(path: Path) -> tuple[str, int, int]:
-    stat_result = path.stat()
-    return (str(path.resolve()).lower(), stat_result.st_size, stat_result.st_mtime_ns)
-
-
-def _safe_relative_path(value: str) -> Path:
-    normalized = str(value).replace("\\", "/")
-    path = Path(normalized)
-    if (
-        not normalized
-        or path.is_absolute()
-        or not path.parts
-        or ":" in path.parts[0]
-        or any(part in {"", ".", ".."} for part in path.parts)
-    ):
-        raise ExtensionPackageError(f"环境包包含不安全路径：{value}")
-    return path
-
-
-def validate_extension_manifest(manifest: dict) -> dict:
-    if manifest.get("schema_version") != EXTENSION_SCHEMA_VERSION:
-        raise ExtensionPackageError("环境包清单版本不受支持。")
-    if manifest.get("package_id") != EXTENSION_PACKAGE_ID:
-        raise ExtensionPackageError("选择的文件不是模型转换环境包。")
-    if manifest.get("protocol_version") != EXPORT_PROTOCOL_VERSION:
-        raise ExtensionPackageError("环境包协议与当前程序不兼容。")
-    if manifest.get("platform") != "win-64":
-        raise ExtensionPackageError("环境包不是 Windows x64 版本。")
-    for key in ("version", "package_dir"):
-        if not str(manifest.get(key) or "").strip():
-            raise ExtensionPackageError(f"环境包清单缺少字段：{key}")
-    _safe_relative_path(str(manifest["package_dir"]))
-    files = manifest.get("files")
-    if not isinstance(files, dict) or not files:
-        raise ExtensionPackageError("环境包清单没有文件哈希。")
-    for relative, digest in files.items():
-        _safe_relative_path(str(relative))
-        digest_text = str(digest)
-        if len(digest_text) != 64 or any(
-            character not in "0123456789abcdefABCDEF" for character in digest_text
-        ):
-            raise ExtensionPackageError(f"环境包文件哈希无效：{relative}")
-    dll_dirs = manifest.get("dll_dirs", ())
-    if not isinstance(dll_dirs, list):
-        raise ExtensionPackageError("环境包 DLL 目录清单无效。")
-    for relative in dll_dirs:
-        _safe_relative_path(str(relative))
-    return manifest
 
 
 def _installed_from_manifest(root: Path, manifest: dict) -> InstalledExtension:
@@ -155,7 +99,7 @@ def load_installed_extension(base_root: Path | None = None) -> InstalledExtensio
 
 def load_extension_at(root: Path) -> InstalledExtension:
     root = Path(root)
-    manifest = validate_extension_manifest(_load_json(root / PACKAGE_MANIFEST_NAME))
+    manifest = validate_extension_manifest(load_json(root / PACKAGE_MANIFEST_NAME))
     installed = _installed_from_manifest(root, manifest)
     if not installed.package_dir.is_dir():
         raise ExtensionPackageError("模型转换环境缺少 packages 目录。")
@@ -188,12 +132,6 @@ def is_extension_package_path(path: str | Path) -> bool:
     return value.is_file() and value.suffix.lower() in {".7z", ".zip"}
 
 
-from src.services.model_export.inspection import (  # noqa: E402
-    _read_7z_manifest,
-    inspect_extension_package_fast,
-)
-
-
 def _is_zip_symlink(info: zipfile.ZipInfo) -> bool:
     return stat.S_IFMT(info.external_attr >> 16) == stat.S_IFLNK
 
@@ -212,7 +150,7 @@ def _inspect_zip(archive_path: Path) -> dict:
             relative = info.filename.replace("\\", "/").rstrip("/")
             if not relative:
                 continue
-            _safe_relative_path(relative)
+            safe_relative_path(relative)
             if _is_zip_symlink(info):
                 raise ExtensionPackageError(f"环境包不允许符号链接：{relative}")
             if info.is_dir():
@@ -239,7 +177,7 @@ def _inspect_7z(archive_path: Path, manifest: dict | None = None) -> dict:
         relative = str(info.filename).replace("\\", "/").rstrip("/")
         if not relative:
             continue
-        _safe_relative_path(relative)
+        safe_relative_path(relative)
         if info.is_symlink:
             raise ExtensionPackageError(f"环境包不允许符号链接：{relative}")
         if info.is_directory:
@@ -249,7 +187,7 @@ def _inspect_7z(archive_path: Path, manifest: dict | None = None) -> dict:
         names.add(relative)
     if PACKAGE_MANIFEST_NAME not in names:
         raise ExtensionPackageError("压缩包缺少合法的环境包清单。")
-    manifest = manifest or _read_7z_manifest(archive_path)
+    manifest = manifest or read_7z_manifest(archive_path)
     expected = set(manifest["files"])
     extra = names - expected - {PACKAGE_MANIFEST_NAME}
     if extra:
@@ -265,7 +203,7 @@ def inspect_extension_package(package_path: str | Path) -> dict:
     if not is_extension_package_path(package_path):
         raise ExtensionPackageError("请选择 .7z 或 .zip 模型转换环境包。")
     try:
-        key = _archive_fingerprint(package_path)
+        key = archive_fingerprint(package_path)
     except OSError as exc:
         raise ExtensionPackageError("无法读取模型转换环境包信息。") from exc
     cached = _INSPECTION_CACHE.get(key)
@@ -294,9 +232,9 @@ def _install_archive_package(
     try:
         if progress is not None:
             progress("检查压缩包", 5)
-        fingerprint = _archive_fingerprint(archive_path)
+        fingerprint = archive_fingerprint(archive_path)
         manifest = inspect_extension_package(archive_path)
-        if _archive_fingerprint(archive_path) != fingerprint:
+        if archive_fingerprint(archive_path) != fingerprint:
             raise ExtensionPackageError("模型转换环境包在安装前发生变化，请重新选择。")
         if progress is not None:
             progress("读取环境包清单", 5)

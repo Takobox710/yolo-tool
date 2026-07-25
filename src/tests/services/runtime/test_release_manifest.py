@@ -160,3 +160,45 @@ def test_base_runtime_archive_excludes_program_and_uses_expected_name(tmp_path):
     assert "_internal/runtime.dll" in names
     assert "data/models/yolo26n.pt" in names
     assert "YOLOTool.exe" not in names
+
+
+def test_base_runtime_archive_reuses_cache_until_runtime_inputs_change(tmp_path):
+    from src.devtools.release_package import build_base_runtime_archive
+
+    app_root = tmp_path / "app"
+    (app_root / "_internal").mkdir(parents=True)
+    (app_root / "data" / "models").mkdir(parents=True)
+    (app_root / "_internal" / "runtime.dll").write_bytes(b"runtime")
+    for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt"):
+        (app_root / "data" / "models" / name).write_bytes(b"model")
+
+    staging = tmp_path / "staging"
+    output = tmp_path / "output"
+    build_base_runtime_archive(
+        app_root,
+        staging,
+        output,
+        package_version="v1",
+        runtime_version="runtime-1",
+    )
+    marker = staging / "keep-on-cache-hit.txt"
+    marker.write_text("cached", encoding="utf-8")
+
+    build_base_runtime_archive(
+        app_root,
+        staging,
+        output,
+        package_version="v1",
+        runtime_version="runtime-1",
+    )
+    assert marker.exists()
+
+    (app_root / "_internal" / "runtime.dll").write_bytes(b"changed")
+    build_base_runtime_archive(
+        app_root,
+        staging,
+        output,
+        package_version="v1",
+        runtime_version="runtime-1",
+    )
+    assert not marker.exists()

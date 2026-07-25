@@ -52,15 +52,15 @@ class AnnotationPage(
     AnnotationSelectionMixin,
     BasePage,
 ):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self.image_items: list[Path] = []
         self.current_index = -1
         self.dirty = False
         self.current_json_path: Path | None = None
         self.current_yolo_path: Path | None = None
         self.current_image_path: Path | None = None
-        self.output_mode = self.app.settings.get("task", {}).get("mode", "detect")
+        self.output_mode = self.context.settings.task.mode
         self.current_class_id = 0
         self._annotation_statuses: dict[str, bool] = {}
         self._file_list_rendered_count = 0
@@ -126,19 +126,19 @@ class AnnotationPage(
         self.refresh_file_list()
 
     def path_from_setting(self, key: str) -> Path:
-        return Path(self.app.settings["paths"][key])
+        return Path(getattr(self.context.settings.paths, key))
 
-    def annotation_settings(self) -> dict:
-        return self.app.settings.get("annotation", {})
+    def annotation_settings(self):
+        return self.context.settings.annotation
 
     def labelme_auto_save_enabled(self) -> bool:
-        return bool(self.annotation_settings().get("auto_save", True))
+        return bool(self.annotation_settings().auto_save)
 
     def yolo_auto_save_enabled(self) -> bool:
-        return bool(self.annotation_settings().get("auto_convert_yolo", False))
+        return bool(self.annotation_settings().auto_convert_yolo)
 
     def show_yolo_save_in_context_menu(self) -> bool:
-        return bool(self.annotation_settings().get("show_yolo_save_in_context_menu", False))
+        return bool(self.annotation_settings().show_yolo_save_in_context_menu)
 
     def _refresh_path_labels(self) -> None:
         return None
@@ -156,7 +156,7 @@ class AnnotationPage(
     def change_output_mode(self, text: str) -> None:
         mode = text if text in {"detect", "obb"} else "detect"
         self.output_mode = mode
-        self.app.settings.setdefault("task", {})["mode"] = mode
+        self.context.settings.task.mode = mode
         self.save_settings()
         if self.current_json_path is not None:
             self.dirty = True
@@ -207,7 +207,7 @@ class AnnotationPage(
 
     def refresh_annotation_status_bar(self, *, page_visible: bool | None = None) -> None:
         show_status = bool(
-            self.app.settings.get("annotation", {}).get("show_canvas_status", True)
+            self.context.settings.annotation.show_canvas_status
         )
         if show_status:
             self.annotation_status_bar.showMessage(

@@ -51,16 +51,3 @@ def history_time_sort_key(value: object) -> float:
 def parse_padding_text(text: str) -> int:
     value = str(text or "").strip()
     return int(value) if value else 0
-
-
-_resolve_project_path = resolve_project_path
-_display_project_path = display_project_path
-_relative_path = relative_project_path
-_simplified_model_path = simplified_model_path
-_home_column_widths = home_column_widths
-_history_model_sort_key = history_model_sort_key
-_history_number_sort_key = history_number_sort_key
-_history_time_sort_key = history_time_sort_key
-_parse_padding_text = parse_padding_text
-
-

@@ -39,18 +39,20 @@ class ModelExportTab(
     ModelExportStateMixin,
     BasePage,
 ):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self.is_exporting = False
         self.stop_requested = False
         self.log_queue: Queue | None = None
         self.result_path: Path | None = None
+        self._export_process = None
+        self._export_lease = None
         self._model_display_paths: dict[str, Path] = {}
         self.setup_model_export_package_drop()
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.poll_export_queue)
 
-        settings = app.settings["model_export"]
+        settings = context.settings.model_export
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
@@ -60,7 +62,7 @@ class ModelExportTab(
 
         self.model_box, self.model_combo = self.stacked_combo_field(
             "源模型",
-            self._model_display_path(settings.get("model_path", "")),
+            self._model_display_path(settings.model_path),
             [],
             self.choose_model,
             "选择 .pt 模型",
@@ -68,11 +70,11 @@ class ModelExportTab(
         )
         self.output_box, self.output_edit = self.path_field(
             "输出目录",
-            settings["output_dir"],
+            settings.output_dir,
             self.choose_dir,
             "选择模型转换结果目录",
         )
-        current_format = resolve_export_format(settings.get("format", "onnx")).display_name
+        current_format = resolve_export_format(settings.format).display_name
         self.format_box, self.format_combo = self.combo_field(
             "目标格式",
             current_format,
@@ -80,13 +82,13 @@ class ModelExportTab(
         )
         self.imgsz_box, self.imgsz_edit = self.field(
             "输入尺寸",
-            str(settings.get("imgsz", 640)),
+            str(settings.imgsz),
             placeholder="例如 640",
             help_text="第一版导出固定 batch=1 和静态方形输入。",
         )
         self.simplify_box, self.simplify_check = self.checkbox_with_help(
             "简化 ONNX",
-            bool(settings.get("simplify", True)),
+            settings.simplify,
             "仅用于 ONNX 和 TensorRT 的中间 ONNX 图。",
         )
         grid.addWidget(self.model_box, 0, 0)
@@ -161,9 +163,7 @@ class ModelExportTab(
 
     def refresh_model_choices(self):
         current = self.model_combo.currentText()
-        show_last = self.app.settings.get("features", {}).get(
-            "show_last_training_models", False
-        )
+        show_last = self.context.settings.features.show_last_training_models
         paths = find_export_model_paths(
             self.project_root(), show_last_training_models=show_last
         )
@@ -282,7 +282,17 @@ class ModelExportTab(
         self.log.clear()
         self.log.append(f"开始转换：{config.model_path.name} -> {resolve_export_format(config.export_format).display_name}")
         self.log_queue = Queue()
-        self.app.export_handle = spawn_structured_process(command, str(ROOT), self.log_queue)
+        process = spawn_structured_process(command, str(ROOT), self.log_queue)
+        lease = self.context.tasks.begin(
+            "model_export",
+            generation=self.context.generation,
+            stop=lambda: stop_process(process),
+        )
+        if lease is None:
+            stop_process(process)
+            return
+        self._export_process = process
+        self._export_lease = lease
         self.is_exporting = True
         self.stop_requested = False
         self._set_running_state(True)
@@ -312,7 +322,7 @@ class ModelExportTab(
             return
         self.stop_requested = True
         self.stop_btn.setEnabled(False)
-        stop_process(self.app.export_handle)
+        stop_process(self._export_process)
         self.log.append("已请求停止转换。")
 
     def finish_export(self, exit_code: int):
@@ -330,7 +340,9 @@ class ModelExportTab(
         self.is_exporting = False
         self.stop_requested = False
         self.log_queue = None
-        self.app.export_handle = None
+        self.context.tasks.finish(self._export_lease)
+        self._export_lease = None
+        self._export_process = None
         self._set_running_state(False)
         self.update_environment_status()
 

@@ -20,6 +20,8 @@ Windows 冻结程序使用 PyInstaller `onedir`，正式发布拆成三个独立
 
 附加包按 Python distribution 文件清单增量收集，只复制 `tensorrt`、`tensorrt-cu13`、`tensorrt-cu13-libs` 和 `tensorrt-cu13-bindings`，不复制 Python、Torch、CUDA、Ultralytics、ONNX、ONNX Runtime、OpenCV 或 PySide6，也不使用宽泛的 `collect_all(...)`。
 
+`installer/` 中的脚本保持按发布层次拆分：`build_windows.ps1` 负责冻结程序，两个 `build_*runtime*.ps1` 分别负责基础包和 TensorRT 附加包，`package_windows.ps1` 负责编排和生成安装器。完整发布直接使用 `-BuildBaseRuntimeModels -BuildModelExportRuntime`，程序更新则省略这两个构建开关并复用已有环境包。基础包和附加包会在 `installer/output/` 保存轻量缓存指纹；重复构建时按输入文件的路径、大小、修改时间和包版本判断是否复用归档，基础包命中缓存时还会跳过完整 PyInstaller 冻结，只构建程序-only 更新包。版本文本文件分别表达基础包、附加包和运行时协议版本，不能合并为单一版本号。PyInstaller 自定义 hook 只保留 Torch 收集 hook 和程序-only 外置运行时 hook。
+
 ## 构建命令
 
 只构建冻结程序和 Program staging：
@@ -55,10 +57,10 @@ powershell -ExecutionPolicy Bypass -File installer\build_model_export_runtime.ps
 完整发布对应的 PowerShell 命令为：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
+powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
 ```
 
-程序更新入口要求当前版本基础包已经存在，否则会明确报错并停止；附加包不存在时仍可生成程序安装器。PowerShell 下也可单独使用 `-SkipBaseRuntimeModels` 或 `-SkipModelExportRuntime`。旧 `Full`、`AppUpdate`、`RuntimeFull` 参数保留一个过渡周期，输出弃用警告后转发到 `Program`。
+程序更新入口要求当前版本基础包已经存在，否则会明确报错并停止；附加包不存在时仍可生成程序安装器。PowerShell 下也可单独使用 `-SkipBaseRuntimeModels` 或 `-SkipModelExportRuntime`。默认完整命令会复用未变化的运行包，不会因为重复执行而再次复制、哈希和压缩数 GB 的运行时；`-Clean` 用于强制完整重建，并清理对应的冻结输出、staging 和归档。压缩参数保持基础包 7-Zip `mx=9`、附加包极限 LZMA2 不变。旧 `Full`、`AppUpdate`、`RuntimeFull` 参数保留一个过渡周期，输出弃用警告后转发到 `Program`。
 
 `installer/base-runtime-models-version.txt`、`runtime-version.txt` 和 `model-export-runtime-version.txt` 分别控制基础包、运行时兼容协议和附加包版本。当前两个包版本均为 `v1`，运行时协议为 `runtime-1`；只有对应内容变化时才提升版本。
 
@@ -78,15 +80,17 @@ powershell -ExecutionPolicy Bypass -File installer\打包程序.ps1
 
 Program 与基础环境先进入 `{app}\.install-staging/`。开始解压基础环境时安装器显示“正在解压本体环境和模型”的平滑进度提示；由于 Inno 的外部归档进度按大文件完成边界更新，百分比不再作为逐字节速度指示。旧程序和环境以同卷原子重命名进入 `.install-backup/`，新文件切换后执行 `YOLOTool.exe --runtime-probe`；任何必选步骤失败都会恢复旧程序、旧环境和被覆盖的官方模型。安装清单统一存放在 `{app}\_internal\yolotool_metadata\`，读取时兼容旧根目录并在升级成功后移除旧副本。官方模型按清单合并更新，`yolo26n.pt` 还会复制一份到应用根目录作为受管兼容副本，用户自行加入 `data/models/` 的其他文件不参与替换。
 
-每个实例的 `install-instance.ini` 写入 `_internal\yolotool_metadata\`。附加环境在主事务成功后通过隐藏 CLI 安装到：
+每个实例的 `install-instance.ini` 写入 `_internal\yolotool_metadata\`。附加环境在主事务成功后通过隐藏 CLI 安装到当前程序目录：
 
 ```text
-%LOCALAPPDATA%\YOLOTool\instances\<实例ID>\extensions\model-export-runtime\
+{app}\_internal\extensions\model-export-runtime\
 ```
 
-升级旧唯一实例时可把旧全局扩展目录原子迁入实例目录；并行安装不会复用其他实例扩展。附加包失败不撤销已经成功的程序和基础环境更新。
+升级旧实例时可把 `%LOCALAPPDATA%\YOLOTool\instances\<实例ID>\extensions\` 或旧全局扩展目录原子迁入当前程序目录；基础环境替换 `_internal` 时会临时保留扩展目录。附加包失败不撤销已经成功的程序和基础环境更新。
 
 ## 卸载与数据
+
+隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注和运行时维护划分的 handler；handler 只负责参数、服务调用、结构化输出和退出码。`src/train_cli.py` 保留懒加载 `run_*` 兼容转发，冻结态与开发态继续使用同一命令协议。
 
 安装提交前的 `YOLOTool.exe --runtime-probe` 只读取程序清单和 `_internal` 基础环境清单，比较 `required_runtime_version` 与 `runtime_version`；不导入 Torch、PySide6、ONNX、ONNX Runtime、Ultralytics 或 OpenCV。附加包后台安装的解压进度范围为 5%-95%。
 

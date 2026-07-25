@@ -28,12 +28,16 @@ if ($Clean) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$ForceArgs = @()
+if ($Clean) {
+    $ForceArgs += "--force"
+}
 pixi run -e release-base python -m src.devtools.base_runtime_package `
     --app-root $AppRoot `
     --staging-root $StagingRoot `
     --output-dir $OutputDir `
     --version $Version `
-    --runtime-version $RuntimeVersion
+    --runtime-version $RuntimeVersion @ForceArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Base runtime and models archive build failed with exit code $LASTEXITCODE"
 }

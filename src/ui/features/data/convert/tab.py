@@ -23,13 +23,13 @@ from src.shared.qt import (
 )
 
 class ConvertTab(BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
-        paths = app.settings["paths"]
-        dataset = app.settings["dataset"]
+        paths = context.settings.paths
+        dataset = context.settings.dataset
 
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
@@ -41,25 +41,25 @@ class ConvertTab(BasePage):
         left_grid.setVerticalSpacing(10)
         self.images_box, self.images_edit = self.path_field(
             "图片目录",
-            paths["images_dir"],
+            paths.images_dir,
             self.choose_dir,
             "选择待转换的图片目录",
         )
         self.annotations_box, self.annotations_edit = self.path_field(
             "Labelme 标注目录",
-            paths["annotations_dir"],
+            paths.annotations_dir,
             self.choose_dir,
             "选择 Labelme 标注目录",
         )
         self.yolo_labels_box, self.yolo_labels_edit = self.path_field(
             "YOLO 标注目录",
-            paths["labels_dir"],
+            paths.labels_dir,
             self.choose_dir,
             "选择已有 YOLO 标注目录",
         )
         self.output_box, self.output_edit = self.path_field(
             "输出目录",
-            paths["dataset_dir"],
+            paths.dataset_dir,
             self.choose_dir,
             "选择数据集输出目录",
         )
@@ -73,7 +73,7 @@ class ConvertTab(BasePage):
         controls_row.setSpacing(12)
         labelme_box, self.labelme_check = self.checkbox_with_help(
             "Labelme 转 YOLO",
-            app.settings.get("conversion", {}).get("use_labelme", True),
+            context.settings.conversion.use_labelme,
             help_text="开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。",
         )
         self.labelme_check.stateChanged.connect(self.refresh_mode_state)
@@ -81,7 +81,7 @@ class ConvertTab(BasePage):
         controls_row.addStretch(1)
         backup_box, self.backup_yolo_check = self.checkbox_with_help(
             "备份标注文件",
-            app.settings.get("conversion", {}).get("backup_yolo_files", False),
+            context.settings.conversion.backup_yolo_files,
             help_text="开启后会把本次转换生成的 YOLO 标注文件和 data.yaml 备份到 data/old 下独立文件夹中，支持多次备份共存。",
         )
         controls_row.addWidget(backup_box)
@@ -99,32 +99,32 @@ class ConvertTab(BasePage):
         param_grid.setVerticalSpacing(10)
         self.task_box, self.task_combo = self.hint_combo_field(
             "任务类型",
-            app.settings["task"]["mode"],
+            context.settings.task.mode,
             ["detect", "obb"],
             "OBB 输出旋转框标签；detect 输出普通矩形框标签。",
         )
-        ratios = dataset["split_ratios"]
+        ratios = dataset.split_ratios
         self.train_ratio_box, self.train_ratio_edit = self.hint_field(
             "训练",
-            str(ratios["train"]),
+            str(ratios.train),
             "训练集比例，三项合计必须为 1.0。",
             placeholder="0.0 - 1.0",
         )
         self.val_ratio_box, self.val_ratio_edit = self.hint_field(
             "验证",
-            str(ratios["val"]),
+            str(ratios.val),
             "验证集比例，用于训练中评估模型。",
             placeholder="0.0 - 1.0",
         )
         self.test_ratio_box, self.test_ratio_edit = self.hint_field(
             "测试",
-            str(ratios["test"]),
+            str(ratios.test),
             "测试集比例，用于最终检测泛化效果。",
             placeholder="0.0 - 1.0",
         )
         self.seed_box, self.seed_edit = self.hint_field(
             "随机种子",
-            str(dataset["random_seed"]),
+            str(dataset.random_seed),
             "控制随机划分的可复现性；同一数据和种子会得到相同划分。",
             placeholder="例如 42",
         )
@@ -137,7 +137,7 @@ class ConvertTab(BasePage):
             help_text="仅在 OBB + Labelme line 标注时生效，按该半宽把直线扩展成旋转矩形。",
             object_name="fieldLabel",
         )
-        self.line_edit = QLineEdit(str(dataset["line_to_obb"]["half_width"]))
+        self.line_edit = QLineEdit(str(dataset.line_to_obb.half_width))
         self.line_edit.setPlaceholderText("仅 OBB + Labelme line")
         line_layout.addWidget(self.line_caption)
         line_layout.addWidget(self.line_edit)
@@ -266,9 +266,7 @@ class ConvertTab(BasePage):
             value = float(text)
         except ValueError:
             return
-        self.app.settings.setdefault("dataset", {}).setdefault("split_ratios", {})[
-            key
-        ] = value
+        setattr(self.context.settings.dataset.split_ratios, key, value)
         self.save_settings()
 
     def _persist_seed(self, text: str):
@@ -276,7 +274,7 @@ class ConvertTab(BasePage):
             value = int(text)
         except ValueError:
             return
-        self.app.settings.setdefault("dataset", {})["random_seed"] = value
+        self.context.settings.dataset.random_seed = value
         self.save_settings()
 
     def _persist_line_width(self, text: str):
@@ -284,9 +282,7 @@ class ConvertTab(BasePage):
             value = float(text)
         except ValueError:
             return
-        self.app.settings.setdefault("dataset", {}).setdefault("line_to_obb", {})[
-            "half_width"
-        ] = value
+        self.context.settings.dataset.line_to_obb.half_width = value
         self.save_settings()
 
     def ratios(self) -> tuple[float, float, float]:
@@ -299,7 +295,7 @@ class ConvertTab(BasePage):
     def managed_class_names(self) -> list[str]:
         return [
             str(name).strip()
-            for name in self.app.settings.get("dataset", {}).get("class_names", [])
+            for name in self.context.settings.dataset.class_names
             if str(name).strip()
         ]
 
@@ -314,7 +310,7 @@ class ConvertTab(BasePage):
                 else self.yolo_labels_edit
             ),
             output_dir=self.path_from_edit(self.output_edit),
-            labels_dir=Path(self.app.settings["paths"]["labels_dir"]),
+            labels_dir=Path(self.context.settings.paths.labels_dir),
             class_names=self.managed_class_names(),
             source_format="labelme" if self.labelme_check.isChecked() else "yolo",
             train_ratio=train,
@@ -326,7 +322,7 @@ class ConvertTab(BasePage):
             line_half_width=float(self.line_edit.text()),
             backup_yolo_files=self.backup_yolo_check.isChecked(),
             class_name_mapping=dict(
-                self.app.settings.get("conversion", {}).get("class_name_mappings", {})
+                self.context.settings.conversion.class_name_mappings
             ),
         )
 
@@ -341,7 +337,7 @@ class ConvertTab(BasePage):
             return
         dialog = ClassMappingDialog(
             managed_names,
-            self.app.settings.get("conversion", {}).get("class_name_mappings", {}),
+            self.context.settings.conversion.class_name_mappings,
             self,
         )
         if dialog.exec():

@@ -5,11 +5,11 @@ from pathlib import Path
 
 from src.services.home import build_home_summary, collect_home_history_entries
 from src.ui.helpers import (
-    _history_model_sort_key,
-    _history_number_sort_key,
-    _history_time_sort_key,
-    _home_column_widths,
-    _relative_path,
+    history_model_sort_key,
+    history_number_sort_key,
+    history_time_sort_key,
+    home_column_widths,
+    relative_project_path,
 )
 from src.ui.shared.page_base import _SortItem
 from src.shared.qt import QFileDialog, QTimer, Qt
@@ -40,7 +40,7 @@ class HomePageDataMixin:
     def _apply_home_column_widths(self):
         margins = self.layout().contentsMargins()
         total_margins = margins.left() + margins.right()
-        left_width, right_width = _home_column_widths(
+        left_width, right_width = home_column_widths(
             self.width(), total_margins, self._home_grid_spacing
         )
         for card in self._home_left_cards:
@@ -72,17 +72,17 @@ class HomePageDataMixin:
         self.overview_stats[key].setToolTip(text if tooltip is None else tooltip)
 
     def on_show(self):
-        paths = self.app.settings["paths"]
-        project_root = self.app.settings["project"]["root"]
+        paths = self.context.settings.paths
+        project_root = self.context.settings.project.root
         self._set_overview_stat("project", project_root)
         self._set_overview_stat(
-            "images", _relative_path(paths["images_dir"], project_root)
+            "images", relative_project_path(paths.images_dir, project_root)
         )
         self._set_overview_stat(
-            "annotations", _relative_path(paths["annotations_dir"], project_root)
+            "annotations", relative_project_path(paths.annotations_dir, project_root)
         )
         self._set_overview_stat(
-            "result", _relative_path(paths["result_dir"], project_root)
+            "result", relative_project_path(paths.result_dir, project_root)
         )
         if not self._has_overview_stat_value("image_count"):
             self._set_overview_stat("image_count", "加载中...")
@@ -93,25 +93,23 @@ class HomePageDataMixin:
         payload_loader = lambda request_id=request_id: self._load_home_summary_payload(  # noqa: E731
             request_id
         )
-        run_background = getattr(self.app, "run_background", None)
+        run_background = getattr(self.context, "run_background", None)
         if callable(run_background):
             run_background("home_summary", payload_loader)
             return
         self.apply_home_summary(payload_loader())
 
     def _load_home_summary_payload(self, request_id: int) -> dict:
-        paths = self.app.settings["paths"]
+        paths = self.context.settings.paths
         return {
             "request_id": request_id,
             "summary": build_home_summary(
-                images_dir=Path(paths["images_dir"]),
-                annotations_dir=Path(paths["annotations_dir"]),
-                labels_dir=Path(paths["labels_dir"]),
-                dataset_dir=Path(paths["dataset_dir"]),
-                result_dir=Path(paths["result_dir"]),
-                configured_class_names=self.app.settings.get("dataset", {}).get(
-                    "class_names", []
-                ),
+                images_dir=Path(paths.images_dir),
+                annotations_dir=Path(paths.annotations_dir),
+                labels_dir=Path(paths.labels_dir),
+                dataset_dir=Path(paths.dataset_dir),
+                result_dir=Path(paths.result_dir),
+                configured_class_names=self.context.settings.dataset.class_names,
             ),
         }
 
@@ -125,9 +123,7 @@ class HomePageDataMixin:
         multi_counts = summary.get("multi_counts") or {}
         class_names = summary.get("class_names") or []
         standard_counts = summary.get("standard_counts") or {}
-        multi_class_mode = self.app.settings.get("features", {}).get(
-            "distribution_multi_class_mode", False
-        )
+        multi_class_mode = self.context.settings.features.distribution_multi_class_mode
         self.distribution_title.setText(
             "多类别标注分布" if multi_class_mode else "各类别图片分布"
         )
@@ -153,7 +149,7 @@ class HomePageDataMixin:
     def refresh_history(self):
         self._apply_history_entries(
             collect_home_history_entries(
-                Path(self.app.settings["paths"]["result_dir"])
+                Path(self.context.settings.paths.result_dir)
             )
         )
 
@@ -179,13 +175,13 @@ class HomePageDataMixin:
             for column, value in enumerate(values):
                 sort_key = float(row)
                 if column == 0:
-                    sort_key = _history_model_sort_key(train_id, model_name)
+                    sort_key = history_model_sort_key(train_id, model_name)
                 elif column == 1:
-                    sort_key = _history_number_sort_key(value)
+                    sort_key = history_number_sort_key(value)
                 elif column == 2:
-                    sort_key = _history_time_sort_key(value)
+                    sort_key = history_time_sort_key(value)
                 elif column in (3, 4, 5, 6):
-                    sort_key = _history_number_sort_key(value)
+                    sort_key = history_number_sort_key(value)
                 item = _SortItem(value, sort_key)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.history_table.setItem(row, column, item)
@@ -196,12 +192,12 @@ class HomePageDataMixin:
 
     def pick_project_root(self):
         path = QFileDialog.getExistingDirectory(
-            self, "设置项目目录", self.app.settings["project"]["root"]
+            self, "设置项目目录", self.context.settings.project.root
         )
         if path:
-            self.app.switch_project_root(path)
+            self.context.switch_project_root(path)
 
     def open_result_dir(self):
-        path = Path(self.app.settings["paths"]["result_dir"])
+        path = Path(self.context.settings.paths.result_dir)
         if path.exists():
             os.startfile(path)

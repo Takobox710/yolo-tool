@@ -32,14 +32,16 @@ from src.ui.features.training.state import (
 )
 
 class TrainPage(BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         self.edits = {}
         self.checks = {}
         self.metric_labels = {}
         self.log_queue: Queue | None = None
         self.is_training = False
         self.stop_requested = False
+        self._training_process = None
+        self._training_lease = None
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.poll_training_queue)
         self.train_status_timer = QTimer(self)
@@ -118,5 +120,3 @@ class TrainPage(BasePage):
 
     def open_result(self):
         return open_result(self)
-
-

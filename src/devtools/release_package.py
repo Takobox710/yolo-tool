@@ -14,6 +14,7 @@ from src.services.runtime.release_manifest import (
     ReleaseManifestError,
     file_hashes,
 )
+from src.devtools.package_cache import build_fingerprint, cache_matches, write_cache
 
 
 PROGRAM_PACKAGE_TYPE = "Program"
@@ -25,6 +26,31 @@ BASE_MANIFEST_NAME = "base-package-manifest.json"
 MANAGED_MODELS_NAME = "managed-models.json"
 BASE_MODEL_NAMES = ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")
 STDLIB_ARCHIVE_NAME = "python_stdlib.zip"
+
+
+def _base_runtime_fingerprint(
+    app_root: Path,
+    *,
+    package_version: str,
+    runtime_version: str,
+) -> dict:
+    app_root = Path(app_root).resolve()
+    runtime_root = app_root / "_internal"
+    files = [
+        (path.relative_to(app_root).as_posix(), path)
+        for path in runtime_root.rglob("*")
+        if path.is_file()
+    ]
+    for model_name in BASE_MODEL_NAMES:
+        model_path = app_root / "data" / "models" / model_name
+        files.append((model_path.relative_to(app_root).as_posix(), model_path))
+    return build_fingerprint(
+        {
+            "package_version": package_version,
+            "runtime_version": runtime_version,
+        },
+        files,
+    )
 
 
 def _copy_file(source: Path, destination: Path) -> None:
@@ -228,17 +254,27 @@ def build_base_runtime_archive(
     *,
     package_version: str,
     runtime_version: str,
+    force: bool = False,
 ) -> Path:
-    staging_root = Path(staging_root).resolve()
     output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = output_dir / f"YOLOTool_BaseEnv_{package_version}.7z"
+    fingerprint = _base_runtime_fingerprint(
+        app_root,
+        package_version=package_version,
+        runtime_version=runtime_version,
+    )
+    if not force and cache_matches(archive_path, fingerprint):
+        print(f"Reusing cached base runtime archive: {archive_path}")
+        return archive_path
+
+    staging_root = Path(staging_root).resolve()
     build_base_runtime_layer(
         app_root,
         staging_root,
         package_version=package_version,
         runtime_version=runtime_version,
     )
-    output_dir.mkdir(parents=True, exist_ok=True)
-    archive_path = output_dir / f"YOLOTool_BaseEnv_{package_version}.7z"
     archive_path.unlink(missing_ok=True)
     seven_zip = shutil.which("7z") or shutil.which("7z.exe")
     if not seven_zip:
@@ -265,6 +301,7 @@ def build_base_runtime_archive(
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         raise ReleaseManifestError(f"7z 基础环境包构建失败: {detail}")
+    write_cache(archive_path, fingerprint)
     return archive_path
 
 

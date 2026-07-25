@@ -12,7 +12,7 @@ from src.services.training import (
 
 
 def refresh_train_status(page):
-    page.app.run_background(
+    page.context.run_background(
         "train_status",
         lambda: {
             "status": system_status(),
@@ -72,11 +72,11 @@ def collect_config(page):
         try:
             config[key] = int(config[key])
         except (ValueError, TypeError):
-            config[key] = int(page.app.settings["training"].get(key, 0))
+            config[key] = int(getattr(page.context.settings.training, key))
     try:
         config["lr"] = float(config["lr"])
     except (ValueError, TypeError):
-        config["lr"] = float(page.app.settings["training"].get("lr", 0.001))
+        config["lr"] = float(page.context.settings.training.lr)
     config["task_mode"] = infer_task_mode_from_model(
         config.get("model_yaml") or config.get("base_model") or config.get("pretrained")
     )
@@ -84,31 +84,23 @@ def collect_config(page):
         if key == "hsv_h":
             continue
         config[key] = (
-            page.app.settings["training"].get(
-                key, page._default_training_value(key)
-            )
+            getattr(page.context.settings.training, key)
             if check.isChecked()
             else 0
         )
     hsv_enabled = page.checks["hsv_h"].isChecked()
     config["hsv_h"] = (
-        page.app.settings["training"].get(
-            "hsv_h", page._default_training_value("hsv_h")
-        )
+        page.context.settings.training.hsv_h
         if hsv_enabled
         else 0
     )
     config["hsv_s"] = (
-        page.app.settings["training"].get(
-            "hsv_s", page._default_training_value("hsv_s")
-        )
+        page.context.settings.training.hsv_s
         if hsv_enabled
         else 0
     )
     config["hsv_v"] = (
-        page.app.settings["training"].get(
-            "hsv_v", page._default_training_value("hsv_v")
-        )
+        page.context.settings.training.hsv_v
         if hsv_enabled
         else 0
     )
@@ -116,15 +108,15 @@ def collect_config(page):
 
 
 def models_dir(page) -> Path:
-    return Path(page.app.settings["paths"]["models_dir"])
+    return Path(page.context.settings.paths.models_dir)
 
 
 def default_training_value(page, key: str):
-    return build_default_settings(page.project_root())["training"].get(key, 0)
+    return getattr(build_default_settings(page.project_root()).training, key, 0)
 
 
 def save_training_settings(page, config: dict):
-    training = page.app.settings.setdefault("training", {})
+    training = page.context.settings.training
     for key in (
         "data",
         "model_yaml",
@@ -151,7 +143,7 @@ def save_training_settings(page, config: dict):
         "hsv_v",
     ):
         if key in config:
-            training[key] = config[key]
+            setattr(training, key, config[key])
     page.save_settings()
 
 
@@ -197,51 +189,51 @@ def persist_training_text(page, key: str):
         if key in {"data", "model_yaml", "project"}
         else edit.text()
     )
-    page.app.settings.setdefault("training", {})[key] = value
+    setattr(page.context.settings.training, key, value)
     page.save_settings()
     refresh_command_preview(page)
 
 
 def persist_training_value(page, key: str, value):
-    page.app.settings.setdefault("training", {})[key] = value
+    setattr(page.context.settings.training, key, value)
     page.save_settings()
     refresh_command_preview(page)
 
 
 def persist_model_selection(page):
     selected_model = page._resolve_model_reference(page.pretrained_combo.currentText())
-    training = page.app.settings.setdefault("training", {})
-    training["base_model"] = selected_model
-    training["pretrained"] = selected_model
+    training = page.context.settings.training
+    training.base_model = selected_model
+    training.pretrained = selected_model
     page.save_settings()
     refresh_command_preview(page)
 
 
 def persist_augmentation(page, key: str):
-    training = page.app.settings.setdefault("training", {})
+    training = page.context.settings.training
     if key == "hsv_h":
         enabled = page.checks[key].isChecked()
-        training["hsv_h"] = (
-            training.get("hsv_h", page._default_training_value("hsv_h"))
+        training.hsv_h = (
+            training.hsv_h
             if enabled
             else 0
         )
-        training["hsv_s"] = (
-            training.get("hsv_s", page._default_training_value("hsv_s"))
+        training.hsv_s = (
+            training.hsv_s
             if enabled
             else 0
         )
-        training["hsv_v"] = (
-            training.get("hsv_v", page._default_training_value("hsv_v"))
+        training.hsv_v = (
+            training.hsv_v
             if enabled
             else 0
         )
     else:
-        training[key] = (
-            training.get(key, page._default_training_value(key))
+        setattr(training, key, (
+            getattr(training, key)
             if page.checks[key].isChecked()
             else 0
-        )
+        ))
     page.save_settings()
     refresh_command_preview(page)
 
@@ -249,7 +241,7 @@ def persist_augmentation(page, key: str):
 def resolve_model_reference(page, model_text: str) -> str:
     return resolve_training_model_reference(
         model_text,
-        Path(page.app.settings["project"]["root"]),
+        Path(page.context.settings.project.root),
     )
 
 
@@ -276,4 +268,3 @@ def normalize_command_model_targets(page, command: list[str]) -> list[str]:
             value = str((models_dir_path / path.name).resolve())
         normalized.append(f"{key}={value}")
     return normalized
-

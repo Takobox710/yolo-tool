@@ -6,7 +6,11 @@ platforms = ["win-64", { name = "gpu-win-64", platform = "win-64", cuda = "13.0"
 version = "0.1.0"
 
 [tasks]
-test = "pytest src/tests -q"
+test = "pytest src/tests -q -o cache_dir=.pixi/pytest-cache"
+test-fast = "pytest src/tests/services src/tests/architecture src/tests/integration/test_app_entry.py -q -o cache_dir=.pixi/pytest-cache"
+test-full = "pytest src/tests -q -o cache_dir=.pixi/pytest-cache"
+test-ui = "pytest src/tests/ui -q -o cache_dir=.pixi/pytest-cache"
+test-integration = "pytest src/tests/integration -q -o cache_dir=.pixi/pytest-cache"
 app = "python -m src.main"
 app-qt = "python -m src.main"
 check = "python -m compileall src"

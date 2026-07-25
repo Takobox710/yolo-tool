@@ -8,48 +8,46 @@ from src.ui.shared.page_base import BasePage
 from src.shared.qt import QGridLayout, QHBoxLayout, QPushButton, QTextEdit, QVBoxLayout
 
 class ResizeTab(BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
-        resize = app.settings["image_resize"]
+        resize = context.settings.image_resize
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(10)
         self.source_box, self.source_edit = self.path_field(
             "图片目录",
-            resize["source_dir"],
+            resize.source_dir,
             self.choose_dir,
             "选择待压缩的图片目录",
         )
         self.backup_box, self.backup_edit = self.path_field(
             "备份目录",
-            resize["backup_dir"],
+            resize.backup_dir,
             self.choose_dir,
             "选择原图备份目录",
         )
         self.output_box, self.output_edit = self.path_field(
             "输出目录",
-            resize["output_dir"],
+            resize.output_dir,
             self.choose_dir,
             "选择压缩结果输出目录",
         )
         self.canvas_box, self.canvas_edit = self.field(
             "画布尺寸",
-            str(resize["canvas_size"]),
+            str(resize.canvas_size),
             placeholder="例如 960",
         )
         self.bg_box, self.bg_combo = self.combo_field(
             "背景颜色",
-            resize["background"],
+            resize.background,
             ["white", "black"],
         )
         self.output_mode_box, self.output_mode_combo = self.combo_field(
             "输出方式",
-            app.settings.get("features", {}).get(
-                "resize_output_mode", "输出到新文件夹"
-            ),
+            context.settings.features.resize_output_mode,
             ["输出到新文件夹", "覆盖原文件"],
         )
         for index, widget in enumerate(
@@ -65,7 +63,7 @@ class ResizeTab(BasePage):
             grid.addWidget(widget, index // 3, index % 3)
         backup_toggle_box, self.backup_check = self.checkbox_with_help(
             "备份原始图片",
-            bool(resize.get("backup_enabled", False)),
+            resize.backup_enabled,
         )
         grid.addWidget(backup_toggle_box, 2, 0)
         layout.addLayout(grid)

@@ -45,7 +45,7 @@ def test_model_export_tab_scans_models_and_exposes_all_formats(tmp_path):
     assert page.install_btn.text() == "安装/替换附加包"
     assert page.install_btn.width() == 150
     assert not page.install_progress.isVisible()
-    assert page.app.settings["model_export"]["output_dir"].endswith(
+    assert page.context.settings.model_export.output_dir.endswith(
         "data\\models\\model_exports"
     )
 

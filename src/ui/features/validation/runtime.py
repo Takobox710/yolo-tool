@@ -18,18 +18,6 @@ from src.ui.features.validation.dataset_mode import (
 from src.ui.shared.workers.detection import DetectionWorker
 
 
-def _detection_worker_class():
-    from src.ui.features.validation import page as validation_module
-
-    return getattr(validation_module, "DetectionWorker", DetectionWorker)
-
-
-def _spawn_logged_process():
-    from src.ui.features.validation import runtime as runtime_module
-
-    return getattr(runtime_module, "spawn_logged_process", spawn_logged_process)
-
-
 def _connect_detection_worker(page, worker) -> None:
     worker.progress.connect(page.append_active_log)
     video_progress = getattr(worker, "video_progress", None)
@@ -50,7 +38,7 @@ def _clear_detection_worker(page, worker) -> None:
 
 
 def start_detection(page):
-    if page.is_detecting:
+    if page.is_detecting or page.context.tasks.is_active("validate"):
         return
     if page.is_val_mode():
         page.start_dataset_validation()
@@ -94,7 +82,17 @@ def start_detection(page):
         "实时预览" if is_live_source_mode(page.mode_combo.currentText()) else "0/0"
     )
     page.table.setRowCount(0)
-    page.detect_worker = _detection_worker_class()(config, page.detect_stop)
+    page.detect_worker = DetectionWorker(config, page.detect_stop)
+    page._validation_lease = page.context.tasks.begin(
+        "validate",
+        generation=page.context.generation,
+        stop=page.detect_worker.request_stop,
+    )
+    if page._validation_lease is None:
+        page.is_detecting = False
+        page.start_det_btn.setEnabled(True)
+        page.stop_det_btn.setEnabled(False)
+        return
     _connect_detection_worker(page, page.detect_worker)
     page.detect_worker.start()
 
@@ -105,7 +103,7 @@ def start_dataset_validation(page):
         config=page.config(),
         root=ROOT,
         build_command=build_val_command,
-        spawn_process=_spawn_logged_process(),
+        spawn_process=spawn_logged_process,
     )
 
 
@@ -117,7 +115,7 @@ def start_current_source_detection(page):
 
 
 def start_single_detection(page, path: Path):
-    if page.is_detecting:
+    if page.is_detecting or page.context.tasks.is_active("validate"):
         return
     page.refresh_source_items()
     config = page.detection_config_or_warn()
@@ -145,14 +143,27 @@ def start_single_detection(page, path: Path):
     page.append_active_log(
         f"开始检测：模型 {Path(config['model_path']).name}，输入源 {path.name}。"
     )
-    page.detect_worker = _detection_worker_class()(
+    page.detect_worker = DetectionWorker(
         page.single_file_config(path, config), page.detect_stop
     )
+    page._validation_lease = page.context.tasks.begin(
+        "validate",
+        generation=page.context.generation,
+        stop=page.detect_worker.request_stop,
+    )
+    if page._validation_lease is None:
+        page.is_detecting = False
+        page.start_det_btn.setEnabled(True)
+        page.stop_det_btn.setEnabled(False)
+        return
     _connect_detection_worker(page, page.detect_worker)
     page.detect_worker.start()
 
 
 def apply_detect_done(page, _results):
+    context = getattr(page, "context", None)
+    if context is not None and not context.tasks.is_current(page._validation_lease):
+        return
     video_mode = bool(getattr(page, "is_video_detection_mode", lambda: False)())
     if page.detect_stop.is_set():
         page.append_active_log("检测已停止。")
@@ -165,14 +176,23 @@ def apply_detect_done(page, _results):
     page.start_det_btn.setEnabled(True)
     page.stop_det_btn.setEnabled(False)
     page.detect_stop.clear()
+    if context is not None:
+        context.tasks.finish(page._validation_lease)
+        page._validation_lease = None
 
 
 def apply_detect_error(page, message):
+    context = getattr(page, "context", None)
+    if context is not None and not context.tasks.is_current(page._validation_lease):
+        return
     page.append_active_log(message)
     page.is_detecting = False
     page.start_det_btn.setEnabled(True)
     page.stop_det_btn.setEnabled(False)
     page.detect_stop.clear()
+    if context is not None:
+        context.tasks.finish(page._validation_lease)
+        page._validation_lease = None
 
 
 def stop_detection(page):
@@ -206,5 +226,3 @@ def open_detection_save_dir(page):
     save_dir = Path(page.resolve_path_text(page.save_edit))
     save_dir.mkdir(parents=True, exist_ok=True)
     os.startfile(save_dir)
-
-

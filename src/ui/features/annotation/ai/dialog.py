@@ -53,6 +53,7 @@ class AiPrelabelDialog(QDialog):
         super().__init__(parent or page)
         self.page = page
         self.stop_event = threading.Event()
+        self._ai_lease = None
         self.runtime_worker = AiRuntimeWorker()
         self._model_display_paths: dict[str, Path] = {}
         self._pending_labels_model_path = ""
@@ -313,7 +314,7 @@ class AiPrelabelDialog(QDialog):
 
     def refresh_model_choices(self, preferred_model: str = "") -> None:
         project_root = self.page.project_root()
-        result_dir = Path(self.page.app.settings["paths"]["result_dir"])
+        result_dir = Path(self.page.context.settings.paths.result_dir)
         self._model_display_paths = {}
         display_names: list[str] = []
         seen: set[str] = set()
@@ -481,6 +482,9 @@ class AiPrelabelDialog(QDialog):
     def start_ai_labeling(self) -> None:
         if not self.start_btn.isEnabled():
             return
+        if self.page.context.tasks.is_active("ai_label"):
+            QMessageBox.information(self, "AI 预标注", "已有 AI 预标注任务正在运行。")
+            return
         model_path = self.resolved_model_path()
         if not model_path:
             QMessageBox.warning(self, "AI 预标注", "请先选择模型文件。")
@@ -505,6 +509,15 @@ class AiPrelabelDialog(QDialog):
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.undo_btn.setEnabled(False)
+        self._ai_lease = self.page.context.tasks.begin(
+            "ai_label",
+            generation=self.page.context.generation,
+            stop=self.runtime_worker.request_stop,
+        )
+        if self._ai_lease is None:
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            return
         worker_kwargs = {
             "image_items": [str(path) for path in self.page.image_items],
             "target_images": [str(path) for path in targets],
@@ -525,9 +538,9 @@ class AiPrelabelDialog(QDialog):
             "process_mode": self.current_process_mode(),
             "class_mapping": mapping,
             "class_names": list(self.page.class_names()),
-            "line_expand_pixels": self.page.app.settings.get("annotation", {}).get("line_expand_pixels", 10),
+            "line_expand_pixels": self.page.context.settings.annotation.line_expand_pixels,
             "output_mode": self.page.output_mode,
-            "auto_convert_yolo": bool(self.page.app.settings.get("annotation", {}).get("auto_convert_yolo", False)),
+            "auto_convert_yolo": bool(self.page.context.settings.annotation.auto_convert_yolo),
         }
         self._ensure_runtime_worker_started()
         self.runtime_worker.start_ai_labeling(worker_kwargs)
@@ -544,6 +557,8 @@ class AiPrelabelDialog(QDialog):
         self.append_log(f"{index}/{total} {image_name} -> 新增 {result_count} 个标注")
 
     def finish_ai_labeling(self, result) -> None:
+        if not self.page.context.tasks.is_current(self._ai_lease):
+            return
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         if self.stop_event.is_set():
@@ -551,6 +566,8 @@ class AiPrelabelDialog(QDialog):
             self.progress_bar.setValue(0)
             self.append_log("AI 预标注已停止")
             self.stop_event.clear()
+            self.page.context.tasks.finish(self._ai_lease)
+            self._ai_lease = None
             return
         self.undo_btn.setEnabled(bool(self.backups))
         self.progress_bar.setValue(100 if result.total else 0)
@@ -558,11 +575,17 @@ class AiPrelabelDialog(QDialog):
         self.page.refresh_file_list()
         if self.page.current_index >= 0:
             self.page.load_current()
+        self.page.context.tasks.finish(self._ai_lease)
+        self._ai_lease = None
 
     def fail_ai_labeling(self, message: str) -> None:
+        if not self.page.context.tasks.is_current(self._ai_lease):
+            return
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.stop_event.clear()
+        self.page.context.tasks.finish(self._ai_lease)
+        self._ai_lease = None
         self.append_log(f"失败：{message}")
         QMessageBox.warning(self, "AI 预标注", message)
 
@@ -588,7 +611,7 @@ class AiPrelabelDialog(QDialog):
                     yolo_path.unlink()
             else:
                 yolo_path.write_text(yolo_text, encoding="utf-8")
-        self.page.app.settings.setdefault("dataset", {})["class_names"] = list(self.original_class_names)
+        self.page.context.settings.dataset.class_names = list(self.original_class_names)
         self.page.save_settings()
         self.page._refresh_class_state()
         self.page.refresh_file_list()
@@ -596,5 +619,3 @@ class AiPrelabelDialog(QDialog):
             self.page.load_current()
         self.append_log("已恢复本次 AI 预标注前的标注文件")
         self.undo_btn.setEnabled(False)
-
-

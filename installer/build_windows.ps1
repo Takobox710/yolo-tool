@@ -118,14 +118,14 @@ import json
 import sys
 from pathlib import Path
 
-from src.services.settings import build_default_settings, save_last_project_root
+from src.services.settings import build_default_settings, save_last_project_root, settings_to_dict
 
 app_dir = Path(sys.argv[1]).resolve()
 settings_path = app_dir / "data" / "runtime" / "settings.json"
 settings_path.parent.mkdir(parents=True, exist_ok=True)
 settings = build_default_settings(app_dir)
 settings_path.write_text(
-    json.dumps(settings, ensure_ascii=False, indent=2),
+    json.dumps(settings_to_dict(settings), ensure_ascii=False, indent=2),
     encoding="utf-8",
 )
 save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")

@@ -17,7 +17,7 @@ from src.tests.helpers.ui_paths import (
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
-    PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
     PAGE_BASE,
@@ -72,8 +72,8 @@ def test_workbench_window_switches_to_project_local_settings(tmp_path):
     window.switch_project_root(project_root)
 
     assert window.settings_service.settings_path == settings_path
-    assert window.settings["project"]["root"] == str(project_root)
-    assert window.settings["training"]["epochs"] == 77
+    assert window.settings.project.root == str(project_root)
+    assert window.settings.training.epochs == 77
     persisted = json.loads(settings_path.read_text(encoding="utf-8"))
     assert persisted["project"]["root"] == "."
     assert list(window.pages.keys()) == ["home"]

@@ -18,8 +18,8 @@ from src.ui.features.data.resize.tab import ResizeTab
 
 
 class DataPage(BasePage):
-    def __init__(self, app):
-        super().__init__(app)
+    def __init__(self, context):
+        super().__init__(context)
         layout = self.page_layout()
         layout.setContentsMargins(20, 14, 12, 12)
         layout.setSpacing(8)
@@ -43,11 +43,11 @@ class DataPage(BasePage):
         side_layout.addWidget(line)
         self.tool_stack = QStackedWidget()
         self.tools = {
-            "convert": ConvertTab(app),
-            "preview": PreviewTab(app),
-            "rename": RenameTab(app),
-            "resize": ResizeTab(app),
-            "model_export": ModelExportTab(app),
+            "convert": ConvertTab(context),
+            "preview": PreviewTab(context),
+            "rename": RenameTab(context),
+            "resize": ResizeTab(context),
+            "model_export": ModelExportTab(context),
         }
         self.tool_buttons = {}
         for key, label, icon in [

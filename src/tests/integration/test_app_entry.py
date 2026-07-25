@@ -15,7 +15,7 @@ from src.tests.helpers.ui_paths import (
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
-    PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_FULL_BAT,
     PACKAGING_PROGRAM_ONLY_BAT,
     PACKAGING_SCRIPT,
@@ -144,7 +144,7 @@ def test_direct_script_hidden_cli_entries_have_package_context():
 def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_SPEC.exists()
     assert PACKAGING_SCRIPT.exists()
-    assert PACKAGING_ONE_CLICK_SCRIPT.exists()
+    assert PACKAGING_PACKAGE_SCRIPT.exists()
     assert PACKAGING_FULL_BAT.exists()
     assert PACKAGING_PROGRAM_ONLY_BAT.exists()
     assert INSTALLER_ISS.exists()
@@ -154,7 +154,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
 
     spec = PACKAGING_SPEC.read_text(encoding="utf-8")
     script = PACKAGING_SCRIPT.read_text(encoding="utf-8")
-    one_click_script = PACKAGING_ONE_CLICK_SCRIPT.read_text(encoding="utf-8")
+    package_windows_script = PACKAGING_PACKAGE_SCRIPT.read_text(encoding="utf-8")
     full_bat_bytes = PACKAGING_FULL_BAT.read_bytes()
     program_only_bat_bytes = PACKAGING_PROGRAM_ONLY_BAT.read_bytes()
     full_bat = full_bat_bytes.decode("ascii")
@@ -184,8 +184,9 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "src.devtools.release_package" in script and "PackageType" in script
     assert '$BaseModelNames = @("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")' in script
     assert 'save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")' in script
-    assert "package_windows.ps1" in one_click_script
-    assert "SkipBaseRuntimeModels" in one_click_script
+    assert "BuildBaseRuntimeModels" in package_windows_script
+    assert "BuildModelExportRuntime" in package_windows_script
+    assert "SkipModelExportRuntime" in package_windows_script
     assert "package_windows.ps1" in full_bat
     assert "-BuildBaseRuntimeModels" in full_bat
     assert "-BuildModelExportRuntime" in full_bat

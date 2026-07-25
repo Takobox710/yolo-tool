@@ -16,7 +16,7 @@ from src.tests.helpers.ui_paths import (
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
-    PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
     PAGE_BASE,
@@ -57,8 +57,8 @@ def test_training_page_persists_updated_fields_to_settings(tmp_path):
     page.edits["epochs"].setText("123")
     page.pretrained_combo.setCurrentText("custom.pt")
 
-    assert fake_app.settings["training"]["epochs"] == "123"
-    assert Path(fake_app.settings["training"]["pretrained"]).name == "custom.pt"
+    assert fake_app.settings.training.epochs == "123"
+    assert Path(fake_app.settings.training.pretrained).name == "custom.pt"
     assert "training" in saved
 
 
@@ -67,7 +67,7 @@ def test_train_page_stop_flow_recovers_buttons_and_hides_stop_noise(tmp_path, mo
 
     from src.services.settings import build_default_settings
     from src.shared.qt import QApplication
-    from src.ui.features.training import page as training_view
+    from src.ui.features.training import runtime as training_runtime
     from src.ui.features.training.page import TrainPage
 
     class FakeStatus:
@@ -91,7 +91,7 @@ def test_train_page_stop_flow_recovers_buttons_and_hides_stop_noise(tmp_path, mo
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["features"]["custom_command_dialog"] = False
+    settings.features.custom_command_dialog = False
     fake_status = FakeStatus()
     fake_handle = FakeHandle()
     stop_calls = {"count": 0}
@@ -103,8 +103,8 @@ def test_train_page_stop_flow_recovers_buttons_and_hides_stop_noise(tmp_path, mo
         stop_calls["count"] += 1
         fake_handle.process.returncode = 1
 
-    monkeypatch.setattr(training_view, "spawn_logged_process", fake_spawn)
-    monkeypatch.setattr(training_view, "stop_process", fake_stop)
+    monkeypatch.setattr(training_runtime, "spawn_logged_process", fake_spawn)
+    monkeypatch.setattr(training_runtime, "stop_process", fake_stop)
 
     fake_app = SimpleNamespace(
         settings=settings,
@@ -133,7 +133,7 @@ def test_train_page_stop_flow_recovers_buttons_and_hides_stop_noise(tmp_path, mo
     assert page.is_training is False
     assert page.start_btn.isEnabled() is True
     assert page.stop_btn.isEnabled() is False
-    assert fake_app.training_handle is None
+    assert page._training_process is None
     assert fake_status.text == "训练已停止"
     assert "已请求停止训练。" in log_text
     assert "训练已停止。" in log_text
@@ -146,7 +146,7 @@ def test_train_page_recovers_if_process_exits_without_queue_exit_event(tmp_path,
 
     from src.services.settings import build_default_settings
     from src.shared.qt import QApplication
-    from src.ui.features.training import page as training_view
+    from src.ui.features.training import runtime as training_runtime
     from src.ui.features.training.page import TrainPage
 
     class FakeStatus:
@@ -170,12 +170,12 @@ def test_train_page_recovers_if_process_exits_without_queue_exit_event(tmp_path,
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["features"]["custom_command_dialog"] = False
+    settings.features.custom_command_dialog = False
     fake_status = FakeStatus()
     fake_handle = FakeHandle()
 
     monkeypatch.setattr(
-        training_view,
+        training_runtime,
         "spawn_logged_process",
         lambda _command, _cwd, _queue: fake_handle,
     )
@@ -196,5 +196,5 @@ def test_train_page_recovers_if_process_exits_without_queue_exit_event(tmp_path,
     assert page.is_training is False
     assert page.start_btn.isEnabled() is True
     assert page.stop_btn.isEnabled() is False
-    assert fake_app.training_handle is None
+    assert page._training_process is None
     assert fake_status.text == "训练异常结束"

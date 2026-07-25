@@ -9,14 +9,14 @@ if __package__ in (None, ""):
 
 def main() -> None:
     from multiprocessing import freeze_support
-    import json
     import sys
 
     # PyInstaller on Windows re-enters the same executable for multiprocessing
     # workers; freeze_support() must run before normal GUI startup branching.
     freeze_support()
 
-    if len(sys.argv) > 1 and sys.argv[1] in {"--yolo-export", "--yolo-export-probe"}:
+    flag = sys.argv[1] if len(sys.argv) > 1 else None
+    if flag in {"--yolo-export", "--yolo-export-probe"}:
         from src.services.model_export.activation import activate_installed_extension
 
         activate_installed_extension()
@@ -24,10 +24,10 @@ def main() -> None:
     # The installer invokes this immediately after committing the new program
     # and runtime manifests. Its job is to test imports, while the installer
     # itself already validated the package/runtime version pair.
-    if len(sys.argv) > 1 and sys.argv[1] == "--runtime-probe":
-        from src.bootstrap.cli_dispatch import run_runtime_probe_cli
+    from src.bootstrap.cli_dispatch import dispatch_cli, run_torch_summary_cli
 
-        raise SystemExit(run_runtime_probe_cli(sys.argv[2:]))
+    if flag == "--runtime-probe":
+        raise SystemExit(dispatch_cli(flag, sys.argv[2:]))
 
     if len(sys.argv) > 1:
         from src.services.runtime import check_runtime_compatibility
@@ -37,57 +37,12 @@ def main() -> None:
             sys.stderr.write(f"YOLOTool 运行环境不兼容：{compatibility.reason}\n")
             raise SystemExit(78)
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-train":
-        from src.bootstrap.cli_dispatch import run_train_cli
-
-        raise SystemExit(run_train_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-export":
-        from src.bootstrap.cli_dispatch import run_export_cli
-
-        raise SystemExit(run_export_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-export-probe":
-        from src.bootstrap.cli_dispatch import run_export_probe_cli
-
-        raise SystemExit(run_export_probe_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--install-model-export-package":
-        from src.bootstrap.cli_dispatch import run_install_model_export_package_cli
-
-        raise SystemExit(run_install_model_export_package_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--migrate-legacy-extension":
-        from src.bootstrap.cli_dispatch import run_migrate_legacy_extension_cli
-
-        raise SystemExit(run_migrate_legacy_extension_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--remove-managed-models":
-        from src.bootstrap.cli_dispatch import run_remove_managed_models_cli
-
-        raise SystemExit(run_remove_managed_models_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-val":
-        from src.bootstrap.cli_dispatch import run_val_cli
-
-        raise SystemExit(run_val_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-predict":
-        from src.bootstrap.cli_dispatch import run_predict_cli
-
-        raise SystemExit(run_predict_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-ai-label":
-        from src.bootstrap.cli_dispatch import run_ai_label_cli
-
-        raise SystemExit(run_ai_label_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-ai-runtime":
-        from src.bootstrap.cli_dispatch import run_ai_runtime_cli
-
-        raise SystemExit(run_ai_runtime_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--yolo-model-labels":
-        from src.bootstrap.cli_dispatch import run_model_labels_cli
-
-        raise SystemExit(run_model_labels_cli(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "--torch-summary":
-        from src.services.runtime import preload_torch_runtime
-
-        sys.stdout.write(
-            json.dumps(preload_torch_runtime(), ensure_ascii=False)
-        )
-        raise SystemExit(0)
+    if flag == "--torch-summary":
+        raise SystemExit(run_torch_summary_cli(sys.argv[2:]))
+    if flag is not None:
+        result = dispatch_cli(flag, sys.argv[2:])
+        if result is not None:
+            raise SystemExit(result)
 
     from src.app import run_app
 
@@ -96,4 +51,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

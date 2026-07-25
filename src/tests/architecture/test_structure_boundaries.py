@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 
@@ -40,6 +41,9 @@ def test_legacy_paths_and_imports_stay_removed():
         "scr",
     )
     assert [path for path in removed_paths if Path(path).exists()] == []
+    assert list(Path("src/ui/widgets").glob("*.py")) == []
+    assert not Path("src/bootstrap/context.py").exists()
+    assert not Path("src/shared/types.py").exists()
     assert list(Path("src/services").glob("*_service.py")) == []
     assert list(Path("src/tests").glob("test_*.py")) == []
 
@@ -130,6 +134,47 @@ def test_python_imports_and_qt_delayed_callbacks_use_safe_patterns():
     assert unsafe_timers == []
 
 
+def test_ui_features_use_explicit_context_and_no_legacy_host_access():
+    offenders = []
+    for path in Path("src/ui/features").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for marker in (r"\bself\.app\b", r"\bpage\.app\b", r"\bapp\.settings\b", r"\bcontext\.pages\b", r"\bcontext\.workers\b"):
+            if re.search(marker, text):
+                offenders.append(f"{path.as_posix()}: {marker}")
+    assert offenders == []
+
+
+def test_internal_src_import_graph_has_no_cycles():
+    modules = {
+        _module_name(path)
+        for path in Path("src").rglob("*.py")
+    }
+    graph: dict[str, set[str]] = {}
+    for path in Path("src").rglob("*.py"):
+        module = _module_name(path)
+        graph[module] = _runtime_imports(path, modules)
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    cycles: list[str] = []
+
+    def visit(module: str, trail: list[str]) -> None:
+        if module in visiting:
+            cycles.append(" -> ".join(trail + [module]))
+            return
+        if module in visited:
+            return
+        visiting.add(module)
+        for dependency in graph.get(module, ()):
+            visit(dependency, trail + [module])
+        visiting.remove(module)
+        visited.add(module)
+
+    for module in graph:
+        visit(module, [])
+    assert cycles == []
+
+
 def _imported_modules(path: Path) -> list[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imported = []
@@ -139,3 +184,38 @@ def _imported_modules(path: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             imported.append(node.module or "")
     return imported
+
+
+def _module_name(path: Path) -> str:
+    relative = path.relative_to(Path("src")).with_suffix("")
+    parts = ["src", *relative.parts]
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
+def _runtime_imports(path: Path, modules: set[str]) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imports: set[str] = set()
+
+    class Visitor(ast.NodeVisitor):
+        def visit_If(self, node: ast.If):
+            if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+                return
+            self.generic_visit(node)
+
+        def visit_Import(self, node: ast.Import):
+            for alias in node.names:
+                if alias.name in modules:
+                    imports.add(alias.name)
+
+        def visit_ImportFrom(self, node: ast.ImportFrom):
+            module = node.module or ""
+            if not module.startswith("src."):
+                return
+            for alias in node.names:
+                candidate = f"{module}.{alias.name}"
+                imports.add(candidate if candidate in modules else module)
+
+    Visitor().visit(tree)
+    return imports

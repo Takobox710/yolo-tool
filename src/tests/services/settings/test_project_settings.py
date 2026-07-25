@@ -22,25 +22,28 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(json.dumps({"training": {"epochs": 12}}, ensure_ascii=False), encoding="utf-8")
 
-    settings = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
+    result = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
+    settings = result.settings
 
-    assert settings["project"]["root"] == str(tmp_path)
-    assert settings["training"]["epochs"] == 12
-    assert settings["training"]["batch"] == 16
-    assert settings["image_resize"]["canvas_size"] == 960
-    assert settings["features"]["show_help_icons"] is True
-    assert settings["features"]["show_last_training_models"] is False
-    assert settings["task"]["mode"] == "detect"
-    assert settings["dataset"]["class_names"] == []
-    assert settings["dataset"]["split_ratios"] == {"train": 0.8, "val": 0.2, "test": 0.0}
-    assert settings["training"]["model_yaml"] == ""
-    assert settings["training"]["base_model"] == "yolo11s.pt"
-    assert Path(settings["training"]["pretrained"]).name == "yolo11s.pt"
-    assert settings["training"]["patience"] == 100
-    assert settings["annotation"]["auto_save"] is True
-    assert settings["annotation"]["auto_convert_yolo"] is False
-    assert settings["annotation"]["continuous_draw"] is False
-    assert settings["annotation"]["quick_draw"] is False
+    assert settings.project.root == str(tmp_path)
+    assert settings.training.epochs == 12
+    assert settings.training.batch == 16
+    assert settings.image_resize.canvas_size == 960
+    assert settings.features.show_help_icons is True
+    assert settings.features.show_last_training_models is False
+    assert settings.task.mode == "detect"
+    assert settings.dataset.class_names == []
+    assert settings.dataset.split_ratios.train == 0.8
+    assert settings.dataset.split_ratios.val == 0.2
+    assert settings.dataset.split_ratios.test == 0.0
+    assert settings.training.model_yaml == ""
+    assert settings.training.base_model == "yolo11s.pt"
+    assert Path(settings.training.pretrained).name == "yolo11s.pt"
+    assert settings.training.patience == 100
+    assert settings.annotation.auto_save is True
+    assert settings.annotation.auto_convert_yolo is False
+    assert settings.annotation.continuous_draw is False
+    assert settings.annotation.quick_draw is False
 
 
 def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(tmp_path):
@@ -61,10 +64,10 @@ def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(t
         encoding="utf-8",
     )
 
-    settings = SettingsService(project_root=project_root).load()
+    settings = SettingsService(project_root=project_root).load().settings
 
-    assert settings["project"]["root"] == str(project_root)
-    assert settings["training"]["epochs"] == 33
+    assert settings.project.root == str(project_root)
+    assert settings.training.epochs == 33
 
 
 def test_settings_service_can_reset_current_project_to_defaults(tmp_path):
@@ -101,13 +104,13 @@ def test_settings_service_preserves_model_bare_name_for_portable_download_target
 
     project_root = tmp_path / "project-model-name"
     service = SettingsService(project_root=project_root)
-    settings = service.load()
-    settings["training"]["pretrained"] = "custom.pt"
-    settings["training"]["base_model"] = "custom.pt"
+    settings = service.load().settings
+    settings.training.pretrained = "custom.pt"
+    settings.training.base_model = "custom.pt"
 
     service.save(settings)
     persisted = json.loads(service.settings_path.read_text(encoding="utf-8"))
-    reloaded = service.load()
+    reloaded = service.load().settings
 
     assert persisted["training"]["pretrained"] == "custom.pt"
-    assert reloaded["training"]["pretrained"] == "custom.pt"
+    assert reloaded.training.pretrained == "custom.pt"

@@ -16,7 +16,7 @@ from src.tests.helpers.ui_paths import (
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
-    PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
     PAGE_BASE,
@@ -71,7 +71,7 @@ def test_selected_annotation_syncs_target_type_and_combo_edits_annotation(tmp_pa
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["dataset"]["class_names"] = ["weld", "scratch"]
+    settings.dataset.class_names = ["weld", "scratch"]
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),
@@ -395,9 +395,9 @@ def test_annotation_page_canvas_context_save_flags_follow_auto_save_settings(tmp
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["annotation"]["auto_save"] = False
-    settings["annotation"]["auto_convert_yolo"] = False
-    settings["annotation"]["show_yolo_save_in_context_menu"] = True
+    settings.annotation.auto_save = False
+    settings.annotation.auto_convert_yolo = False
+    settings.annotation.show_yolo_save_in_context_menu = True
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),
@@ -409,12 +409,12 @@ def test_annotation_page_canvas_context_save_flags_follow_auto_save_settings(tmp
     assert page.canvas.can_save_yolo is True
     assert page.canvas.can_undo is False
 
-    settings["annotation"]["auto_save"] = True
+    settings.annotation.auto_save = True
     page._refresh_manual_action_buttons()
     assert page.canvas.can_save_labelme is False
     assert page.canvas.can_save_yolo is True
 
-    settings["annotation"]["auto_convert_yolo"] = True
+    settings.annotation.auto_convert_yolo = True
     page._refresh_manual_action_buttons()
     assert page.canvas.can_save_labelme is False
     assert page.canvas.can_save_yolo is False
@@ -453,7 +453,7 @@ def test_annotation_page_context_delete_image_removes_image_and_labels(tmp_path)
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["paths"]["labels_dir"] = str(labels_dir)
+    settings.paths.labels_dir = str(labels_dir)
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),
@@ -594,7 +594,7 @@ def test_annotation_page_adds_all_project_labelme_categories(tmp_path):
 
     _show_annotation_page(AnnotationPage(fake_app), app)
 
-    assert settings["dataset"]["class_names"] == ["weld", "scratch"]
+    assert settings.dataset.class_names == ["weld", "scratch"]
 
 
 def test_class_manager_blocks_deleting_used_category(tmp_path, monkeypatch):

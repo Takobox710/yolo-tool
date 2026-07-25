@@ -16,7 +16,7 @@ from src.tests.helpers.ui_paths import (
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
-    PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
     PAGE_BASE,
@@ -154,7 +154,7 @@ def test_settings_toggle_refreshes_validation_page_model_choices(tmp_path):
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["features"]["show_last_training_models"] = True
+    settings.features.show_last_training_models = True
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),
@@ -175,6 +175,6 @@ def test_settings_toggle_refreshes_validation_page_model_choices(tmp_path):
     settings_page.show_last_models_check.setChecked(False)
 
     after = [validate_page.model_combo.itemText(i) for i in range(validate_page.model_combo.count())]
-    assert fake_app.settings["features"]["show_last_training_models"] is False
+    assert fake_app.settings.features.show_last_training_models is False
     assert "train-5\\last.pt" not in after
     assert "train-5\\best.pt" in after

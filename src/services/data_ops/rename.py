@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.services.data_ops.sorting import natural_sort_key
+
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
-
-
-def natural_sort_key(path: Path) -> list[object]:
-    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", Path(path).name)]
 
 
 @dataclass

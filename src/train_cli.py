@@ -67,7 +67,7 @@ def _load_json_payload(argv: list[str], usage: str) -> dict[str, Any]:
     return payload
 
 
-def run_train_cli(argv: list[str]) -> int:
+def _run_train_cli_impl(argv: list[str]) -> int:
     if len(argv) < 2:
         raise SystemExit("Usage: --yolo-train <detect|obb> train key=value ...")
     task_mode, command, *items = argv
@@ -93,7 +93,7 @@ def run_train_cli(argv: list[str]) -> int:
     return 0
 
 
-def run_export_cli(argv: list[str]) -> int:
+def _run_export_cli_impl(argv: list[str]) -> int:
     os.environ["YOLO_AUTOINSTALL"] = "false"
     from src.services.ultralytics_compat import ensure_cv2_highgui_compat
     from src.services.model_export import export_model_to_directory
@@ -117,7 +117,7 @@ def run_export_cli(argv: list[str]) -> int:
         return 1
 
 
-def run_export_probe_cli(argv: list[str]) -> int:
+def _run_export_probe_cli_impl(argv: list[str]) -> int:
     from importlib import metadata
     import importlib
     from src.services.model_export.package import EXPORT_PROTOCOL_VERSION
@@ -149,7 +149,7 @@ def run_export_probe_cli(argv: list[str]) -> int:
     return 0 if not missing else 1
 
 
-def run_install_model_export_package_cli(argv: list[str]) -> int:
+def _run_install_model_export_package_cli_impl(argv: list[str]) -> int:
     from src.services.model_export import install_extension_package
 
     options = _parse_key_values(argv)
@@ -170,7 +170,7 @@ def run_install_model_export_package_cli(argv: list[str]) -> int:
     return 0
 
 
-def run_migrate_legacy_extension_cli(argv: list[str]) -> int:
+def _run_migrate_legacy_extension_cli_impl(argv: list[str]) -> int:
     from src.services.runtime import migrate_legacy_extensions
 
     del argv
@@ -183,7 +183,7 @@ def run_migrate_legacy_extension_cli(argv: list[str]) -> int:
     return 0
 
 
-def run_runtime_probe_cli(argv: list[str]) -> int:
+def _run_runtime_probe_cli_impl(argv: list[str]) -> int:
     from src.services.runtime.release_manifest import check_runtime_compatibility
 
     del argv
@@ -203,7 +203,7 @@ def run_runtime_probe_cli(argv: list[str]) -> int:
     return 0 if compatibility.compatible else 1
 
 
-def run_remove_managed_models_cli(argv: list[str]) -> int:
+def _run_remove_managed_models_cli_impl(argv: list[str]) -> int:
     from src.services.runtime import remove_managed_models
     from src.shared.paths import ROOT
 
@@ -222,7 +222,7 @@ def run_remove_managed_models_cli(argv: list[str]) -> int:
     return 0
 
 
-def run_val_cli(argv: list[str]) -> int:
+def _run_val_cli_impl(argv: list[str]) -> int:
     if len(argv) < 2:
         raise SystemExit("Usage: --yolo-val <detect|obb> val key=value ...")
     task_mode, command, *items = argv
@@ -248,7 +248,7 @@ def run_val_cli(argv: list[str]) -> int:
     return 0
 
 
-def run_model_labels_cli(argv: list[str]) -> int:
+def _run_model_labels_cli_impl(argv: list[str]) -> int:
     if not argv:
         raise SystemExit("Usage: --yolo-model-labels <model-path>")
     from src.services.annotation import load_model_labels
@@ -259,7 +259,7 @@ def run_model_labels_cli(argv: list[str]) -> int:
     return 0
 
 
-def run_predict_cli(argv: list[str]) -> int:
+def _run_predict_cli_impl(argv: list[str]) -> int:
     from pathlib import Path
 
     from PIL import Image
@@ -508,7 +508,7 @@ def run_predict_cli(argv: list[str]) -> int:
         release_inference_runtime()
 
 
-def run_ai_label_cli(argv: list[str]) -> int:
+def _run_ai_label_cli_impl(argv: list[str]) -> int:
     import threading
     from pathlib import Path
 
@@ -559,7 +559,7 @@ def run_ai_label_cli(argv: list[str]) -> int:
         return 1
 
 
-def run_ai_runtime_cli(argv: list[str]) -> int:
+def _run_ai_runtime_cli_impl(argv: list[str]) -> int:
     import sys
     import threading
     from pathlib import Path
@@ -679,3 +679,74 @@ def run_ai_runtime_cli(argv: list[str]) -> int:
             del active_model
             release_inference_runtime()
 
+
+def run_train_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_train
+
+    return run_train(argv)
+
+
+def run_export_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_export
+
+    return run_export(argv)
+
+
+def run_export_probe_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_export_probe
+
+    return run_export_probe(argv)
+
+
+def run_install_model_export_package_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_install_model_export_package
+
+    return run_install_model_export_package(argv)
+
+
+def run_migrate_legacy_extension_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_migrate_legacy_extension
+
+    return run_migrate_legacy_extension(argv)
+
+
+def run_runtime_probe_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_runtime_probe
+
+    return run_runtime_probe(argv)
+
+
+def run_remove_managed_models_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_remove_managed_models
+
+    return run_remove_managed_models(argv)
+
+
+def run_val_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_val
+
+    return run_val(argv)
+
+
+def run_model_labels_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_model_labels
+
+    return run_model_labels(argv)
+
+
+def run_predict_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_predict
+
+    return run_predict(argv)
+
+
+def run_ai_label_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_ai_label
+
+    return run_ai_label(argv)
+
+
+def run_ai_runtime_cli(argv: list[str]) -> int:
+    from src.bootstrap.handlers import run_ai_runtime
+
+    return run_ai_runtime(argv)

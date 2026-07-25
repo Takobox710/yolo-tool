@@ -74,16 +74,16 @@ def update_source_mode(page, value):
             page.counter.setText("验证模式")
         elif not page.detect_results:
             page.counter.setText("0/0")
-        validation = page.app.settings.get("validation", {})
-        source_path = validation.get("source_path", "")
-        source_selection = validation.get("source_selection", "")
+        validation = page.context.settings.validation
+        source_path = validation.source_path
+        source_selection = validation.source_selection
         if image_folder_mode:
             current_source = source_selection
             if current_source not in IMAGE_SOURCE_OPTIONS:
                 current_source = (
                     relative_path_from_project(source_path, page.project_root())
                     if source_path
-                    else validation.get("source_scope", "全部图片")
+                    else validation.source_scope
                 )
             page._configure_source_combo(
                 IMAGE_SOURCE_OPTIONS,
@@ -151,11 +151,9 @@ def refresh_source_items(page):
         mode=page.mode_combo.currentText(),
         is_val_mode=page.is_val_mode(),
         source_text=page.source_combo.currentText(),
-        paths_settings=page.app.settings["paths"],
+        paths_settings=page.context.settings.paths,
         resolve_text=page.resolve_combo_path_text,
-        selected_source_path=page.app.settings.get("validation", {}).get(
-            "source_path", ""
-        ),
+            selected_source_path=page.context.settings.validation.source_path,
     )
     if not page.source_items:
         page.source_index = -1
@@ -175,21 +173,21 @@ def refresh_source_items(page):
 
 
 def dataset_split_dir(page, split: str) -> Path:
-    return dataset_split_image_dir(Path(page.app.settings["paths"]["dataset_dir"]), split)
+    return dataset_split_image_dir(Path(page.context.settings.paths.dataset_dir), split)
 
 
 def scope_target_path_for_page(page, scope: str) -> Path:
     if str(scope).strip() not in SOURCE_SCOPE_OPTIONS:
         return Path(page.resolve_combo_path_text(scope)).resolve()
-    return scope_target_path(scope, page.app.settings["paths"])
+    return scope_target_path(scope, page.context.settings.paths)
 
 
 def folder_source_path_for_page(page) -> str:
     return folder_source_path_for_selection(
         page.source_combo.currentText(),
-        page.app.settings["paths"],
+        page.context.settings.paths,
         page.resolve_combo_path_text,
-        page.app.settings.get("validation", {}).get("source_path", ""),
+        page.context.settings.validation.source_path,
     )
 
 
@@ -198,10 +196,8 @@ def refresh_model_choices(page, preferred_model: str | None = None):
     if current_text is None:
         current_text = page.model_combo.currentText()
     project_root = page.project_root()
-    result_dir = Path(page.app.settings["paths"]["result_dir"])
-    show_last = page.app.settings.get("features", {}).get(
-        "show_last_training_models", False
-    )
+    result_dir = Path(page.context.settings.paths.result_dir)
+    show_last = page.context.settings.features.show_last_training_models
     choices = build_validation_model_choices(
         current_text=current_text,
         current_display_paths=page._model_display_paths,
@@ -252,12 +248,12 @@ def connect_validation_persistence(page):
 
 
 def persist_validation_model(page, _text: str = ""):
-    page.app.settings.setdefault("validation", {})["model_path"] = page._get_model_path()
+    page.context.settings.validation.model_path = page._get_model_path()
     page.save_settings()
 
 
 def persist_validation_value(page, key: str, value):
-    page.app.settings.setdefault("validation", {})[key] = value
+    setattr(page.context.settings.validation, key, value)
     page.save_settings()
 
 
@@ -390,7 +386,7 @@ def dataset_yaml_root_for_page(payload: dict, data_path: Path) -> Path:
 
 def val_override_value_for_scope(page, data_path: Path, scope: str) -> str:
     target = page._scope_target_path(scope)
-    images_dir = Path(page.app.settings["paths"]["images_dir"]).resolve()
+    images_dir = Path(page.context.settings.paths.images_dir).resolve()
     return validation_val_override(data_path, scope, target, images_dir)
 
 
@@ -430,5 +426,3 @@ def handle_video_progress(page, payload: dict):
     else:
         message = f"视频检测进度：{percent}% | 上一秒：{frames_last_second}帧"
     page.append_active_log(message)
-
-

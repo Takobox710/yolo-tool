@@ -68,8 +68,6 @@ def _describe(path: Path) -> str:
         return "跨页面复用的表单、对话框与页面基类。"
     if rel.startswith("src/ui/features/"):
         return "按功能分包的页面真实实现。"
-    if rel.startswith("src/ui/widgets/"):
-        return "图表与基础复用控件。"
     if rel.startswith("src/tests/"):
         return "pytest 测试、结构约束与回归用例。"
     if rel.startswith("src/assets/"):

@@ -17,7 +17,7 @@ from src.tests.helpers.ui_paths import (
     ICON_PNG,
     INSTALLER_ISS,
     PACKAGING_DOC,
-    PACKAGING_ONE_CLICK_SCRIPT,
+    PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
     PAGE_BASE,
@@ -71,7 +71,7 @@ def test_dataset_split_tab_reads_annotation_managed_categories(tmp_path):
 
     app = QApplication.instance() or QApplication([])
     settings = build_default_settings(tmp_path)
-    settings["dataset"]["class_names"] = ["weld", "scratch"]
+    settings.dataset.class_names = ["weld", "scratch"]
     fake_app = SimpleNamespace(
         settings=settings,
         settings_service=SimpleNamespace(save=lambda _data: None),

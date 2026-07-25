@@ -2,6 +2,19 @@
 
 ## 待提交改动
 
+
+## 提交记录
+
+## 完成架构整改、打包流程与文档同步
+
+- 将 TensorRT 模型转换附加环境改为安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时保留该目录，并自动迁移旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展。
+- 完成核心架构整改：设置统一为 schema v1 类型化 `AppSettings`，页面统一接收 `WorkbenchContext`，训练/验证/导出/AI 任务统一使用 token/generation 任务协调器；CLI 统一由 `src/bootstrap/cli_dispatch.py` 分发，删除旧 context、types、widgets 和私有 UI 兼容别名，合并自然排序实现并补充循环依赖与结构围栏测试。
+- 优化 Windows 完整打包的重复构建流程，为基础环境和 TensorRT 附加环境增加输入指纹缓存；缓存命中时复用已有归档并跳过完整 PyInstaller 分析，仅生成程序-only 更新包，保留 `-Clean` 强制重建和原有高压缩参数。
+- 将 `pixi run test` 精简为服务层、架构围栏和统一入口的日常快速回归，并新增 `test-full`、`test-ui`、`test-integration` 分层测试任务；将 pytest 缓存移至 `.pixi/pytest-cache`，同步更新测试说明和代码清单。
+- 删除只负责转发的 `installer/打包程序.ps1`，清理已被 spec 排除且没有现行逻辑的两个空 PyInstaller hook，完整发布统一直接调用 `installer/package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime`，并同步更新打包文档与入口契约测试。
+- 核对并更新 `docs/`、`AGENTS.md` 与代码清单，修正训练默认模型、数据处理入口、系统设置状态卡、标注交互规格、CLI 分发路径和测试数量；合并根目录 `spec/` 中仍有效的规格到 `docs/spec/`。
+- 补充版本发布适配，要求同步更新程序与安装器版本，并在版本归档提交前自动执行完整 Windows 安装包打包。
+
 # [1.3.0] - 2026-07-26
 
 YOLOTool 1.3.0 完成了发布体系与模型转换链路两项重大改造：一方面重构 Windows 发布物和安装事务，将程序更新与大型运行环境解耦；另一方面新增模型格式转换服务和页面，为 `.pt` 模型导出多种部署格式，并通过独立附加运行时扩展 TensorRT 能力。
