@@ -37,10 +37,7 @@ lap = ">=0.5.13, <0.6"
 onnx = ">=1.22.0, <2"
 onnxslim = ">=0.1.94, <0.2"
 py7zr = ">=1.0.0, <2"
-openvino = ">=2026.2.1, <2027"
-openvino-telemetry = ">=2025.2.0, <2027"
-ncnn = ">=1.0.20260526"
-pnnx = ">=20260526"
+sam2 = { path = "installer/vendor/sam2-1.1.0-cp312-cp312-win_amd64.whl" }
 tqdm = ">=4.69.0, <5"
 portalocker = ">=3.2.0, <4"
 
@@ -49,6 +46,10 @@ onnxruntime = ">=1.27.0, <2"
 
 [feature.export-full.pypi-dependencies]
 onnxruntime-gpu = ">=1.27.0, <2"
+openvino = ">=2026.2.1, <2027"
+openvino-telemetry = ">=2025.2.0, <2027"
+ncnn = ">=1.0.20260526"
+pnnx = ">=20260526"
 tensorrt = ">=11.1.0.106, <12"
 tensorrt-cu13 = { version = "==11.1.0.106", index = "https://pypi.nvidia.com" }
 tensorrt-cu13-libs = { version = "==11.1.0.106", index = "https://pypi.nvidia.com" }

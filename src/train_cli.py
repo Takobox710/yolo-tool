@@ -124,6 +124,9 @@ def _run_export_probe_cli_impl(argv: list[str]) -> int:
 
     del argv
     distributions = {
+        "openvino": "openvino",
+        "ncnn": "ncnn",
+        "pnnx": "pnnx",
         "tensorrt": "tensorrt",
     }
     versions: dict[str, str] = {}

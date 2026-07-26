@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Clean,
     [string]$Version = "",
     [string]$RuntimeVersion = ""
@@ -20,7 +20,7 @@ $StagingRoot = Join-Path $Root "dist\packages\BaseRuntimeModels"
 $OutputDir = Join-Path $PSScriptRoot "output"
 $OutputPath = Join-Path $OutputDir "YOLOTool_BaseEnv_${Version}.7z"
 if (-not (Test-Path -LiteralPath (Join-Path $AppRoot "_internal"))) {
-    throw "Frozen release output is missing. Run installer\build_windows.ps1 first."
+    throw "缺少冻结程序输出，请先运行 installer\build_windows.ps1。"
 }
 if ($Clean) {
     Remove-Item -LiteralPath $StagingRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -28,18 +28,14 @@ if ($Clean) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-$ForceArgs = @()
-if ($Clean) {
-    $ForceArgs += "--force"
-}
 pixi run -e release-base python -m src.devtools.base_runtime_package `
     --app-root $AppRoot `
     --staging-root $StagingRoot `
     --output-dir $OutputDir `
     --version $Version `
-    --runtime-version $RuntimeVersion @ForceArgs
+    --runtime-version $RuntimeVersion
 if ($LASTEXITCODE -ne 0) {
-    throw "Base runtime and models archive build failed with exit code $LASTEXITCODE"
+    throw "基础环境和模型归档构建失败，退出码：$LASTEXITCODE"
 }
 
-Write-Host "Built base runtime and models archive: $OutputPath"
+Write-Host "基础环境和模型归档已生成：$OutputPath" -ForegroundColor Green

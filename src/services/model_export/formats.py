@@ -12,9 +12,9 @@ EXPORT_FORMATS: tuple[ExportFormatSpec, ...] = (
         "ONNX", "onnx", True, ".onnx", ("onnx", "onnxslim", "onnxruntime")
     ),
     ExportFormatSpec("TorchScript", "torchscript", True, ".torchscript", ("torch",)),
-    ExportFormatSpec("OpenVINO", "openvino", True, "_openvino_model", ("openvino",)),
+    ExportFormatSpec("OpenVINO", "openvino", False, "_openvino_model", ("openvino",)),
     ExportFormatSpec("TensorRT", "engine", False, ".engine", ("tensorrt",)),
-    ExportFormatSpec("NCNN", "ncnn", True, "_ncnn_model", ("ncnn", "pnnx")),
+    ExportFormatSpec("NCNN", "ncnn", False, "_ncnn_model", ("ncnn", "pnnx")),
 )
 
 

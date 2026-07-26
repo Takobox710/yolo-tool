@@ -2,7 +2,7 @@
 #define MyAppVersion "1.3.0"
 #endif
 #ifndef RequiredRuntimeVersion
-#define RequiredRuntimeVersion "runtime-1"
+#define RequiredRuntimeVersion "runtime-2"
 #endif
 #ifndef BasePackageName
 #define BasePackageName ""

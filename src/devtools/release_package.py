@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import configparser
 import json
+import os
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -14,7 +16,6 @@ from src.services.runtime.release_manifest import (
     ReleaseManifestError,
     file_hashes,
 )
-from src.devtools.package_cache import build_fingerprint, cache_matches, write_cache
 
 
 PROGRAM_PACKAGE_TYPE = "Program"
@@ -24,32 +25,69 @@ BASE_PACKAGE_SCHEMA_VERSION = 1
 BASE_PACKAGE_ID = "yolo-tool-base-runtime-models"
 BASE_MANIFEST_NAME = "base-package-manifest.json"
 MANAGED_MODELS_NAME = "managed-models.json"
-BASE_MODEL_NAMES = ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")
+BASE_MODEL_NAMES = (
+    "yolo11s.pt",
+    "yolo26n.pt",
+    "yolov8n.pt",
+    "sam2.1_hiera_base_plus.pt",
+)
 STDLIB_ARCHIVE_NAME = "python_stdlib.zip"
+THIRD_PARTY_SOURCE_EXCLUDE_ROOTS = frozenset(
+    {
+        "_distutils_hack",
+        "_polars_runtime_32",
+        "_pytest",
+        "_pyinstaller_hooks_contrib",
+        "PyInstaller",
+        "adodbapi",
+        "altgraph",
+        "iniconfig",
+        "isapi",
+        "pluggy",
+        "polars",
+        "pydevd_plugins",
+        "pytest",
+        "pythonwin",
+        "setuptools",
+        "torchaudio",
+        "win32",
+        "win32com",
+        "win32comext",
+    }
+)
+THIRD_PARTY_SOURCE_EXCLUDE_PARTS = frozenset(
+    {
+        "SelfTest",
+        "_examples",
+        "example",
+        "examples",
+        "test",
+        "testdata",
+        "testing",
+        "tests",
+    }
+)
 
 
-def _base_runtime_fingerprint(
-    app_root: Path,
-    *,
-    package_version: str,
-    runtime_version: str,
-) -> dict:
-    app_root = Path(app_root).resolve()
-    runtime_root = app_root / "_internal"
-    files = [
-        (path.relative_to(app_root).as_posix(), path)
-        for path in runtime_root.rglob("*")
-        if path.is_file()
-    ]
-    for model_name in BASE_MODEL_NAMES:
-        model_path = app_root / "data" / "models" / model_name
-        files.append((model_path.relative_to(app_root).as_posix(), model_path))
-    return build_fingerprint(
-        {
-            "package_version": package_version,
-            "runtime_version": runtime_version,
-        },
-        files,
+def _format_elapsed(seconds: float) -> str:
+    if seconds >= 60:
+        minutes, remainder = divmod(seconds, 60)
+        return f"{int(minutes)} 分 {remainder:.2f} 秒"
+    return f"{seconds:.2f} 秒"
+
+
+def _print_elapsed(label: str, started: float) -> None:
+    print(f"{label}，耗时：{_format_elapsed(time.perf_counter() - started)}", flush=True)
+
+
+def _should_skip_third_party_source(relative: Path) -> bool:
+    parts = relative.parts
+    return bool(
+        parts
+        and (
+            parts[0] in THIRD_PARTY_SOURCE_EXCLUDE_ROOTS
+            or any(part in THIRD_PARTY_SOURCE_EXCLUDE_PARTS for part in parts)
+        )
     )
 
 
@@ -126,10 +164,43 @@ def _copy_third_party_python_sources(runtime_root: Path) -> None:
     site_packages = Path(sys.prefix) / "Lib" / "site-packages"
     if not site_packages.is_dir():
         raise ReleaseManifestError(f"第三方包目录不存在: {site_packages}")
-    skip_parts = {"test", "tests", "SelfTest", "__pycache__"}
+    skip_parts = THIRD_PARTY_SOURCE_EXCLUDE_PARTS | {"__pycache__"}
+    robocopy = shutil.which("robocopy") if os.name == "nt" else None
+    if robocopy:
+        completed = subprocess.run(
+            [
+                robocopy,
+                str(site_packages),
+                str(runtime_root),
+                "*.py",
+                "/S",
+                "/MT:16",
+                "/R:0",
+                "/W:0",
+                "/COPY:DAT",
+                "/DCOPY:DAT",
+                "/XJ",
+                "/NFL",
+                "/NDL",
+                "/NJH",
+                "/NJS",
+                "/NP",
+                "/XD",
+                *sorted(THIRD_PARTY_SOURCE_EXCLUDE_ROOTS | skip_parts),
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if completed.returncode > 7:
+            raise ReleaseManifestError(
+                f"robocopy 复制第三方 Python 源码失败，退出码: {completed.returncode}"
+            )
+        return
+
     for source in sorted(site_packages.rglob("*.py")):
         relative = source.relative_to(site_packages)
-        if any(part in skip_parts for part in relative.parts):
+        if _should_skip_third_party_source(relative):
             continue
         destination = runtime_root / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -187,18 +258,30 @@ def build_base_runtime_layer(
         shutil.rmtree(staging_root)
     staging_root.mkdir(parents=True)
 
+    staging_started = time.perf_counter()
+    step_started = time.perf_counter()
+    print("[Base] 正在复制冻结运行时文件...", flush=True)
     _copy_tree(runtime_root, staging_root / "_internal")
+    _print_elapsed("[Base] 冻结运行时复制完成", step_started)
     if (runtime_root / "base_library.zip").is_file():
+        step_started = time.perf_counter()
+        print("[Base] 正在复制第三方 Python 源码...", flush=True)
         _copy_third_party_python_sources(staging_root / "_internal")
+        _print_elapsed("[Base] 第三方 Python 源码复制完成", step_started)
+        step_started = time.perf_counter()
+        print("[Base] 正在生成 Python 标准库压缩包...", flush=True)
         _build_standard_library_archive(
             staging_root / "_internal" / STDLIB_ARCHIVE_NAME
         )
+        _print_elapsed("[Base] Python 标准库压缩包生成完成", step_started)
     model_source = app_root / "data" / "models"
     required_model = model_source / "yolo26n.pt"
     if not required_model.is_file():
         raise ReleaseManifestError("PyInstaller 产物缺少 data/models/yolo26n.pt")
     target_models = staging_root / "data" / "models"
     target_models.mkdir(parents=True, exist_ok=True)
+    step_started = time.perf_counter()
+    print("[Base] 正在复制基础模型...", flush=True)
     for model_name in BASE_MODEL_NAMES:
         model_path = model_source / model_name
         if not model_path.is_file():
@@ -206,7 +289,10 @@ def build_base_runtime_layer(
                 f"基础模型包缺少 data/models/{model_name}"
             )
         _copy_file(model_path, target_models / model_name)
+    _print_elapsed("[Base] 基础模型复制完成", step_started)
 
+    step_started = time.perf_counter()
+    print("[Base] 正在计算文件哈希并生成清单...", flush=True)
     runtime_hashes = file_hashes(staging_root / "_internal")
     runtime_manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -223,12 +309,20 @@ def build_base_runtime_layer(
     }
     _write_json(staging_root / MANAGED_MODELS_NAME, managed_models)
 
-    payload_paths = [
-        path.relative_to(staging_root).as_posix()
-        for path in staging_root.rglob("*")
-        if path.is_file() and path.name != BASE_MANIFEST_NAME
-    ]
-    payload_hashes = file_hashes(staging_root, payload_paths)
+    payload_hashes = {
+        f"_internal/{relative}": digest
+        for relative, digest in runtime_hashes.items()
+    }
+    payload_hashes.update(
+        {
+            f"data/models/{relative}": digest
+            for relative, digest in model_hashes.items()
+        }
+    )
+    payload_hashes.update(
+        file_hashes(staging_root, ["runtime-manifest.json", MANAGED_MODELS_NAME])
+    )
+    payload_hashes = dict(sorted(payload_hashes.items()))
     unpacked_size = sum(
         (staging_root / Path(relative)).stat().st_size for relative in payload_hashes
     )
@@ -244,6 +338,8 @@ def build_base_runtime_layer(
     }
     manifest_path = staging_root / BASE_MANIFEST_NAME
     _write_json(manifest_path, manifest)
+    _print_elapsed("[Base] 文件哈希和清单生成完成", step_started)
+    _print_elapsed("[Base] staging 构建完成", staging_started)
     return manifest_path
 
 
@@ -254,19 +350,10 @@ def build_base_runtime_archive(
     *,
     package_version: str,
     runtime_version: str,
-    force: bool = False,
 ) -> Path:
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     archive_path = output_dir / f"YOLOTool_BaseEnv_{package_version}.7z"
-    fingerprint = _base_runtime_fingerprint(
-        app_root,
-        package_version=package_version,
-        runtime_version=runtime_version,
-    )
-    if not force and cache_matches(archive_path, fingerprint):
-        print(f"Reusing cached base runtime archive: {archive_path}")
-        return archive_path
 
     staging_root = Path(staging_root).resolve()
     build_base_runtime_layer(
@@ -279,6 +366,8 @@ def build_base_runtime_archive(
     seven_zip = shutil.which("7z") or shutil.which("7z.exe")
     if not seven_zip:
         raise ReleaseManifestError("未找到 Pixi 提供的 7z 命令，无法构建基础环境包。")
+    archive_started = time.perf_counter()
+    print("[Base] 正在使用 7-Zip 压缩，下面显示实时进度：", flush=True)
     completed = subprocess.run(
         [
             seven_zip,
@@ -287,21 +376,21 @@ def build_base_runtime_archive(
             str(archive_path),
             "*",
             "-m0=lzma2",
-            "-mx=9",
+            "-mx=5",
             "-ms=off",
             "-mmt=on",
+            "-bsp1",
             "-bb0",
-            "-bd",
         ],
         cwd=staging_root,
-        text=True,
-        capture_output=True,
         check=False,
     )
     if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip()
-        raise ReleaseManifestError(f"7z 基础环境包构建失败: {detail}")
-    write_cache(archive_path, fingerprint)
+        raise ReleaseManifestError(
+            f"7z 基础环境包构建失败，退出码：{completed.returncode}"
+        )
+    _print_elapsed("[Base] 7-Zip 压缩完成", archive_started)
+    print(f"[Base] 归档路径：{archive_path}", flush=True)
     return archive_path
 
 

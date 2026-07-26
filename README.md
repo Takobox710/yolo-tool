@@ -250,7 +250,7 @@ yolo_tool/
 pixi install
 ```
 
-默认开发环境包含全部模型转换后端；`release-base` 用于主安装包并包含 OpenVINO、NCNN、PNNX，`export-full` 在此基础上提供 TensorRT 和 GPU ONNX Runtime。`onnxruntime` 与 `onnxruntime-gpu` 保持在不同环境中。
+默认开发环境包含全部模型转换后端；`release-base` 用于主安装包并包含 SAM 2/2.1 Base+、ONNX 和 TorchScript，`export-full` 提供 OpenVINO、NCNN、PNNX、TensorRT 和 GPU ONNX Runtime。`onnxruntime` 与 `onnxruntime-gpu` 保持在不同环境中。
 
 如果需要确认 PyTorch/CUDA 是否正确安装，可执行：
 
@@ -288,7 +288,7 @@ powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1
 
 双击根目录 `打包更新程序.bat` 只重建程序安装器，并复用 `installer/output/` 中已有的基础环境包和附加环境包。基础包必须存在，附加包仍为可选。
 
-双击根目录 `打包程序.bat` 会执行完整发布。基础环境包和模型转换附加包会按输入文件的路径、大小和修改时间复用未变化的已有归档；只有首次构建、版本或运行时输入变化时才重新复制和压缩。对应 PowerShell 命令为：
+双击根目录 `打包程序.bat` 会执行完整发布。基础环境包和模型转换附加包每次都会重新生成，不生成或读取 `.cache.json`。对应 PowerShell 命令为：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
@@ -300,7 +300,7 @@ PowerShell 下也可分别使用 `-SkipBaseRuntimeModels`、`-SkipModelExportRun
 powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
-缓存只优化重复构建流程，不改变基础包的 7-Zip `mx=9` 或附加包的极限 LZMA2 压缩参数。需要完全重建时，在完整命令后增加 `-Clean`；该选项会同时强制重新冻结程序和重新生成两个运行包。
+基础包和附加包都不生成或读取 `.cache.json`，每次完整发布都会重新 staging、计算清单并压缩；两者使用原生 7-Zip `mx=5`、非固实 LZMA2 与 `-mmt=on`。基础包构建在 Windows 优先使用 `robocopy /S /MT:16` 复制第三方纯 Python 源码，并排除测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码，同时排除 ONNX 测试数据。需要完全重建时，在完整命令后增加 `-Clean`；该选项会同时强制重新冻结程序和重新生成两个运行包。
 
 面向用户的发布物固定为：
 
@@ -310,9 +310,9 @@ YOLOTool_BaseEnv_<基础包版本>.7z
 YOLOTool_ExtraEnv_<附加包版本>.7z
 ```
 
-程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`。当前环境包文件名为 `YOLOTool_BaseEnv_v1.7z` 和 `YOLOTool_ExtraEnv_v1.7z`，运行时兼容协议仍独立使用 `runtime-1`。首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时必须提供基础包；已有兼容环境时可只更新程序。默认目录为 `YOLOTool`，有效旧实例才会成为下次安装默认目录。
+程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`。当前环境包文件名为 `YOLOTool_BaseEnv_v2.7z` 和 `YOLOTool_ExtraEnv_v2.7z`，运行时兼容协议使用 `runtime-2`。基础包还携带 `sam2.1_hiera_base_plus.pt` 及 SAM 2/2.1 配置；首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时必须提供基础包；已有兼容环境时可只更新程序。默认目录为 `YOLOTool`，有效旧实例才会成为下次安装默认目录。
 
-附加包始终可选，仅收集 TensorRT 运行库。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装期间显示进度；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复哈希读取；附加环境安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时会保留该目录，旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展会在升级时迁移。
+附加包始终可选，收集 OpenVINO、NCNN/PNNX 和 TensorRT 运行库。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装期间显示进度；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复哈希读取；附加环境安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时会保留该目录，旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展会在升级时迁移。
 
 组件页只按名称、扩展名和压缩大小识别本地包，完整 SHA-256 在点击安装后执行，避免扫描大型压缩包时卡住界面。安装器校验完成后使用普通百分比进度条显示文件安装进度；提交完成前的 `--runtime-probe` 只比较程序清单要求的运行时版本与 `_internal` 基础环境清单版本，不导入 Torch、PySide6 或 ONNX。程序-only 本体明确包含 `ctypes.util`，兼容 Python 3.12 Windows 下 Cryptodome 的 ctypes 回退路径；七个安装清单保存到 `_internal/yolotool_metadata/`，旧根目录清单可自动迁移。基础包同时维护 `data/models/yolo26n.pt` 和根目录兼容副本 `yolo26n.pt`。用户模型和 `data/runtime/`、`images/`、`labels/`、`result/` 均保留。
 

@@ -2,10 +2,17 @@
 
 ## 待提交改动
 
-
 ## 提交记录
 
-## 完成架构整改、打包流程与文档同步
+## 完善 Windows 打包环境与发布流程
+
+- 将基础包和附加包升级为 `v2` / `runtime-2`，基础包加入 SAM 2/2.1 Base+ 代码、配置、预编译 CUDA 扩展和 checkpoint，并将 OpenVINO、NCNN/PNNX 移入附加包。
+- 精简基础包 staging，排除测试、示例、打包工具、测试框架、未使用的 Windows COM/数据库源码和 ONNX 测试资源，同时保留 Torch/CUDA、OpenCV、ONNX、PySide6、多媒体和 SAM2 能力。
+- 基础包和附加包统一使用原生 7-Zip 非固实 LZMA2、`mx=5`、`-mmt=on`，显示实时压缩进度、阶段提示和各阶段耗时；PowerShell 脚本补充 UTF-8 BOM 以兼容 Windows PowerShell 5.1。
+- 移除基础包和附加包 `.cache.json` 的生成与判断，完整发布时每次重新构建两个环境包；保留程序更新入口对已有环境包的直接复用。
+- 同步更新 Pixi 环境、PyInstaller 配置、安装器、打包文档、README、架构说明、代码清单和集成/服务测试；`pixi run check` 通过，完整测试 `165 passed`。
+
+## 完成架构整改、打包流程与文档同步（214be63）
 
 - 将 TensorRT 模型转换附加环境改为安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时保留该目录，并自动迁移旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展。
 - 完成核心架构整改：设置统一为 schema v1 类型化 `AppSettings`，页面统一接收 `WorkbenchContext`，训练/验证/导出/AI 任务统一使用 token/generation 任务协调器；CLI 统一由 `src/bootstrap/cli_dispatch.py` 分发，删除旧 context、types、widgets 和私有 UI 兼容别名，合并自然排序实现并补充循环依赖与结构围栏测试。

@@ -105,7 +105,12 @@ def test_base_runtime_layer_contains_environment_and_managed_models(tmp_path):
     (app_root / "_internal").mkdir(parents=True)
     (app_root / "data" / "models").mkdir(parents=True)
     (app_root / "_internal" / "torch.dll").write_bytes(b"torch")
-    for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt"):
+    for name in (
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_base_plus.pt",
+    ):
         (app_root / "data" / "models" / name).write_bytes(b"model")
 
     layer = tmp_path / "base-layer"
@@ -127,7 +132,12 @@ def test_base_runtime_layer_contains_environment_and_managed_models(tmp_path):
     expected_model_hash = __import__("hashlib").sha256(b"model").hexdigest()
     assert managed["files"] == {
         name: expected_model_hash
-        for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")
+        for name in (
+            "yolo11s.pt",
+            "yolo26n.pt",
+            "yolov8n.pt",
+            "sam2.1_hiera_base_plus.pt",
+        )
     }
     assert runtime["files"] == {
         "torch.dll": __import__("hashlib").sha256(b"torch").hexdigest()
@@ -143,7 +153,12 @@ def test_base_runtime_archive_excludes_program_and_uses_expected_name(tmp_path):
     (app_root / "data" / "models").mkdir(parents=True)
     (app_root / "YOLOTool.exe").write_bytes(b"program")
     (app_root / "_internal" / "runtime.dll").write_bytes(b"runtime")
-    for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt"):
+    for name in (
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_base_plus.pt",
+    ):
         (app_root / "data" / "models" / name).write_bytes(b"model")
 
     archive_path = build_base_runtime_archive(
@@ -162,14 +177,19 @@ def test_base_runtime_archive_excludes_program_and_uses_expected_name(tmp_path):
     assert "YOLOTool.exe" not in names
 
 
-def test_base_runtime_archive_reuses_cache_until_runtime_inputs_change(tmp_path):
+def test_base_runtime_archive_always_rebuilds_without_cache(tmp_path):
     from src.devtools.release_package import build_base_runtime_archive
 
     app_root = tmp_path / "app"
     (app_root / "_internal").mkdir(parents=True)
     (app_root / "data" / "models").mkdir(parents=True)
     (app_root / "_internal" / "runtime.dll").write_bytes(b"runtime")
-    for name in ("yolo11s.pt", "yolo26n.pt", "yolov8n.pt"):
+    for name in (
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_base_plus.pt",
+    ):
         (app_root / "data" / "models" / name).write_bytes(b"model")
 
     staging = tmp_path / "staging"
@@ -181,6 +201,8 @@ def test_base_runtime_archive_reuses_cache_until_runtime_inputs_change(tmp_path)
         package_version="v1",
         runtime_version="runtime-1",
     )
+    cache_path = output / "YOLOTool_BaseEnv_v1.7z.cache.json"
+    assert not cache_path.exists()
     marker = staging / "keep-on-cache-hit.txt"
     marker.write_text("cached", encoding="utf-8")
 
@@ -191,14 +213,5 @@ def test_base_runtime_archive_reuses_cache_until_runtime_inputs_change(tmp_path)
         package_version="v1",
         runtime_version="runtime-1",
     )
-    assert marker.exists()
-
-    (app_root / "_internal" / "runtime.dll").write_bytes(b"changed")
-    build_base_runtime_archive(
-        app_root,
-        staging,
-        output,
-        package_version="v1",
-        runtime_version="runtime-1",
-    )
     assert not marker.exists()
+    assert not cache_path.exists()

@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import subprocess
+import time
 from importlib import metadata
 from pathlib import Path, PurePosixPath
-
-import py7zr
 
 from src.services.model_export import (
     EXPORT_PROTOCOL_VERSION,
@@ -14,15 +14,27 @@ from src.services.model_export import (
     EXTENSION_SCHEMA_VERSION,
 )
 from src.services.runtime.release_manifest import file_hashes
-from src.devtools.package_cache import build_fingerprint, cache_matches, write_cache
 
 
 OPTIONAL_DISTRIBUTIONS = (
+    "openvino",
+    "openvino-telemetry",
+    "ncnn",
+    "pnnx",
     "tensorrt",
     "tensorrt-cu13",
     "tensorrt-cu13-libs",
     "tensorrt-cu13-bindings",
 )
+def _format_elapsed(seconds: float) -> str:
+    if seconds >= 60:
+        minutes, remainder = divmod(seconds, 60)
+        return f"{int(minutes)} 分 {remainder:.2f} 秒"
+    return f"{seconds:.2f} 秒"
+
+
+def _print_elapsed(label: str, started: float) -> None:
+    print(f"{label}，耗时：{_format_elapsed(time.perf_counter() - started)}", flush=True)
 
 
 def _safe_distribution_path(value: object) -> Path | None:
@@ -63,35 +75,35 @@ def collect_optional_distributions(
     return versions
 
 
-def _optional_distribution_inputs() -> tuple[dict[str, str], list[tuple[str, Path]]]:
-    versions: dict[str, str] = {}
-    inputs: list[tuple[str, Path]] = []
-    for name in OPTIONAL_DISTRIBUTIONS:
-        try:
-            distribution = metadata.distribution(name)
-        except metadata.PackageNotFoundError as exc:
-            raise RuntimeError(f"模型转换环境缺少分发包：{name}") from exc
-        versions[name] = distribution.version
-        for item in distribution.files or ():
-            relative = _safe_distribution_path(item)
-            if relative is None:
-                continue
-            source = Path(distribution.locate_file(item))
-            if source.is_file():
-                inputs.append((f"{name}/{relative.as_posix()}", source))
-    return versions, inputs
-
-
-def _optional_distribution_fingerprint(version: str) -> dict:
-    versions, inputs = _optional_distribution_inputs()
-    return build_fingerprint(
-        {
-            "extension_version": version,
-            "protocol_version": EXPORT_PROTOCOL_VERSION,
-            **{f"distribution:{name}": value for name, value in versions.items()},
-        },
-        inputs,
+def _build_native_archive(staging_root: Path, archive_path: Path) -> None:
+    seven_zip = shutil.which("7z") or shutil.which("7z.exe")
+    if not seven_zip:
+        raise RuntimeError("未找到 Pixi 提供的 7z 命令，无法构建模型转换附加包。")
+    archive_started = time.perf_counter()
+    print("[Extra] 正在使用 7-Zip 压缩，下面显示实时进度：", flush=True)
+    completed = subprocess.run(
+        [
+            seven_zip,
+            "a",
+            "-t7z",
+            str(archive_path),
+            "*",
+            "-m0=lzma2",
+            "-mx=5",
+            "-ms=off",
+            "-mmt=on",
+            "-bsp1",
+            "-bb0",
+        ],
+        cwd=staging_root,
+        check=False,
     )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"7z 模型转换附加包构建失败，退出码：{completed.returncode}"
+        )
+    _print_elapsed("[Extra] 7-Zip 压缩完成", archive_started)
+    print(f"[Extra] 归档路径：{archive_path}", flush=True)
 
 
 def build_model_export_layer(staging_root: Path, *, version: str) -> Path:
@@ -100,11 +112,15 @@ def build_model_export_layer(staging_root: Path, *, version: str) -> Path:
         shutil.rmtree(staging_root)
     package_root = staging_root / "packages"
     package_root.mkdir(parents=True)
+    step_started = time.perf_counter()
     versions = collect_optional_distributions(package_root)
+    _print_elapsed("[Extra] 运行库文件复制完成", step_started)
+    step_started = time.perf_counter()
     hashes = {
         f"packages/{relative}": digest
         for relative, digest in file_hashes(package_root).items()
     }
+    _print_elapsed("[Extra] 文件哈希计算完成", step_started)
     dll_dirs = sorted(
         {
             str(Path(relative).parent).replace("\\", "/")
@@ -120,7 +136,7 @@ def build_model_export_layer(staging_root: Path, *, version: str) -> Path:
         "platform": "win-64",
         "architecture": "x86_64",
         "package_dir": "packages",
-        "supported_formats": ["engine"],
+        "supported_formats": ["openvino", "engine", "ncnn"],
         "dependencies": versions,
         "dll_dirs": dll_dirs,
         "files": hashes,
@@ -138,30 +154,17 @@ def build_model_export_archive(
     output_dir: Path,
     *,
     version: str,
-    force: bool = False,
 ) -> Path:
     staging_root = Path(staging_root).resolve()
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     archive_path = output_dir / f"YOLOTool_ExtraEnv_{version}.7z"
-    fingerprint = _optional_distribution_fingerprint(version)
-    if not force and cache_matches(archive_path, fingerprint):
-        print(f"Reusing cached model export archive: {archive_path}")
-        return archive_path
-
+    staging_started = time.perf_counter()
+    print("[Extra] 正在准备模型转换运行库 staging...", flush=True)
     build_model_export_layer(staging_root, version=version)
+    _print_elapsed("[Extra] staging 构建完成", staging_started)
     archive_path.unlink(missing_ok=True)
-    filters = [
-        {
-            "id": py7zr.FILTER_LZMA2,
-            "preset": 9 | py7zr.PRESET_EXTREME,
-        }
-    ]
-    with py7zr.SevenZipFile(archive_path, "w", filters=filters) as archive:
-        for path in sorted(staging_root.rglob("*")):
-            if path.is_file():
-                archive.write(path, path.relative_to(staging_root).as_posix())
-    write_cache(archive_path, fingerprint)
+    _build_native_archive(staging_root, archive_path)
     return archive_path
 
 
@@ -170,14 +173,12 @@ def main() -> None:
     parser.add_argument("--staging-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--version", required=True)
-    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
     print(
         build_model_export_archive(
             args.staging_root,
             args.output_dir,
             version=args.version,
-            force=args.force,
         )
     )
 

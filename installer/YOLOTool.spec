@@ -19,6 +19,13 @@ from PyInstaller.utils.hooks import (
 
 BASE_EXCLUDES = [
     "pytest",
+    "_pytest",
+    "iniconfig",
+    "pluggy",
+    "PyInstaller",
+    "_pyinstaller_hooks_contrib",
+    "altgraph",
+    "setuptools",
     "src.tests",
     "PySide6.scripts.deploy_lib",
     "torch.utils.tensorboard",
@@ -29,6 +36,12 @@ BASE_EXCLUDES = [
     "polars",
     "_polars_runtime_32",
     "torchaudio",
+    "adodbapi",
+    "isapi",
+    "pythonwin",
+    "win32",
+    "win32com",
+    "win32comext",
     "torch.fx.passes.tests",
     "torch._export.db.examples",
     "torch.utils.benchmark",
@@ -53,11 +66,7 @@ PY7ZR_PACKAGES = (
     "brotli",
     "Cryptodome",
 )
-BASE_EXPORT_PACKAGES = (
-    "openvino",
-    "ncnn",
-    "pnnx",
-)
+SAM2_PACKAGES = ("sam2",)
 excludes = list(BASE_EXCLUDES)
 
 if is_program_only:
@@ -92,7 +101,18 @@ if is_program_only:
         "py7zr",
     ]
 else:
-    datas = [*collect_data_files("ultralytics")]
+    RUNTIME_DATA_EXCLUDES = [
+        "**/test/**",
+        "**/tests/**",
+        "**/testdata/**",
+        "**/testing/**",
+        "**/example/**",
+        "**/examples/**",
+        "**/_examples/**",
+    ]
+    datas = [
+        *collect_data_files("ultralytics", excludes=RUNTIME_DATA_EXCLUDES),
+    ]
     native_7z = shutil.which("7z.exe") or shutil.which("7z")
     if native_7z:
         datas += [(native_7z, ".")]
@@ -105,7 +125,7 @@ else:
         "cv2",
         "onnx",
         "onnxruntime",
-        *BASE_EXPORT_PACKAGES,
+        *SAM2_PACKAGES,
         *PY7ZR_PACKAGES,
     ):
         binaries += collect_dynamic_libs(package)
@@ -116,11 +136,11 @@ else:
         "onnx",
         "onnxslim",
         "onnxruntime",
-        *BASE_EXPORT_PACKAGES,
+        *SAM2_PACKAGES,
         *PY7ZR_PACKAGES,
     ):
         hiddenimports += collect_submodules(package, on_error="ignore")
-        datas += collect_data_files(package)
+        datas += collect_data_files(package, excludes=RUNTIME_DATA_EXCLUDES)
 
     # Keep the small dist-info directories used by importlib.metadata in frozen builds.
     for distribution in (

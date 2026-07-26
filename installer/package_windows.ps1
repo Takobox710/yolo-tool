@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Clean,
     [switch]$BuildBaseRuntimeModels,
     [switch]$BuildModelExportRuntime,
@@ -17,6 +17,22 @@ $InstallerOutputDir = Join-Path $PSScriptRoot "output"
 function Write-Step {
     param([string]$Message)
     Write-Host $Message -ForegroundColor Cyan
+}
+
+function Format-Elapsed {
+    param([System.Diagnostics.Stopwatch]$Stopwatch)
+    if ($Stopwatch.Elapsed.TotalMinutes -ge 1) {
+        return "{0} 分 {1:N2} 秒" -f [math]::Floor($Stopwatch.Elapsed.TotalMinutes), $Stopwatch.Elapsed.Seconds
+    }
+    return "{0:N2} 秒" -f $Stopwatch.Elapsed.TotalSeconds
+}
+
+function Write-StepElapsed {
+    param(
+        [string]$Message,
+        [System.Diagnostics.Stopwatch]$Stopwatch
+    )
+    Write-Step "$Message，耗时：$(Format-Elapsed $Stopwatch)"
 }
 
 function Get-InnoSetupCompiler {
@@ -67,37 +83,17 @@ try {
 
     $BaseVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "base-runtime-models-version.txt") -Raw).Trim()
     $BaseArchive = Join-Path $InstallerOutputDir "YOLOTool_BaseEnv_${BaseVersion}.7z"
-    $BaseAppRoot = Join-Path $Root "dist\YOLOTool"
-    $BaseArchiveCurrent = $false
-    if ($BuildBaseRuntimeModels -and -not $Clean -and
-        (Test-Path -LiteralPath $BaseArchive) -and
-        (Test-Path -LiteralPath (Join-Path $BaseAppRoot "_internal"))) {
-        $BaseCacheCheck = & pixi run -e release-base python -m src.devtools.base_runtime_package `
-            --app-root $BaseAppRoot `
-            --staging-root (Join-Path $Root "dist\packages\BaseRuntimeModels") `
-            --output-dir $InstallerOutputDir `
-            --version $BaseVersion `
-            --runtime-version $RuntimeVersion `
-            --check-current
-        if ($LASTEXITCODE -eq 0 -and (($BaseCacheCheck -join "").Trim() -eq "true")) {
-            $BaseArchiveCurrent = $true
-            Write-Step "Base runtime archive is unchanged; reusing cached archive."
-        }
-    }
     if (-not $BuildBaseRuntimeModels -and -not (Test-Path -LiteralPath $BaseArchive)) {
         throw "Required base archive is missing: $BaseArchive. Run the full packaging entry first."
     }
 
-    $ProgramOnly = -not $BuildBaseRuntimeModels -or $BaseArchiveCurrent
+    $ProgramOnly = -not $BuildBaseRuntimeModels
     if ($ProgramOnly) {
-        if ($BaseArchiveCurrent) {
-            Write-Step "[1/5] Building program-only EXE and reusing runtime archives..."
-        } else {
-            Write-Step "[1/5] Building program-only EXE and Program staging..."
-        }
+        Write-Step "[1/5] 正在构建仅程序 EXE 和程序 staging..."
     } else {
-        Write-Step "[1/5] Building frozen application and Program staging..."
+        Write-Step "[1/5] 正在构建完整冻结程序和程序 staging..."
     }
+    $ProgramStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
     & (Join-Path $PSScriptRoot "build_windows.ps1") `
         -Mode release -Clean:$Clean -PackageType Program `
         -ProgramOnly:$ProgramOnly `
@@ -105,25 +101,29 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Program build failed with exit code $LASTEXITCODE"
     }
+    $ProgramStepTimer.Stop()
+    Write-StepElapsed "[1/5] 程序和 staging 构建完成" $ProgramStepTimer
 
     if ($BuildBaseRuntimeModels) {
-        if ($BaseArchiveCurrent) {
-            Write-Step "[2/5] Reusing unchanged base runtime and models archive..."
-        } else {
-            Write-Step "[2/5] Building base runtime and models archive..."
-            & (Join-Path $PSScriptRoot "build_base_runtime_models.ps1") `
-                -Clean:$Clean -RuntimeVersion $RuntimeVersion
-            if ($LASTEXITCODE -ne 0) {
-                throw "Base runtime and models build failed with exit code $LASTEXITCODE"
-            }
+        $BaseStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
+        Write-Step "[2/5] 正在构建基础环境和模型归档..."
+        & (Join-Path $PSScriptRoot "build_base_runtime_models.ps1") `
+            -Clean:$Clean -RuntimeVersion $RuntimeVersion
+        if ($LASTEXITCODE -ne 0) {
+            throw "Base runtime and models build failed with exit code $LASTEXITCODE"
         }
+        $BaseStepTimer.Stop()
+        Write-StepElapsed "[2/5] 基础环境包步骤完成" $BaseStepTimer
     }
     if ($BuildModelExportRuntime) {
-        Write-Step "[3/5] Building optional model export archive..."
+        $ExtensionStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
+        Write-Step "[3/5] 正在构建附加模型转换环境归档..."
         & (Join-Path $PSScriptRoot "build_model_export_runtime.ps1") -Clean:$Clean
         if ($LASTEXITCODE -ne 0) {
             throw "Model export runtime build failed with exit code $LASTEXITCODE"
         }
+        $ExtensionStepTimer.Stop()
+        Write-StepElapsed "[3/5] 附加环境包步骤完成" $ExtensionStepTimer
     }
 
     if (-not (Test-Path -LiteralPath $BaseArchive)) {
@@ -143,11 +143,11 @@ try {
     }
     & pixi run -e release-base python @CatalogArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to build companion package catalog"
+        throw "生成伴随包清单失败。"
     }
     $Catalog = Get-Content -LiteralPath $CatalogPath -Raw | ConvertFrom-Json
     if ($Catalog.base.runtime_version -ne $RequiredRuntimeVersion) {
-        throw "Base package runtime '$($Catalog.base.runtime_version)' does not match required runtime '$RequiredRuntimeVersion'."
+        throw "基础包运行时版本 '$($Catalog.base.runtime_version)' 与要求的版本 '$RequiredRuntimeVersion' 不一致。"
     }
 
     $isccPath = Get-InnoSetupCompiler
@@ -174,18 +174,21 @@ try {
         )
     }
 
-    Write-Step "[4/5] Building unified Program Setup..."
+    $InstallerStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    Write-Step "[4/5] 正在构建统一安装包..."
     New-Item -ItemType Directory -Force -Path $InstallerOutputDir | Out-Null
     & $isccPath @InnoArgs $InstallerScript
     if ($LASTEXITCODE -ne 0) {
         throw "Inno Setup build failed with exit code $LASTEXITCODE"
     }
+    $InstallerStepTimer.Stop()
+    Write-StepElapsed "[4/5] 安装包构建完成" $InstallerStepTimer
 
-    Write-Step "[5/5] Build finished"
-    Write-Host "Program Setup: $(Join-Path $InstallerOutputDir "YOLOTool_Setup_${AppVersion}.exe")" -ForegroundColor Green
-    Write-Host "Base archive: $BaseArchive" -ForegroundColor Green
+    Write-Step "[5/5] 打包完成。"
+    Write-Host "安装包：$(Join-Path $InstallerOutputDir "YOLOTool_Setup_${AppVersion}.exe")" -ForegroundColor Green
+    Write-Host "基础环境包：$BaseArchive" -ForegroundColor Green
     if (Test-Path -LiteralPath $ExtensionArchive) {
-        Write-Host "Optional model export archive: $ExtensionArchive" -ForegroundColor Green
+        Write-Host "附加环境包：$ExtensionArchive" -ForegroundColor Green
     }
 }
 catch {

@@ -20,6 +20,8 @@ def test_format_mapping_targets_and_model_scan(tmp_path):
     best.write_bytes(b"best")
 
     assert resolve_export_format("TensorRT").argument == "engine"
+    assert not resolve_export_format("OpenVINO").built_in
+    assert not resolve_export_format("NCNN").built_in
     assert export_artifact_path(base, tmp_path, "OpenVINO").name == "base_openvino_model"
     assert find_export_model_paths(tmp_path, tmp_path) == [best.resolve()]
 

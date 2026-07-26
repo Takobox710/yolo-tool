@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Clean,
     [string]$Version = ""
 )
@@ -24,16 +24,12 @@ if ($Clean) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-$ForceArgs = @()
-if ($Clean) {
-    $ForceArgs += "--force"
-}
 pixi run -e export-full python -m src.devtools.model_export_package `
     --staging-root $StagingRoot `
     --output-dir $OutputDir `
-    --version $Version @ForceArgs
+    --version $Version
 if ($LASTEXITCODE -ne 0) {
-    throw "Model export archive build failed with exit code $LASTEXITCODE"
+    throw "附加模型转换环境归档构建失败，退出码：$LASTEXITCODE"
 }
 
-Write-Host "Built additive LZMA2 model export archive: $OutputPath"
+Write-Host "附加模型转换环境归档已生成：$OutputPath" -ForegroundColor Green

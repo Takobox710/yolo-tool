@@ -182,7 +182,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert Path("src/assets.qrc").exists()
     assert "assets_rc" in Path("src/ui/shared/assets.py").read_text(encoding="utf-8")
     assert "src.devtools.release_package" in script and "PackageType" in script
-    assert '$BaseModelNames = @("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")' in script
+    assert '"sam2.1_hiera_base_plus.pt"' in script
     assert 'save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")' in script
     assert "BuildBaseRuntimeModels" in package_windows_script
     assert "BuildModelExportRuntime" in package_windows_script

@@ -23,8 +23,19 @@ def test_release_artifact_names_and_versions_are_short_and_stable():
     assert "YOLOTool_ExtraEnv_${ExtensionVersion}.7z" in package_script
     assert "YOLOTool_BaseEnv_{package_version}.7z" in base_builder
     assert "YOLOTool_ExtraEnv_{version}.7z" in extra_builder
-    assert Path("installer/base-runtime-models-version.txt").read_text().strip() == "v1"
-    assert Path("installer/model-export-runtime-version.txt").read_text().strip() == "v1"
+    assert Path("installer/base-runtime-models-version.txt").read_text().strip() == "v2"
+    assert Path("installer/model-export-runtime-version.txt").read_text().strip() == "v2"
+    assert Path("installer/runtime-version.txt").read_text().strip() == "runtime-2"
+
+
+def test_base_runtime_uses_parallel_python_source_copy_with_fallback():
+    source = Path("src/devtools/release_package.py").read_text(encoding="utf-8")
+
+    assert 'shutil.which("robocopy") if os.name == "nt" else None' in source
+    assert '"/MT:16"' in source
+    assert '"*.py"' in source
+    assert '"/XD"' in source
+    assert "for source in sorted(site_packages.rglob(\"*.py\"))" in source
 
 
 def test_component_page_uses_fast_candidate_checks_and_defers_hashing():
@@ -105,21 +116,22 @@ def test_program_update_build_uses_program_only_output_without_runtime_layer():
     assert "-ProgramOnly:$ProgramOnly" in package_script
     assert "Get-ChildItem -LiteralPath $BuildPath -Filter $ExeName -File -Recurse" in build_script
     assert 'Remove-Item -LiteralPath $AppDir -Recurse -Force' in build_script
-    assert 'unexpectedly contains _internal' in build_script
-    assert '"yolo11s.pt", "yolo26n.pt", "yolov8n.pt"' in build_script
+    assert '仅程序输出异常包含 _internal' in build_script
+    assert '"sam2.1_hiera_base_plus.pt"' in build_script
 
 
-def test_full_packaging_reuses_unchanged_runtime_archives():
+def test_full_packaging_always_builds_base_archive():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
     base_script = Path("installer/build_base_runtime_models.ps1").read_text(encoding="utf-8")
     extension_script = Path("installer/build_model_export_runtime.ps1").read_text(
         encoding="utf-8"
     )
 
-    assert "--check-current" in package_script
-    assert "$BaseArchiveCurrent" in package_script
-    assert "--force" in base_script
-    assert "--force" in extension_script
+    assert "--check-current" not in package_script
+    assert "$BaseArchiveCurrent" not in package_script
+    assert "--check-current" not in base_script
+    assert "cache.json" not in base_script
+    assert "--force" not in extension_script
 
 
 def test_program_only_spec_skips_external_runtime_analysis():

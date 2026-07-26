@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet("release", "dev")]
     [string]$Mode = "release",
     [switch]$Clean,
@@ -44,14 +44,23 @@ if ($ProgramOnly) {
 }
 
 try {
+    $PyInstallerTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    if ($ProgramOnly) {
+        Write-Host "[程序构建] 正在使用 PyInstaller 构建仅程序版本..." -ForegroundColor Cyan
+    } else {
+        Write-Host "[程序构建] 正在使用 PyInstaller 构建完整冻结程序..." -ForegroundColor Cyan
+    }
     pixi run -e release-base pyinstaller --noconfirm --log-level=WARN `
         --workpath "build\$BuildName" `
         --distpath "dist" `
         "installer/YOLOTool.spec"
 
     if ($LASTEXITCODE -ne 0) {
-        throw "PyInstaller failed with exit code $LASTEXITCODE"
+        throw "PyInstaller 构建失败，退出码：$LASTEXITCODE"
     }
+    $PyInstallerTimer.Stop()
+    Write-Host "[程序构建] PyInstaller 阶段耗时：$($PyInstallerTimer.Elapsed.TotalSeconds.ToString('N2')) 秒" -ForegroundColor Green
+    Write-Host "[程序构建] PyInstaller 构建完成。" -ForegroundColor Green
 }
 finally {
     $env:PYTHONWARNINGS = $PreviousPythonWarnings
@@ -74,14 +83,14 @@ if ($ProgramOnly) {
         } else {
             ($ProgramOnlyCandidates | ForEach-Object { $_.FullName }) -join "; "
         }
-        throw "Expected exactly one program-only EXE under $BuildPath; found $($ProgramOnlyCandidates.Count): $Found"
+        throw "程序版本应在 $BuildPath 下找到唯一 EXE，实际找到 $($ProgramOnlyCandidates.Count) 个：$Found"
     }
     Remove-Item -LiteralPath $AppDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
     Copy-Item -LiteralPath $ProgramOnlyCandidates[0].FullName -Destination (Join-Path $AppDir $ExeName) -Force
     Remove-Item -LiteralPath $OneFileOutput -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath (Join-Path $AppDir "_internal")) {
-        throw "Program-only output unexpectedly contains _internal: $AppDir"
+        throw "仅程序输出异常包含 _internal 目录：$AppDir"
     }
     $RuntimeSettingsPath = ""
     $RuntimeAppStatePath = ""
@@ -99,7 +108,12 @@ if ($ProgramOnly) {
     $RuntimeAppStatePath = Join-Path $AppDir "data/runtime/app_state.json"
 
     $SourceModelsDir = Join-Path $Root "data/models"
-    $BaseModelNames = @("yolo11s.pt", "yolo26n.pt", "yolov8n.pt")
+    $BaseModelNames = @(
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_base_plus.pt"
+    )
     $SourceModelFiles = @()
     if (Test-Path -LiteralPath $SourceModelsDir) {
         foreach ($ModelName in $BaseModelNames) {
@@ -132,15 +146,15 @@ save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")
 "@ | pixi run -e release-base python - $AppDir
 
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to generate packaged runtime settings files"
+    throw "生成打包后的运行时设置文件失败。"
 }
 
 if (-not (Test-Path -LiteralPath $RuntimeSettingsPath)) {
-    throw "Build output is missing runtime settings file: data/runtime/settings.json"
+    throw "构建输出缺少运行时设置文件：data/runtime/settings.json"
 }
 
 if (-not (Test-Path -LiteralPath $RuntimeAppStatePath)) {
-    throw "Build output is missing app state file: data/runtime/app_state.json"
+    throw "构建输出缺少应用状态文件：data/runtime/app_state.json"
 }
 
     $MissingModels = @()
@@ -150,13 +164,13 @@ if (-not (Test-Path -LiteralPath $RuntimeAppStatePath)) {
         }
     }
     if ($MissingModels.Count -gt 0) {
-        throw "Build output is missing required model files under data/models: $($MissingModels -join ', ')"
+            throw "构建输出缺少 data/models 下的基础模型：$($MissingModels -join ', ')"
     }
 }
 
 $AppVersion = (& pixi run -e release-base python -c "from src import APP_VERSION; print(APP_VERSION)" | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($AppVersion)) {
-    throw "Failed to read application version"
+    throw "读取应用版本失败。"
 }
 
 if ([string]::IsNullOrWhiteSpace($RuntimeVersion)) {
@@ -176,10 +190,13 @@ $PackageArgs = @(
     "--runtime-version", $RuntimeVersion,
     "--required-runtime-version", $RequiredRuntimeVersion
 )
+$StagingTimer = [System.Diagnostics.Stopwatch]::StartNew()
 & pixi run -e release-base python @PackageArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to build $PackageType package staging"
+    throw "生成 $PackageType 包 staging 失败。"
 }
+$StagingTimer.Stop()
+Write-Host "[程序构建] staging 阶段耗时：$($StagingTimer.Elapsed.TotalSeconds.ToString('N2')) 秒" -ForegroundColor Green
 
 Write-Host "Mode: $Mode"
 Write-Host "Built: $AppDir"
