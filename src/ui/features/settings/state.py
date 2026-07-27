@@ -6,8 +6,10 @@ from src.services.runtime import (
     application_version,
     dependency_versions,
     python_version,
+    sanitize_terminal_line,
     torch_cuda_summary,
 )
+from src.services.runtime.release_updates import ReleaseCheckResult, check_latest_release
 from src.services.settings import build_default_settings
 from src.shared.qt import QMessageBox, Qt
 
@@ -130,6 +132,13 @@ def on_show(page):
         page.set_status_card(label, "检测中...")
     page.log.setPlainText(page.program_log_text())
     page.context.run_background("env", lambda: load_env_payload(page))
+    if not page.context.release_check_started:
+        page.context.release_check_started = True
+        page.context.run_background(
+            "release_check",
+            lambda: check_latest_release(),
+            receiver=page,
+        )
 
 
 def load_env_payload(page):
@@ -156,6 +165,95 @@ def apply_env_data(page, payload):
     page.set_status_card("Pillow", format_dependency_status(dependencies, "Pillow"))
     page.set_status_card("TensorRT", format_dependency_status(dependencies, "TensorRT"))
     page.set_status_card("程序版本", payload.get("app_version", "未知"))
+
+
+def apply_release_check(page, payload) -> None:
+    if isinstance(payload, dict):
+        environment_assets = payload.get("environment_asset_names") or ()
+        if isinstance(environment_assets, str):
+            environment_assets = (environment_assets,)
+        environment_urls = payload.get("environment_asset_urls") or ()
+        if isinstance(environment_urls, str):
+            environment_urls = (environment_urls,)
+        result = ReleaseCheckResult(
+            current_version=str(payload.get("current_version") or ""),
+            latest_version=str(payload.get("latest_version") or ""),
+            release_url=str(payload.get("release_url") or ""),
+            release_notes=str(payload.get("release_notes") or ""),
+            installer_asset_name=str(payload.get("installer_asset_name") or ""),
+            installer_asset_url=str(payload.get("installer_asset_url") or ""),
+            environment_asset_names=tuple(
+                str(item)
+                for item in environment_assets
+                if str(item)
+            ),
+            environment_asset_urls=tuple(
+                str(item)
+                for item in environment_urls
+                if str(item)
+            ),
+            update_available=bool(payload.get("update_available")),
+            error=str(payload.get("error") or ""),
+        )
+    elif isinstance(payload, ReleaseCheckResult):
+        result = payload
+    else:
+        return
+    page.release_check_result = result
+    page.upgrade_indicator.setVisible(result.update_available)
+    if result.update_available:
+        page.upgrade_indicator.setToolTip(
+            f"查看版本更新：发现新版本 {result.latest_version}，当前版本 {result.current_version}"
+        )
+    else:
+        page.upgrade_indicator.setToolTip("查看版本更新")
+    _append_release_notes(page, result)
+    page.release_check_toast.show_result(result)
+
+
+def open_release_update_dialog(page) -> None:
+    result = getattr(page, "release_check_result", None)
+    if not isinstance(result, ReleaseCheckResult):
+        version = application_version()
+        result = ReleaseCheckResult(
+            current_version=version,
+            latest_version=version,
+            release_notes="正在获取 GitHub Release 信息，请稍后再试。",
+        )
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    dialog = ReleaseUpdateDialog(page, result)
+    page.release_update_dialog = dialog
+    dialog.exec()
+    if getattr(page, "release_update_dialog", None) is dialog:
+        page.release_update_dialog = None
+
+
+def _append_release_notes(page, result: ReleaseCheckResult) -> None:
+    if not result.update_available:
+        return
+    marker = f"{result.latest_version} 更新内容："
+    if marker in page.log.toPlainText():
+        return
+    notes = "\n".join(
+        cleaned
+        for line in str(result.release_notes or "").splitlines()
+        if (cleaned := sanitize_terminal_line(line).strip())
+    )
+    if not notes:
+        notes = "暂无发布说明。"
+    entry = (
+        f"发现新版本 {result.latest_version}，当前版本 {result.current_version}。\n"
+        f"{marker}\n{notes}"
+    )
+    append_log = getattr(page.context, "append_program_log", None)
+    if not callable(append_log):
+        append_program_log_entry(page, entry)
+        return
+    before = page.log.toPlainText()
+    append_log(entry)
+    if page.log.toPlainText() == before:
+        append_program_log_entry(page, entry)
 
 
 def append_program_log_entry(page, entry: str) -> None:

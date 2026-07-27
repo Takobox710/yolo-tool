@@ -53,6 +53,32 @@ def test_component_page_uses_fast_candidate_checks_and_defers_hashing():
     assert "ProgressGauge.Style := npbstMarquee" in source
 
 
+def test_installer_warns_for_missing_base_without_blocking_and_cleans_up_on_finish():
+    source = INSTALLER.read_text(encoding="utf-8")
+
+    assert '#define GitHubReleaseUrl "https://github.com/Takobox710/yolo-tool/releases"' in source
+    assert "BaseGithubButton: TNewButton" in source
+    assert "BaseGithubButton.Visible := BaseIsRequired and not IsValidBaseArchive();" in source
+    assert "未找到匹配基础环境包，将继续使用旧环境；可能导致部分功能缺失。" in source
+    assert "当前安装必须提供匹配的本体环境和模型包。' + #13#10 +" not in source
+    next_page = _section(source, "function NextButtonClick", "procedure BrowseBaseClick")
+    assert "BaseIsRequired and not IsValidBaseArchive()" not in next_page
+    assert "进入 GitHub 下载" in source
+    assert "CleanupPackagesCheck: TNewCheckBox" in source
+    assert "安装完成后删除本次使用的安装包和环境包" in source
+    assert "CleanupInstallSources();" in source
+    assert "ScheduleDeleteFile(ExpandConstant('{srcexe}'));" in source
+    assert "ScheduleDeleteFile(BaseArchivePath);" in source
+    assert "ScheduleDeleteFile(ExtensionArchivePath);" in source
+
+
+def test_gui_startup_does_not_block_on_runtime_version_mismatch():
+    source = Path("src/ui/app.py").read_text(encoding="utf-8")
+
+    assert "check_runtime_compatibility" not in source
+    assert "运行环境不兼容" not in source
+
+
 def test_installer_has_nonblocking_directory_and_safe_cancel_contract():
     source = INSTALLER.read_text(encoding="utf-8")
     deinitialize = _section(source, "procedure DeinitializeSetup();", "function InitializeUninstall")
@@ -120,6 +146,16 @@ def test_program_update_build_uses_program_only_output_without_runtime_layer():
     assert '"sam2.1_hiera_base_plus.pt"' in build_script
 
 
+def test_full_frozen_build_writes_standalone_runtime_manifests():
+    build_script = Path("installer/build_windows.ps1").read_text(encoding="utf-8")
+
+    assert "if (-not $ProgramOnly)" in build_script
+    assert 'Join-Path $AppDir "release-manifest.json"' in build_script
+    assert 'Join-Path $AppDir "runtime-manifest.json"' in build_script
+    assert "UTF8Encoding]::new($false)" in build_script
+    assert "files = @{}" in build_script
+
+
 def test_full_packaging_always_builds_base_archive():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
     base_script = Path("installer/build_base_runtime_models.ps1").read_text(encoding="utf-8")
@@ -161,5 +197,6 @@ def test_post_install_commit_keeps_progress_visible():
     changed_step = _section(source, "procedure CurStepChanged", "procedure DeinitializeSetup")
 
     assert "正在完成安装，请稍候..." in changed_step
-    assert "正在检查新程序运行环境..." in changed_step
+    assert "if ShouldInstallBase() then" in changed_step
+    assert "已保留当前运行环境，跳过环境版本自检。" in changed_step
     assert "ProgressGauge.Position := WizardForm.ProgressGauge.Max" in changed_step

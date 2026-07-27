@@ -1,7 +1,29 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QModelIndex, QUrl, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QFont, QImage, QPixmap, QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    QSize,
+    QUrl,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QIcon,
+    QImage,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -13,6 +35,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -40,6 +63,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTextEdit,
     QToolTip,
+    QToolButton,
     QButtonGroup,
     QVBoxLayout,
     QWidget,

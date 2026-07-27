@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.3.1"
 #endif
 #ifndef RequiredRuntimeVersion
 #define RequiredRuntimeVersion "runtime-2"
@@ -34,6 +34,7 @@
 #ifndef ExtensionPackageVersion
 #define ExtensionPackageVersion ""
 #endif
+#define GitHubReleaseUrl "https://github.com/Takobox710/yolo-tool/releases"
 
 #define MyAppName "YOLOTool"
 #define MyAppPublisher "Takobox"
@@ -127,6 +128,7 @@ var
   BaseStatus: TNewStaticText;
   BasePathEdit: TNewEdit;
   BaseBrowseButton: TNewButton;
+  BaseGithubButton: TNewButton;
   ExtensionCheck: TNewCheckBox;
   ExtensionStatus: TNewStaticText;
   ExtensionPathEdit: TNewEdit;
@@ -155,6 +157,9 @@ var
   ExtensionArchiveValid: Boolean;
   ExtensionArchiveHashVerified: Boolean;
   VerificationPage: TOutputProgressWizardPage;
+  CleanupPackagesCheck: TNewCheckBox;
+  CleanupPackagesStatus: TNewStaticText;
+  CleanupPackagesRequested: Boolean;
 
 function NormalizeInstallPath(const Value: String): String;
 begin
@@ -441,7 +446,7 @@ begin
       ProgramStatus.Caption := '程序本体：' + ExistingAppVersion + ' 降级至 {#MyAppVersion}（需要确认）';
   end;
 
-  BaseCheck.Checked := BaseIsRequired;
+  BaseCheck.Checked := BaseIsRequired and IsValidBaseArchive();
   BaseCheck.Enabled := (not BaseIsRequired) and IsValidBaseArchive();
   BasePathEdit.Text := BaseArchivePath;
   if IsValidBaseArchive() then
@@ -456,11 +461,14 @@ begin
   else
   begin
     BaseStatus.Font.Color := clRed;
-    if BaseIsRequired then
-      BaseStatus.Caption := '未找到或校验失败：必须选择匹配的本体环境和模型包。'
+    if BaseIsRequired and ExistingInstall then
+      BaseStatus.Caption := '未找到匹配基础环境包，将继续使用旧环境；可能导致部分功能缺失。'
+    else if BaseIsRequired then
+      BaseStatus.Caption := '未找到基础环境包，将仅安装程序；启动后可能缺少运行环境。'
     else
       BaseStatus.Caption := '未找到合法基础包，本次将保留现有运行环境。';
   end;
+  BaseGithubButton.Visible := BaseIsRequired and not IsValidBaseArchive();
 
   ExtensionCheck.Checked := False;
   ExtensionCheck.Enabled := IsValidExtensionArchive();
@@ -515,6 +523,34 @@ begin
   end;
 end;
 
+procedure OpenGitHubReleaseClick(Sender: TObject);
+var
+  ErrorCode: Integer;
+begin
+  ShellExec('open', '{#GitHubReleaseUrl}', '', '', SW_SHOWNORMAL,
+    ewNoWait, ErrorCode);
+end;
+
+procedure BuildFinishedCleanupControls();
+begin
+  CleanupPackagesCheck := TNewCheckBox.Create(WizardForm.FinishedPage);
+  CleanupPackagesCheck.Parent := WizardForm.FinishedPage.Surface;
+  CleanupPackagesCheck.Left := 0;
+  CleanupPackagesCheck.Top := WizardForm.FinishedPage.SurfaceHeight - 56;
+  CleanupPackagesCheck.Width := WizardForm.FinishedPage.SurfaceWidth;
+  CleanupPackagesCheck.Height := 24;
+  CleanupPackagesCheck.Caption := '安装完成后删除本次使用的安装包和环境包';
+  CleanupPackagesCheck.Checked := False;
+  CleanupPackagesCheck.Visible := False;
+  CleanupPackagesStatus := TNewStaticText.Create(WizardForm.FinishedPage);
+  CleanupPackagesStatus.Parent := WizardForm.FinishedPage.Surface;
+  CleanupPackagesStatus.Left := 0;
+  CleanupPackagesStatus.Top := WizardForm.FinishedPage.SurfaceHeight - 30;
+  CleanupPackagesStatus.Width := WizardForm.FinishedPage.SurfaceWidth;
+  CleanupPackagesStatus.Caption := '';
+  CleanupPackagesStatus.Visible := False;
+end;
+
 procedure InitializeWizard();
 var
   Top: Integer;
@@ -561,9 +597,18 @@ begin
   BaseStatus.Width := ComponentsPage.SurfaceWidth;
   BaseStatus.AutoSize := False;
   BaseStatus.WordWrap := True;
-  BaseStatus.Height := 34;
+  BaseStatus.Height := 32;
+  BaseStatus.Width := ComponentsPage.SurfaceWidth - 164;
+  BaseGithubButton := TNewButton.Create(ComponentsPage);
+  BaseGithubButton.Parent := ComponentsPage.Surface;
+  BaseGithubButton.Top := Top + 54;
+  BaseGithubButton.Left := ComponentsPage.SurfaceWidth - 154;
+  BaseGithubButton.Width := 154;
+  BaseGithubButton.Height := 26;
+  BaseGithubButton.Caption := '进入 GitHub 下载';
+  BaseGithubButton.OnClick := @OpenGitHubReleaseClick;
 
-  Top := Top + 96;
+  Top := Top + 126;
   ExtensionCheck := TNewCheckBox.Create(ComponentsPage);
   ExtensionCheck.Parent := ComponentsPage.Surface;
   ExtensionCheck.Top := Top;
@@ -590,6 +635,7 @@ begin
   ExtensionStatus.Height := 34;
   VerificationPage := CreateOutputProgressPage('正在验证安装包',
     '安装程序即将验证本地环境包，请稍候...');
+  BuildFinishedCleanupControls();
   WizardInitialized := True;
 end;
 
@@ -597,19 +643,20 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = ComponentsPage.ID then
     RefreshComponentPage();
+  if CurPageID = wpFinished then
+  begin
+    CleanupPackagesCheck.Visible := UpdateCommitted;
+    CleanupPackagesStatus.Visible := False;
+  end;
 end;
+
+procedure CleanupInstallSources(); forward;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
   if CurPageID = ComponentsPage.ID then
   begin
-    if BaseIsRequired and not IsValidBaseArchive() then
-    begin
-      MsgBox('当前安装必须提供匹配的本体环境和模型包。', mbError, MB_OK);
-      Result := False;
-      exit;
-    end;
     if ExistingInstall and
       (CompareVersions(ExistingAppVersion, '{#MyAppVersion}') > 0) and
       not DowngradeConfirmed then
@@ -620,6 +667,40 @@ begin
       DowngradeConfirmed := Result;
     end;
   end;
+  if (CurPageID = wpFinished) and UpdateCommitted and
+    CleanupPackagesCheck.Checked then
+  begin
+    CleanupInstallSources();
+    CleanupPackagesCheck.Checked := False;
+    CleanupPackagesCheck.Enabled := False;
+  end;
+end;
+
+procedure ScheduleDeleteFile(const FileName: String);
+var
+  ErrorCode: Integer;
+  Parameters: String;
+begin
+  if (FileName = '') or not FileExists(FileName) then
+    exit;
+  Parameters := '/C ping 127.0.0.1 -n 3 > nul & del /f /q "' + FileName + '"';
+  ShellExec('open', ExpandConstant('{sys}\cmd.exe'), Parameters, '',
+    SW_HIDE, ewNoWait, ErrorCode);
+end;
+
+procedure CleanupInstallSources();
+begin
+  if CleanupPackagesRequested then
+    exit;
+  CleanupPackagesRequested := True;
+  ScheduleDeleteFile(ExpandConstant('{srcexe}'));
+  if ShouldInstallBase() then
+    ScheduleDeleteFile(BaseArchivePath);
+  if ExtensionCheck.Checked then
+    ScheduleDeleteFile(ExtensionArchivePath);
+  CleanupPackagesStatus.Caption := '已安排删除本次使用的安装包和环境包。';
+  CleanupPackagesStatus.Font.Color := clGreen;
+  CleanupPackagesStatus.Visible := True;
 end;
 
 function ShouldInstallBase(): Boolean;
@@ -1281,13 +1362,21 @@ begin
       RestoreMainInstall();
       Abort;
     end;
-    WizardForm.FilenameLabel.Caption := '正在检查新程序运行环境...';
-    WizardForm.Update;
-    if not RunAppCommand('--runtime-probe', ExitCode) or (ExitCode <> 0) then
+    if ShouldInstallBase() then
     begin
-      MsgBox('新程序运行环境自检失败，正在恢复旧版本。', mbError, MB_OK);
-      RestoreMainInstall();
-      Abort;
+      WizardForm.FilenameLabel.Caption := '正在检查新程序运行环境...';
+      WizardForm.Update;
+      if not RunAppCommand('--runtime-probe', ExitCode) or (ExitCode <> 0) then
+      begin
+        MsgBox('新程序运行环境自检失败，正在恢复旧版本。', mbError, MB_OK);
+        RestoreMainInstall();
+        Abort;
+      end;
+    end
+    else
+    begin
+      WizardForm.FilenameLabel.Caption := '已保留当前运行环境，跳过环境版本自检。';
+      WizardForm.Update;
     end;
     WizardForm.FilenameLabel.Caption := '正在登记安装实例...';
     WizardForm.Update;

@@ -36,6 +36,7 @@ class WorkbenchContext:
         self.load_result = load_result
         self.tasks = TaskCoordinator()
         self.generation = 0
+        self.release_check_started = False
         self._append_log = append_log
         self._program_log = program_log
         self._notify_settings = notify_settings

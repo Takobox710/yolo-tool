@@ -104,7 +104,8 @@ yolo_tool/
 
 - `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程。
 - `windows_spawn.py` 提供 Windows 隐藏窗口参数，确保打包后的后台任务不弹终端。
-- `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测；依赖版本优先读取 `importlib.metadata`，冻结态缺少发行版元数据时回退读取模块的 `__version__`。安装器调用的 `--runtime-probe` 不加载这些模块，只比较程序清单要求的运行时版本与 `_internal` 基础环境清单中的版本。
+- `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测；依赖版本优先读取 `importlib.metadata`，冻结态缺少发行版元数据时回退读取模块的 `__version__`。GUI 启动不强制比较运行环境版本；安装器调用的 `--runtime-probe` 仍不加载这些模块，只比较程序清单要求的运行时版本与 `_internal` 基础环境清单中的版本。
+- `release_updates.py` 通过标准库 HTTPS 请求读取 `Takobox710/yolo-tool` 的最新稳定 GitHub Release，负责版本号规范化、比较、发布说明和安装器/环境包资源解析、Release 资源顺序下载、Windows Shell 已知 Downloads 路径解析、安装包启动及失败结果封装；网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
 - `installer/YOLOTool.spec` 在 `YOLO_TOOL_PROGRAM_ONLY=1` 时只分析应用代码，第三方运行时模块由基础包 `_internal/` 提供；程序本体明确收集 `ctypes.util` 和 `ctypes.wintypes`，兼容 Cryptodome 在 Python 3.12 Windows 下从 CFFI 回退到 ctypes 的导入链。打包链路只保留实际需要的 `installer/hooks/hook-torch.py` 与 `installer/hooks/program_external_runtime.py`：前者收集完整环境所需的 Torch 源码、动态库和隐藏导入，后者只在程序-only 模式注册固定的后端 DLL 目录和基础包路径，不递归扫描运行时目录；已排除的 PySide6 deploy_lib 和 tensorboard 模块不再配置空 hook。基础环境构建时，`src/devtools/release_package.py` 将 PyInstaller 通常嵌入 PYZ 的动态导入标准库打入 `python_stdlib.zip`，并只补齐运行所需的第三方纯 Python 源码，过滤测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码，避免程序-only 启动时出现 Python DLL 或动态导入模块缺失。
 - GUI 日志写入前必须通过这里的终端输出清洗逻辑去掉 ANSI/控制字符。
 
@@ -184,7 +185,7 @@ yolo_tool/
 - 页面创建与导航注册统一在 `src/ui/shell/page_registry.py` 与 `src/ui/shell/navigation.py`。
 - 主窗口页面采用“首屏懒加载 + 空闲分批预热”：启动时先创建当前页，窗口显示后再按空闲节奏补建其余页面，避免首页打开时连带触发重页面初始化，同时减少用户第一次切到任意页面时再同步吃到建页卡顿。
 - 程序级日志缓冲与设置页日志展示统一走 `src/ui/shell/program_log.py`。
-- 关闭确认统一由 `src/ui/shell/close_guard.py` 处理，包括未保存标注与训练运行中确认。
+- 关闭确认统一由 `src/ui/shell/close_guard.py` 处理，包括未保存标注与训练运行中确认；环境状态、主页摘要、训练状态和 GitHub Release 检查等短生命周期后台任务不阻止关闭，也不触发确认弹窗。
 - `WorkbenchWindow` 默认尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`；项目内路径在 UI 中优先显示为相对路径，写入文件时由设置存储层解析/序列化。
 - 页面通过上下文提交设置变更并接收字段路径通知；控件刷新期间阻断信号，避免通知回写造成重复保存。
 - 项目路径字段分为三组共享路径：`paths.images_dir`（数据集划分、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、数据集划分、批量重命名）和 `paths.labels_dir`（标注预览、数据集划分）；图片压缩源目录单独使用 `image_resize.source_dir`。
@@ -211,6 +212,9 @@ yolo_tool/
 - 训练与检测都只允许一次启动；运行期间按钮禁用，任务结束后恢复。
 - 项目切换、恢复默认设置和关闭程序遇到写入/推理任务时，统一由任务协调器执行确认、停止和回收；过期结果按任务 token 与项目 generation 丢弃。
 - 模型验证、AI 预标注和 Torch/CUDA 摘要读取都优先走短生命周期隐藏子进程，避免主 GUI 长驻推理运行时。
+- 每次启动后首次进入系统设置页时，GitHub Release 检查通过 `WorkbenchWindow.run_background()` 非阻塞执行；检查标志由 `WorkbenchContext` 持有，后续切换页面不重复检查，设置页顶部通知不使用模态对话框。
+- 系统设置程序版本号或升级图标点击后打开 `ReleaseUpdateDialog`；该对话框展示版本、发布说明、资源勾选项、环境包更新信息模块、进度条下方的选择规则提示和汇总进度，若 Release 同时提供程序和基础包则默认勾选两者，否则仅默认勾选所需程序包，基础包被单独留下时显示红色不可安装提示；附加包可单独下载并复用设置页热安装服务，按钮显示“下载并安装所选资源”并在已有附加包时确认替换；勾选安装器时下载完成后启动，启动失败会转为可见错误状态；下载按钮支持通过事件暂停/继续下载或通过进程挂起/恢复暂停/继续安装器；程序-only 下载会根据环境资源状态给出风险或重装提示，下载期间拦截更新窗口关闭请求。
+- 系统设置页的八个环境状态卡固定为四列等宽网格，避免长内容把最后一列异常拉宽。
 - 对任何会修改用户文件的功能，坚持“先预览，再执行”。
 - UI 中项目文件夹显示绝对路径，其他项目内路径优先显示相对路径。
 - `data/models/` 是统一基础模型目录；训练与验证模型列表优先使用该目录。
@@ -218,7 +222,7 @@ yolo_tool/
 ## 打包链路
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
-- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；图标资源由 PyInstaller/Qt 资源模块随程序本体提供。
+- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；图标资源由 PyInstaller/Qt 资源模块随程序本体提供。
 - 基础包模型来源固定为 `data/models/yolo11s.pt`、`data/models/yolo26n.pt`、`data/models/yolov8n.pt` 和 `data/models/sam2.1_hiera_base_plus.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集模型文件，项目根目录其他 `.pt` 也不再复制，避免模型落入 `_internal/` 或形成重复副本。
 - `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容和 SHA-256，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型。
 - `src/devtools/release_package.py` 分别生成 `Program` staging 和 `BaseRuntimeModels` staging/`.7z`；基础包清单复用 `_internal` 与模型的首次文件哈希，避免为 payload 清单再次读取大型运行时；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、压缩大小、哈希和解压体积。

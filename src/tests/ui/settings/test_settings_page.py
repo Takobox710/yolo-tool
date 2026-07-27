@@ -65,7 +65,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
                 "Pillow": "12.2.0",
                 "TensorRT": "11.1.0",
             },
-            "app_version": "1.3.0",
+            "app_version": "1.3.1",
         }
     )
 
@@ -86,8 +86,37 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
         "TensorRT",
         "程序版本",
     ]
-    assert page.status_cards["程序版本"].text() == "1.3.0"
+    assert page.status_cards["程序版本"].text() == "1.3.1"
     assert page.acceptDrops()
+
+
+def test_settings_page_system_info_cards_use_equal_width_columns(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.page import SettingsPage
+
+    app = QApplication.instance() or QApplication([])
+    fake_app = SimpleNamespace(
+        settings=build_default_settings(tmp_path),
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        workers=[],
+    )
+    page = SettingsPage(fake_app)
+    page.resize(1100, 740)
+    page.show()
+    app.processEvents()
+
+    widths = [
+        page.status_cards[label].parentWidget().width()
+        for label in page.status_cards
+    ]
+
+    assert max(widths) - min(widths) <= 1
 
 
 def test_settings_page_routes_dropped_model_export_archive_to_confirmation(

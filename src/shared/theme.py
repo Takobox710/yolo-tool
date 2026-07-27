@@ -39,6 +39,19 @@ QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
 #chartView { background: white; border: 0; }
 #systemInfoOuter { background: white; border: 1px solid #D9E3EC; border-radius: 8px; }
 #systemInfoInner { background: #F0F2F5; border: 1px solid #E0E3E8; border-radius: 6px; }
+#upgradeIndicator { color: #208FD4; width: 26px; height: 26px; border: 0; border-radius: 0; background: transparent; padding: 0px; }
+#upgradeIndicator:hover { background: transparent; }
+#releaseCheckToast { background: white; border: 1px solid #D9E3EC; border-radius: 10px; }
+#releaseCheckToast[failed="true"] { border-color: #E5A5A5; }
+#releaseCheckProgress { background: #208FD4; border: 0; }
+#releaseCheckToast[failed="true"] #releaseCheckProgress { background: #D95C5C; }
+#releaseCheckIconBox { background: #F0F2F5; border: 0; border-radius: 8px; }
+#releaseCheckIcon { color: #208FD4; font-size: 22px; font-weight: 700; }
+#releaseCheckToast[failed="true"] #releaseCheckIcon { color: #D95C5C; }
+#releaseCheckTitle { color: #14233A; font-size: 15px; font-weight: 400; }
+#releaseCheckMessage { color: #627286; font-size: 13px; line-height: 20px; }
+#releaseCheckClose { background: transparent; border: 0; color: #627286; font-size: 20px; padding: 0px 2px; }
+#releaseCheckClose:hover { color: #14233A; }
 QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }
 QTableWidget { background: #FFFFFF; alternate-background-color: #F7FAFC; gridline-color: #E1E8F0; selection-background-color: #DCEEFF; selection-color: #0D2B49; }
 QTableWidget::item { padding: 6px; border-bottom: 1px solid #E8EDF2; }

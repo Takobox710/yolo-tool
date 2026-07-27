@@ -179,6 +179,36 @@ if ([string]::IsNullOrWhiteSpace($RuntimeVersion)) {
 if ([string]::IsNullOrWhiteSpace($RequiredRuntimeVersion)) {
     $RequiredRuntimeVersion = $RuntimeVersion
 }
+
+if (-not $ProgramOnly) {
+    # Keep a complete frozen build runnable before it is assembled into an
+    # installer. The packaged layers still receive their full manifests later.
+    $StandaloneReleaseManifest = @{
+        schema_version = 2
+        app_version = $AppVersion
+        required_runtime_version = $RequiredRuntimeVersion
+        app_files = @{
+            $ExeName = (Get-FileHash -LiteralPath (Join-Path $AppDir $ExeName) -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    } | ConvertTo-Json -Depth 4
+    $StandaloneRuntimeManifest = @{
+        schema_version = 2
+        runtime_version = $RuntimeVersion
+        files = @{}
+    } | ConvertTo-Json -Depth 4
+    $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText(
+        (Join-Path $AppDir "release-manifest.json"),
+        $StandaloneReleaseManifest + [Environment]::NewLine,
+        $Utf8NoBom
+    )
+    [System.IO.File]::WriteAllText(
+        (Join-Path $AppDir "runtime-manifest.json"),
+        $StandaloneRuntimeManifest + [Environment]::NewLine,
+        $Utf8NoBom
+    )
+}
+
 $StagingRoot = Join-Path $Root "dist/packages/$PackageType"
 $PackageArgs = @(
     "-m", "src.devtools.release_package",

@@ -134,3 +134,30 @@ def test_workbench_window_close_event_prompts_for_unsaved_annotations(monkeypatc
     assert event.isAccepted() is False
     assert save_calls["count"] == 0
     assert "当前有未保存的标注" in asked["text"]
+
+
+def test_workbench_window_close_event_ignores_environment_refresh(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtGui import QCloseEvent
+    from src.shared.qt import QApplication, QMessageBox
+    from src.ui.shell.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    window.context.tasks.begin("env_auto", generation=window.context.generation)
+    window.context.tasks.begin("release_check", generation=window.context.generation)
+    monkeypatch.setattr(window.settings_service, "save", lambda _data: None)
+
+    def fail_question(*_args, **_kwargs):
+        raise AssertionError("环境刷新不应触发关闭确认")
+
+    monkeypatch.setattr(QMessageBox, "question", fail_question)
+    event = QCloseEvent()
+    try:
+        window.closeEvent(event)
+        assert event.isAccepted() is True
+    finally:
+        window.hide()
+        window.deleteLater()
+        app.processEvents()

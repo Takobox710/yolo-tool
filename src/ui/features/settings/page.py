@@ -5,10 +5,12 @@ from src.ui.features.settings.layout import build_settings_layout
 from src.ui.features.settings.state import (
     append_program_log_entry,
     apply_env_data,
+    apply_release_check,
     auto_refresh,
     build_control_widgets,
     load_env_payload,
     on_show,
+    open_release_update_dialog,
     reset_defaults,
     toggle_custom_cmd,
     toggle_distribution_mode,
@@ -65,6 +67,12 @@ class SettingsPage(ModelExportPackageDropMixin, BasePage):
 
     def _load_env_payload(self):
         return load_env_payload(self)
+
+    def apply_release_check(self, payload):
+        return apply_release_check(self, payload)
+
+    def open_release_update_dialog(self):
+        return open_release_update_dialog(self)
 
     def set_status_card(self, label: str, value: str):
         self.status_cards[label].setText(value)

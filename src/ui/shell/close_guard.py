@@ -3,6 +3,11 @@ from __future__ import annotations
 from src.shared.qt import QMessageBox
 
 
+NON_BLOCKING_TASK_KINDS = frozenset(
+    {"env", "env_auto", "home_summary", "train_status", "release_check"}
+)
+
+
 def confirm_close_if_needed(window) -> bool:
     warnings = collect_close_warnings(window)
     if not warnings:
@@ -25,7 +30,11 @@ def collect_close_warnings(window) -> list[str]:
     has_unsaved_annotations = getattr(annotation_target, "has_unsaved_annotations", None)
     if callable(has_unsaved_annotations) and has_unsaved_annotations():
         warnings.append("当前有未保存的标注")
-    active_tasks = window.context.tasks.active()
+    active_tasks = tuple(
+        task
+        for task in window.context.tasks.active()
+        if task.kind not in NON_BLOCKING_TASK_KINDS
+    )
     if active_tasks:
         warnings.append("后台任务尚未结束：" + "、".join(sorted(item.kind for item in active_tasks)))
     return warnings
