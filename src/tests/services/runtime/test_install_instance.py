@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import errno
+
 
 def test_install_instance_id_is_stable_and_settings_are_readable(tmp_path):
     from src.services.runtime.install_instance import (
@@ -73,3 +75,33 @@ def test_legacy_extension_migration_is_atomic_and_does_not_replace_target(tmp_pa
     assert (instance_extensions_root(fresh_app) / "legacy.txt").read_text(
         encoding="utf-8"
     ) == "legacy"
+
+
+def test_legacy_extension_migration_copies_across_volumes(
+    tmp_path, monkeypatch
+):
+    from src.services.runtime.install_instance import (
+        instance_extensions_root,
+        legacy_extensions_root,
+        migrate_legacy_extensions,
+    )
+
+    app_root = tmp_path / "app"
+    local = tmp_path / "local"
+    legacy = legacy_extensions_root(local)
+    legacy.mkdir(parents=True)
+    (legacy / "legacy.txt").write_text("legacy", encoding="utf-8")
+
+    original_replace = type(legacy).replace
+
+    def raise_cross_volume(self, target):
+        if self == legacy:
+            raise OSError(errno.EXDEV, "cross-device move")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(type(legacy), "replace", raise_cross_volume)
+
+    assert migrate_legacy_extensions(app_root, local_app_data=local) is True
+    target = instance_extensions_root(app_root)
+    assert (target / "legacy.txt").read_text(encoding="utf-8") == "legacy"
+    assert not legacy.exists()

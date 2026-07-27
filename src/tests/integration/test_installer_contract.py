@@ -53,23 +53,29 @@ def test_component_page_uses_fast_candidate_checks_and_defers_hashing():
     assert "ProgressGauge.Style := npbstMarquee" in source
 
 
-def test_installer_warns_for_missing_base_without_blocking_and_cleans_up_on_finish():
+def test_installer_requires_base_for_first_install_and_cleans_up_on_finish():
     source = INSTALLER.read_text(encoding="utf-8")
 
     assert '#define GitHubReleaseUrl "https://github.com/Takobox710/yolo-tool/releases"' in source
     assert "BaseGithubButton: TNewButton" in source
     assert "BaseGithubButton.Visible := BaseIsRequired and not IsValidBaseArchive();" in source
-    assert "未找到匹配基础环境包，将继续使用旧环境；可能导致部分功能缺失。" in source
-    assert "当前安装必须提供匹配的本体环境和模型包。' + #13#10 +" not in source
+    assert "首次安装必须提供匹配的基础环境和模型包，当前无法继续。" in source
+    assert "未找到基础环境包，将仅安装程序；启动后可能缺少运行环境。" not in source
     next_page = _section(source, "function NextButtonClick", "procedure BrowseBaseClick")
-    assert "BaseIsRequired and not IsValidBaseArchive()" not in next_page
+    assert "if (not ExistingInstall) and BaseIsRequired and" in next_page
+    assert "首次安装必须提供匹配的本体环境和模型包。' + #13#10 +" in next_page
+    assert "未找到匹配基础环境包，将继续使用旧环境；可能导致部分功能缺失。" in source
     assert "进入 GitHub 下载" in source
-    assert "CleanupPackagesCheck: TNewCheckBox" in source
     assert "安装完成后删除本次使用的安装包和环境包" in source
-    assert "CleanupInstallSources();" in source
-    assert "ScheduleDeleteFile(ExpandConstant('{srcexe}'));" in source
-    assert "ScheduleDeleteFile(BaseArchivePath);" in source
-    assert "ScheduleDeleteFile(ExtensionArchivePath);" in source
+    assert 'Filename: "{cmd}"; Parameters: "{code:GetCleanupParameters}";' in source
+    assert 'Flags: runhidden postinstall unchecked skipifsilent; Check: MainInstallSucceeded' in source
+    assert "function GetCleanupParameters(Param: String): String;" in source
+    assert "ExpandConstant('{srcexe}')" in source
+    assert "Result := Result + ' & del /f /q \"' + BaseArchivePath + '\"';" in source
+    assert "Result := Result + ' & del /f /q \"' + ExtensionArchivePath + '\"';" in source
+    assert "CleanupPackagesCheck" not in source
+    assert "CleanupPackagesStatus" not in source
+    assert "function ShouldInstallBase(): Boolean; forward;" in source
 
 
 def test_gui_startup_does_not_block_on_runtime_version_mismatch():
@@ -101,6 +107,22 @@ def test_installer_uses_named_uninstaller_and_visible_verification_page():
     assert "VerificationPage.Hide" in source
     assert "Uninstaller := ExpandConstant('{app}\\uninstall.exe')" in source
     assert "RenameUninstallerFiles()" in source
+
+
+def test_installer_uses_restart_manager_for_the_target_instance():
+    source = INSTALLER.read_text(encoding="utf-8")
+
+    assert "CloseApplications=force" in source
+    assert "CloseApplicationsFilter=YOLOTool.exe" in source
+    assert "RestartApplications=no" in source
+    assert "procedure RegisterExtraCloseApplicationsResources()" in source
+    assert "RegisterExtraCloseApplicationsResource(" in source
+    assert "True, ExpandConstant('{app}\\{#MyAppExeName}'));" in source
+    assert "powershell.exe" not in source
+    assert "Get-CimInstance" not in source
+    assert "Stop-Process" not in source
+    prepare = _section(source, "function PrepareToInstall", "procedure CurStepChanged")
+    assert "StopRunningTargetProcess()" not in prepare
 
 
 def test_installed_metadata_and_root_model_are_managed_by_installer():
@@ -199,4 +221,10 @@ def test_post_install_commit_keeps_progress_visible():
     assert "正在完成安装，请稍候..." in changed_step
     assert "if ShouldInstallBase() then" in changed_step
     assert "已保留当前运行环境，跳过环境版本自检。" in changed_step
+    assert "警告：当前基础环境与新程序不匹配或不完整。" in changed_step
+    assert "本次将继续使用旧环境，部分功能可能无法使用。" in changed_step
+    assert "警告：新程序运行环境版本不一致或自检未通过。" in changed_step
+    assert "安装将继续，但部分功能可能无法使用。" in changed_step
+    assert "新程序运行环境自检失败，正在恢复旧版本。" not in changed_step
+    assert changed_step.count("RestoreMainInstall();") == 3
     assert "ProgressGauge.Position := WizardForm.ProgressGauge.Max" in changed_step

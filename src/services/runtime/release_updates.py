@@ -14,14 +14,23 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from src import APP_VERSION
+from src.services.runtime.install_instance import load_install_instance
+from src.services.runtime.release_environment import (
+    environment_asset_version,
+    environment_update_available,
+    has_environment_asset,
+    installed_environment_versions,
+)
+from src.services.runtime.release_versions import (
+    is_newer_version,
+    normalize_environment_version,
+    normalize_release_version,
+)
 
 
 GITHUB_REPOSITORY = "Takobox710/yolo-tool"
 GITHUB_LATEST_RELEASE_URL = (
     f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
-)
-_VERSION_PATTERN = re.compile(
-    r"^[vV]?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$"
 )
 _INSTALLER_NAME_PATTERN = re.compile(r"^YOLOTool_Setup_[0-9A-Za-z.-]+\.exe$", re.IGNORECASE)
 _DOWNLOAD_CHUNK_SIZE = 1024 * 1024
@@ -43,6 +52,12 @@ class ReleaseCheckResult:
     installer_asset_url: str = ""
     environment_asset_names: tuple[str, ...] = ()
     environment_asset_urls: tuple[str, ...] = ()
+    base_environment_version: str = ""
+    extra_environment_version: str = ""
+    installed_base_environment_version: str = ""
+    installed_extra_environment_version: str = ""
+    base_environment_update_available: bool | None = None
+    extra_environment_update_available: bool | None = None
     update_available: bool = False
     error: str = ""
 
@@ -97,6 +112,9 @@ def check_latest_release(
     ) = _parse_assets(
         payload.get("assets")
     )
+    installed_base_version, installed_extra_version = _installed_environment_versions()
+    base_version = environment_asset_version(environment_asset_names, "baseenv")
+    extra_version = environment_asset_version(environment_asset_names, "extraenv")
     return ReleaseCheckResult(
         current_version=str(current_version),
         latest_version=latest_version,
@@ -106,6 +124,21 @@ def check_latest_release(
         installer_asset_url=installer_asset_url,
         environment_asset_names=environment_asset_names,
         environment_asset_urls=environment_asset_urls,
+        base_environment_version=base_version,
+        extra_environment_version=extra_version,
+        installed_base_environment_version=installed_base_version,
+        installed_extra_environment_version=installed_extra_version,
+        base_environment_update_available=environment_update_available(
+            base_version,
+            installed_base_version,
+            has_environment_asset(environment_asset_names, "baseenv"),
+        ),
+        extra_environment_update_available=environment_update_available(
+            extra_version,
+            installed_extra_version,
+            has_environment_asset(environment_asset_names, "extraenv"),
+            missing_is_update=False,
+        ),
         update_available=is_newer_version(current_version, latest_version),
     )
 
@@ -145,6 +178,10 @@ def _is_environment_asset(name: str) -> bool:
         lowered.startswith("yolotool_baseenv_")
         or lowered.startswith("yolotool_extraenv_")
     )
+
+
+def _installed_environment_versions() -> tuple[str, str]:
+    return installed_environment_versions(load_install_instance)
 
 
 def downloads_directory() -> Path:
@@ -345,36 +382,6 @@ def _wait_if_paused(pause_event: Event | None) -> None:
         time.sleep(0.1)
 
 
-def normalize_release_version(value: str) -> str:
-    text = str(value or "").strip()
-    match = _VERSION_PATTERN.match(text)
-    if match is None:
-        return ""
-    major, minor, patch, _prerelease = match.groups()
-    return ".".join((major, minor or "0", patch or "0"))
-
-
-def is_newer_version(current_version: str, latest_version: str) -> bool:
-    current = _version_key(current_version)
-    latest = _version_key(latest_version)
-    return current is not None and latest is not None and latest > current
-
-
-def _version_key(value: str) -> tuple[int, int, int, int, str] | None:
-    text = str(value or "").strip()
-    match = _VERSION_PATTERN.match(text)
-    if match is None:
-        return None
-    major, minor, patch, prerelease = match.groups()
-    return (
-        int(major),
-        int(minor or 0),
-        int(patch or 0),
-        1 if not prerelease else 0,
-        prerelease or "",
-    )
-
-
 __all__ = [
     "GITHUB_LATEST_RELEASE_URL",
     "GITHUB_REPOSITORY",
@@ -387,6 +394,7 @@ __all__ = [
     "is_newer_version",
     "launch_installer",
     "normalize_release_version",
+    "normalize_environment_version",
     "pause_installer",
     "resume_installer",
 ]

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import configparser
+import errno
 import hashlib
 import os
+import shutil
 from pathlib import Path
 
 from src.shared.paths import LOCAL_APP_DATA_ROOT, ROOT
@@ -107,5 +109,16 @@ def migrate_legacy_extensions(
     if source is None:
         return False
     target.parent.mkdir(parents=True, exist_ok=True)
-    source.replace(target)
+    try:
+        source.replace(target)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        try:
+            shutil.copytree(source, target)
+        except Exception:
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            raise
+        shutil.rmtree(source)
     return True

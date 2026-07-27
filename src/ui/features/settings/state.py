@@ -192,6 +192,24 @@ def apply_release_check(page, payload) -> None:
                 for item in environment_urls
                 if str(item)
             ),
+            base_environment_version=str(
+                payload.get("base_environment_version") or ""
+            ),
+            extra_environment_version=str(
+                payload.get("extra_environment_version") or ""
+            ),
+            installed_base_environment_version=str(
+                payload.get("installed_base_environment_version") or ""
+            ),
+            installed_extra_environment_version=str(
+                payload.get("installed_extra_environment_version") or ""
+            ),
+            base_environment_update_available=_optional_bool(
+                payload, "base_environment_update_available"
+            ),
+            extra_environment_update_available=_optional_bool(
+                payload, "extra_environment_update_available"
+            ),
             update_available=bool(payload.get("update_available")),
             error=str(payload.get("error") or ""),
         )
@@ -262,6 +280,11 @@ def append_program_log_entry(page, entry: str) -> None:
         page.log.setPlainText(entry)
         return
     page.log.append(entry)
+
+
+def _optional_bool(payload: dict, key: str) -> bool | None:
+    value = payload.get(key)
+    return None if value is None else bool(value)
 
 
 def format_dependency_status(dependencies: dict[str, str], label: str) -> str:

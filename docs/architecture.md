@@ -96,7 +96,7 @@ yolo_tool/
 - 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
 - `src/runtime/settings.json` 仅作为源码内默认配置参考。
 - 设置文件写入 `schema_version: 1`；旧版本或无版本文件按 v0 迁移，保持原有字段含义、相对路径存储、外部绝对路径和裸模型名规则。
-- `model_export` 节点保存 `model_path`、`output_dir`、`format`、`imgsz` 和 `simplify`；扩展安装状态从当前安装目录 `_internal/extensions/` 下的活动清单读取，不写入项目设置。旧版本位于 `%LOCALAPPDATA%/YOLOTool/instances/<实例ID>/extensions/` 或 `%LOCALAPPDATA%/YOLOTool/extensions/` 的扩展会在升级时迁移。
+- `model_export` 节点保存 `model_path`、`output_dir`、`format`、`imgsz` 和 `simplify`；扩展安装状态从当前安装目录 `_internal/extensions/` 下的活动清单读取，不写入项目设置。旧版本位于 `%LOCALAPPDATA%/YOLOTool/instances/<实例ID>/extensions/` 或 `%LOCALAPPDATA%/YOLOTool/extensions/` 的扩展会在升级时迁移，同盘使用原子移动，跨盘复制完成后删除旧目录。
 - 标注页名称显示由项目设置 `annotation.show_annotation_names` 控制，默认值为 `false`。
 - 标注页未配置 `dataset.class_names` 时类别下拉框保持为空，不再自动添加 `weld`；进入项目标注目录时会按文件顺序读取所有 Labelme JSON 的非空 `label`，将缺少的类别追加到当前项目 `data/runtime/settings.json`。
 
@@ -105,7 +105,7 @@ yolo_tool/
 - `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程。
 - `windows_spawn.py` 提供 Windows 隐藏窗口参数，确保打包后的后台任务不弹终端。
 - `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测；依赖版本优先读取 `importlib.metadata`，冻结态缺少发行版元数据时回退读取模块的 `__version__`。GUI 启动不强制比较运行环境版本；安装器调用的 `--runtime-probe` 仍不加载这些模块，只比较程序清单要求的运行时版本与 `_internal` 基础环境清单中的版本。
-- `release_updates.py` 通过标准库 HTTPS 请求读取 `Takobox710/yolo-tool` 的最新稳定 GitHub Release，负责版本号规范化、比较、发布说明和安装器/环境包资源解析、Release 资源顺序下载、Windows Shell 已知 Downloads 路径解析、安装包启动及失败结果封装；网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
+- `release_updates.py` 通过标准库 HTTPS 请求读取 `Takobox710/yolo-tool` 的最新稳定 GitHub Release，负责程序与环境包版本号规范化、比较、发布说明和安装器/环境包资源解析、Release 资源顺序下载、Windows Shell 已知 Downloads 路径解析、安装包启动及失败结果封装；环境包版本来自 `YOLOTool_BaseEnv_<版本>.7z` / `YOLOTool_ExtraEnv_<版本>.7z` 文件名，并与 `install-instance.ini` / `package-info.ini` 的包版本比较；基础包缺失按环境缺失处理，附加包缺失只作为可选资源，不触发更新判定；源码开发态缺少安装清单时回退读取 `installer/*-version.txt`，网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
 - `installer/YOLOTool.spec` 在 `YOLO_TOOL_PROGRAM_ONLY=1` 时只分析应用代码，第三方运行时模块由基础包 `_internal/` 提供；程序本体明确收集 `ctypes.util` 和 `ctypes.wintypes`，兼容 Cryptodome 在 Python 3.12 Windows 下从 CFFI 回退到 ctypes 的导入链。打包链路只保留实际需要的 `installer/hooks/hook-torch.py` 与 `installer/hooks/program_external_runtime.py`：前者收集完整环境所需的 Torch 源码、动态库和隐藏导入，后者只在程序-only 模式注册固定的后端 DLL 目录和基础包路径，不递归扫描运行时目录；已排除的 PySide6 deploy_lib 和 tensorboard 模块不再配置空 hook。基础环境构建时，`src/devtools/release_package.py` 将 PyInstaller 通常嵌入 PYZ 的动态导入标准库打入 `python_stdlib.zip`，并只补齐运行所需的第三方纯 Python 源码，过滤测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码，避免程序-only 启动时出现 Python DLL 或动态导入模块缺失。
 - GUI 日志写入前必须通过这里的终端输出清洗逻辑去掉 ANSI/控制字符。
 
@@ -213,7 +213,9 @@ yolo_tool/
 - 项目切换、恢复默认设置和关闭程序遇到写入/推理任务时，统一由任务协调器执行确认、停止和回收；过期结果按任务 token 与项目 generation 丢弃。
 - 模型验证、AI 预标注和 Torch/CUDA 摘要读取都优先走短生命周期隐藏子进程，避免主 GUI 长驻推理运行时。
 - 每次启动后首次进入系统设置页时，GitHub Release 检查通过 `WorkbenchWindow.run_background()` 非阻塞执行；检查标志由 `WorkbenchContext` 持有，后续切换页面不重复检查，设置页顶部通知不使用模态对话框。
-- 系统设置程序版本号或升级图标点击后打开 `ReleaseUpdateDialog`；该对话框展示版本、发布说明、资源勾选项、环境包更新信息模块、进度条下方的选择规则提示和汇总进度，若 Release 同时提供程序和基础包则默认勾选两者，否则仅默认勾选所需程序包，基础包被单独留下时显示红色不可安装提示；附加包可单独下载并复用设置页热安装服务，按钮显示“下载并安装所选资源”并在已有附加包时确认替换；勾选安装器时下载完成后启动，启动失败会转为可见错误状态；下载按钮支持通过事件暂停/继续下载或通过进程挂起/恢复暂停/继续安装器；程序-only 下载会根据环境资源状态给出风险或重装提示，下载期间拦截更新窗口关闭请求。
+- 系统设置程序版本号或升级图标点击后打开 `ReleaseUpdateDialog`；该对话框展示版本、发布说明、资源勾选项、环境包更新信息模块、进度条下方的选择规则提示和汇总进度，环境更新信息和基础包默认勾选只在 Release 包版本高于本机版本时生效，首次安装缺少本机版本时视为需要环境包；冻结版优先读取安装清单/包信息，源码版使用当前环境包版本文本文件；同版本环境包仍可手动下载但不作为更新提示，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时使用红字提醒将执行一次重装；基础包被单独留下时显示红色不可安装提示；附加包可单独下载，并在仅勾选附加包、同时勾选程序包或三项全部勾选时根据是否已有附加包分别显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换；按钮显示“下载并安装所选资源”并在程序包未选中时热安装；勾选安装器时下载完成后启动，启动失败会转为可见错误状态；下载按钮支持通过事件暂停/继续下载或通过进程挂起/恢复暂停/继续安装器；已有安装但未提供新基础包时程序-only 下载保留旧环境并警告版本不匹配或环境不完整，首次安装缺少基础包时安装器阻止提交；下载期间拦截更新窗口关闭请求。
+- 安装器在进入文件事务前通过 Inno Setup 的 Windows Restart Manager 注册安装目录中的目标 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不使用 PowerShell 或 WMI；自动关闭不负责恢复程序中的未保存状态。
+- 安装器完成页的安装包清理选项挂在右侧运行选项下方，勾选后延迟删除本次使用的安装器、基础环境包和附加环境包。
 - 系统设置页的八个环境状态卡固定为四列等宽网格，避免长内容把最后一列异常拉宽。
 - 对任何会修改用户文件的功能，坚持“先预览，再执行”。
 - UI 中项目文件夹显示绝对路径，其他项目内路径优先显示相对路径。
@@ -227,7 +229,7 @@ yolo_tool/
 - `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容和 SHA-256，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型。
 - `src/devtools/release_package.py` 分别生成 `Program` staging 和 `BaseRuntimeModels` staging/`.7z`；基础包清单复用 `_internal` 与模型的首次文件哈希，避免为 payload 清单再次读取大型运行时；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、压缩大小、哈希和解压体积。
 - 基础包和模型转换附加包都不生成或读取 `.cache.json`，完整发布时每次重新构建 staging 和归档。基础包和附加包都通过原生 7-Zip `-mmt=on` 压缩；`-Clean` 仍可清理并强制重建输出。
-- `installer/yolo_tool.iss` 生成统一的小型 `YOLOTool_Setup_<版本>.exe`。组件页只做名称和大小候选检查，SHA-256 延后到正式安装；程序与必选基础环境在 staging/backup 事务中切换并执行冻结启动探测。
+- `installer/yolo_tool.iss` 生成统一的小型 `YOLOTool_Setup_<版本>.exe`。组件页只做名称和大小候选检查，SHA-256 延后到正式安装；程序与必选基础环境在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。
 - 每个实例的 `install-instance.ini` 与其他安装清单存放在 `_internal/yolotool_metadata/`；基础包维护规范模型 `data/models/yolo26n.pt` 和受管的根目录兼容副本。
 - 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py` 与 `src/bootstrap/cli_dispatch.py`。
 

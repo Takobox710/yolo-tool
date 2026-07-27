@@ -124,6 +124,161 @@ def test_release_update_dialog_shows_version_progress_and_environment_hint(tmp_p
     dialog.close()
 
 
+def test_release_update_dialog_hides_environment_update_hint_for_equal_versions():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(
+            current_version="1.3.1",
+            latest_version="1.4.0",
+            installer_asset_name="YOLOTool_Setup_1.4.0.exe",
+            installer_asset_url="https://github.com/example/setup.exe",
+            environment_asset_names=(
+                "YOLOTool_BaseEnv_v2.7z",
+                "YOLOTool_ExtraEnv_v2.7z",
+            ),
+            environment_asset_urls=(
+                "https://github.com/example/base.7z",
+                "https://github.com/example/extra.7z",
+            ),
+            base_environment_version="2.0.0",
+            extra_environment_version="2.0.0",
+            installed_base_environment_version="2.0.0",
+            installed_extra_environment_version="2.0.0",
+            base_environment_update_available=False,
+            extra_environment_update_available=False,
+            update_available=True,
+        ),
+    )
+
+    assert dialog.findChild(type(dialog.progress_message), "releaseEnvironmentTitle") is None
+    assert dialog.program_checkbox.isChecked()
+    assert dialog.base_environment_checkbox.isChecked() is False
+    assert dialog.base_environment_checkbox.isEnabled()
+    assert "检测到最新版本，点击按钮即可更新" in dialog.progress_message.text()
+    assert dialog.progress_message.property("warning") is False
+    dialog.base_environment_checkbox.setChecked(True)
+    assert "版本与本机一致" in dialog.progress_message.text()
+    assert "重装一次基础环境包" in dialog.progress_message.text()
+    assert dialog.progress_message.property("warning") is True
+    dialog.close()
+
+
+def test_release_update_dialog_explains_missing_optional_extra_environment():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(
+            current_version="1.3.1",
+            latest_version="1.4.0",
+            installer_asset_name="YOLOTool_Setup_1.4.0.exe",
+            installer_asset_url="https://github.com/example/setup.exe",
+            environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
+            environment_asset_urls=("https://github.com/example/extra.7z",),
+            extra_environment_version="2.0.0",
+            installed_extra_environment_version="",
+            extra_environment_update_available=False,
+            update_available=True,
+        ),
+    )
+
+    title = dialog.findChild(type(dialog.progress_message), "releaseEnvironmentTitle")
+    text = dialog.findChild(type(dialog.progress_message), "releaseEnvironmentText")
+    assert title is not None
+    assert title.text() == "当前环境无附加包"
+    assert text is not None
+    assert text.text() == "可在本界面选择性下载安装附加环境包。"
+    assert dialog.extra_environment_checkbox.isEnabled()
+    assert dialog.extra_environment_checkbox.isChecked() is False
+    dialog.close()
+
+
+def test_release_update_dialog_hides_all_environment_notice_when_everything_matches():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(
+            current_version="1.3.1",
+            latest_version="1.3.1",
+            installer_asset_name="YOLOTool_Setup_1.3.1.exe",
+            installer_asset_url="https://github.com/example/setup.exe",
+            environment_asset_names=(
+                "YOLOTool_BaseEnv_v2.7z",
+                "YOLOTool_ExtraEnv_v2.7z",
+            ),
+            environment_asset_urls=(
+                "https://github.com/example/base.7z",
+                "https://github.com/example/extra.7z",
+            ),
+            base_environment_version="2.0.0",
+            extra_environment_version="2.0.0",
+            installed_base_environment_version="2.0.0",
+            installed_extra_environment_version="2.0.0",
+            base_environment_update_available=False,
+            extra_environment_update_available=False,
+            update_available=False,
+        ),
+    )
+
+    assert dialog.findChild(type(dialog.progress_message), "releaseEnvironmentNotice") is None
+    dialog.close()
+
+
+def test_release_update_dialog_shows_latest_message_when_nothing_needs_update(
+    monkeypatch,
+):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication, QMessageBox
+    from src.ui.features.settings import update_dialog
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(
+            current_version="1.3.1",
+            latest_version="1.3.1",
+            installer_asset_name="YOLOTool_Setup_1.3.1.exe",
+            installer_asset_url="https://github.com/example/setup.exe",
+            base_environment_version="2.0.0",
+            installed_base_environment_version="2.0.0",
+            base_environment_update_available=False,
+            extra_environment_update_available=False,
+            update_available=False,
+        ),
+    )
+
+    assert dialog.progress_message.text() == "当前已是最新版本，无需更新。"
+    assert dialog.progress_message.property("warning") is False
+    monkeypatch.setattr(
+        update_dialog.QMessageBox,
+        "question",
+        lambda *_args: QMessageBox.StandardButton.No,
+    )
+    assert dialog._confirm_download_selection() is False
+    dialog.close()
+
+
 def test_settings_page_version_value_opens_update_dialog(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -381,6 +536,119 @@ def test_release_dialog_confirms_replacing_installed_extra_environment(monkeypat
         )
     ]
     dialog.close()
+
+
+def test_release_dialog_distinguishes_extra_environment_with_program_selected(
+    monkeypatch,
+):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from types import SimpleNamespace
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication, QMessageBox
+    from src.ui.features.settings import update_dialog
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    result = ReleaseCheckResult(
+        current_version="1.3.1",
+        latest_version="1.4.0",
+        installer_asset_name="YOLOTool_Setup_1.4.0.exe",
+        installer_asset_url="https://github.com/example/setup.exe",
+        environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
+        environment_asset_urls=("https://github.com/example/extra.7z",),
+        update_available=True,
+    )
+    dialog = ReleaseUpdateDialog(None, result)
+    dialog.extra_environment_checkbox.setChecked(True)
+    monkeypatch.setattr(
+        update_dialog,
+        "load_installed_extension",
+        lambda: SimpleNamespace(version="runtime-2"),
+    )
+    dialog._sync_pre_download_message()
+    assert "下载后将替换" in dialog.progress_message.text()
+    assert dialog.progress_message.property("warning") is True
+    captured = []
+    monkeypatch.setattr(
+        update_dialog.QMessageBox,
+        "question",
+        lambda _parent, title, message, *_args: captured.append((title, message))
+        or QMessageBox.StandardButton.No,
+    )
+    assert dialog._confirm_download_selection() is False
+    assert captured[0][0] == "重新下载附加包"
+    dialog.close()
+
+    fresh_dialog = ReleaseUpdateDialog(None, result)
+    fresh_dialog.extra_environment_checkbox.setChecked(True)
+    monkeypatch.setattr(update_dialog, "load_installed_extension", lambda: None)
+    fresh_dialog._sync_pre_download_message()
+    assert "自动安装" in fresh_dialog.progress_message.text()
+    assert fresh_dialog.progress_message.property("warning") is False
+    fresh_dialog.close()
+
+
+def test_release_dialog_distinguishes_all_three_selected_resources(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication, QMessageBox
+    from src.ui.features.settings import update_dialog
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    result = ReleaseCheckResult(
+        current_version="1.3.1",
+        latest_version="1.4.0",
+        installer_asset_name="YOLOTool_Setup_1.4.0.exe",
+        installer_asset_url="https://github.com/example/setup.exe",
+        environment_asset_names=(
+            "YOLOTool_BaseEnv_v2.7z",
+            "YOLOTool_ExtraEnv_v2.7z",
+        ),
+        environment_asset_urls=(
+            "https://github.com/example/base.7z",
+            "https://github.com/example/extra.7z",
+        ),
+        base_environment_update_available=False,
+        extra_environment_update_available=False,
+        update_available=True,
+    )
+    dialog = ReleaseUpdateDialog(None, result)
+    dialog.extra_environment_checkbox.setChecked(True)
+    dialog.base_environment_checkbox.setChecked(True)
+    monkeypatch.setattr(update_dialog, "load_installed_extension", lambda: None)
+    dialog._sync_pre_download_message()
+    assert "重装基础环境包" in dialog.progress_message.text()
+    assert "自动安装" in dialog.progress_message.text()
+    assert dialog.progress_message.property("warning") is True
+    dialog.close()
+
+    installed_dialog = ReleaseUpdateDialog(None, result)
+    installed_dialog.extra_environment_checkbox.setChecked(True)
+    installed_dialog.base_environment_checkbox.setChecked(True)
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        update_dialog,
+        "load_installed_extension",
+        lambda: SimpleNamespace(version="runtime-2"),
+    )
+    installed_dialog._sync_pre_download_message()
+    assert "重装基础环境包" in installed_dialog.progress_message.text()
+    assert "替换" in installed_dialog.progress_message.text()
+    captured = []
+    monkeypatch.setattr(
+        update_dialog.QMessageBox,
+        "warning",
+        lambda _parent, title, message, *_args: captured.append((title, message))
+        or QMessageBox.StandardButton.No,
+    )
+    assert installed_dialog._confirm_download_selection() is False
+    assert captured[0][0] == "确认重新安装环境包"
+    installed_dialog.close()
 
 
 def test_release_dialog_reports_installer_launch_failure_without_sticking(

@@ -54,6 +54,9 @@ def test_latest_release_detects_a_new_version(monkeypatch):
     assert result.installer_asset_url.endswith("setup.exe")
     assert result.environment_asset_names == ("YOLOTool_BaseEnv_v2.7z",)
     assert result.environment_asset_urls == ("https://github.com/example/base.7z",)
+    assert result.base_environment_version == "2.0.0"
+    assert result.installed_base_environment_version == "2.0.0"
+    assert result.base_environment_update_available is False
     assert captured["url"].endswith("/releases/latest")
     assert captured["user_agent"] == "YOLOTool-version-check"
     assert captured["timeout"] == 8.0
@@ -98,13 +101,107 @@ def test_latest_release_failure_is_reported_without_raising(monkeypatch):
 def test_release_version_normalization_and_comparison():
     from src.services.runtime.release_updates import (
         is_newer_version,
+        normalize_environment_version,
         normalize_release_version,
     )
 
     assert normalize_release_version("v2") == "2.0.0"
     assert normalize_release_version("2.1.5") == "2.1.5"
     assert normalize_release_version("release-latest") == ""
+    assert normalize_environment_version("v2") == "2.0.0"
+    assert normalize_environment_version("base-runtime-models-2") == "2.0.0"
+    assert normalize_environment_version("model-export-runtime-2") == "2.0.0"
     assert is_newer_version("1.3.9", "1.4.0") is True
+
+
+def test_environment_update_requires_a_higher_package_version(monkeypatch):
+    from src.services.runtime import release_updates
+
+    monkeypatch.setattr(
+        release_updates,
+        "load_install_instance",
+        lambda: {
+            "base_package_version": "base-runtime-models-2",
+            "model_export_version": "model-export-runtime-2",
+        },
+    )
+    monkeypatch.setattr(
+        release_updates,
+        "urlopen",
+        lambda *_args, **_kwargs: _Response(
+            {
+                "tag_name": "v1.4.0",
+                "assets": [
+                    {
+                        "name": "YOLOTool_BaseEnv_v2.7z",
+                        "browser_download_url": "https://github.com/example/base.7z",
+                    },
+                    {
+                        "name": "YOLOTool_ExtraEnv_v2.7z",
+                        "browser_download_url": "https://github.com/example/extra.7z",
+                    },
+                ],
+            }
+        ),
+    )
+
+    result = release_updates.check_latest_release("1.3.1")
+
+    assert result.base_environment_update_available is False
+    assert result.extra_environment_update_available is False
+
+
+def test_environment_update_is_detected_when_release_package_is_newer(monkeypatch):
+    from src.services.runtime import release_updates
+
+    monkeypatch.setattr(
+        release_updates,
+        "load_install_instance",
+        lambda: {
+            "base_package_version": "v1",
+            "model_export_version": "runtime-1",
+        },
+    )
+    monkeypatch.setattr(
+        release_updates,
+        "urlopen",
+        lambda *_args, **_kwargs: _Response(
+            {
+                "tag_name": "v1.4.0",
+                "assets": [
+                    {
+                        "name": "YOLOTool_BaseEnv_v2.7z",
+                        "browser_download_url": "https://github.com/example/base.7z",
+                    },
+                    {
+                        "name": "YOLOTool_ExtraEnv_v2.7z",
+                        "browser_download_url": "https://github.com/example/extra.7z",
+                    },
+                ],
+            }
+        ),
+    )
+
+    result = release_updates.check_latest_release("1.3.1")
+
+    assert result.installed_base_environment_version == "1.0.0"
+    assert result.installed_extra_environment_version == "1.0.0"
+    assert result.base_environment_update_available is True
+    assert result.extra_environment_update_available is True
+
+
+def test_missing_extra_environment_is_optional_not_an_update():
+    from src.services.runtime.release_environment import environment_update_available
+
+    assert (
+        environment_update_available(
+            "2.0.0",
+            "",
+            True,
+            missing_is_update=False,
+        )
+        is False
+    )
 
 
 def test_download_and_launch_installer_writes_to_target_directory(monkeypatch, tmp_path):
