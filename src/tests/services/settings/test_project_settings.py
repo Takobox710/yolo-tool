@@ -44,6 +44,7 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings.annotation.auto_convert_yolo is False
     assert settings.annotation.continuous_draw is False
     assert settings.annotation.quick_draw is False
+    assert settings.annotation.sam_assist.model_path == ""
 
 
 def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(tmp_path):

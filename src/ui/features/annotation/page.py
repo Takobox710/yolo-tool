@@ -38,6 +38,7 @@ from src.ui.features.annotation.persistence import AnnotationPersistenceMixin
 from src.ui.features.annotation.selection import AnnotationSelectionMixin
 from src.ui.features.annotation.settings_actions import AnnotationPageSettingsMixin
 from src.ui.features.annotation.shortcuts import register_annotation_shortcuts
+from src.ui.features.annotation.sam import SamAssistController
 from src.ui.features.annotation.toolbar import build_toolbar
 from src.ui.shared.workers import Worker
 
@@ -86,6 +87,7 @@ class AnnotationPage(
         root.addLayout(modules, 1)
         root.addWidget(build_status_bar(self))
         self.canvas.status_changed_callback = self.refresh_annotation_status_bar
+        self.sam_assist = SamAssistController(self)
 
         self._refresh_class_state()
         self._refresh_path_labels()
@@ -178,6 +180,7 @@ class AnnotationPage(
         super().keyPressEvent(event)
 
     def on_show(self) -> None:
+        self.sam_assist.refresh_models()
         self.refresh_annotation_status_bar()
         self._refresh_path_labels()
         if not self._initialized_once:
@@ -199,6 +202,7 @@ class AnnotationPage(
             prepare_initial_image()
 
     def on_hide(self) -> None:
+        self.sam_assist.shutdown(wait=False)
         self.annotation_status_bar.hide()
         set_annotation_bottom_margin(self, 12)
 
@@ -220,6 +224,9 @@ class AnnotationPage(
 
     def has_unsaved_annotations(self) -> bool:
         return bool(self.dirty)
+
+    def on_shutdown(self) -> None:
+        self.sam_assist.shutdown(wait=True)
 
     def eventFilter(self, watched, event):  # noqa: N802 - Qt API name
         if watched is self.file_list.viewport():

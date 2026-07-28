@@ -21,6 +21,7 @@ def preload_pages(window, keys=None) -> None:
 def clear_pages(window) -> None:
     while window.stack.count():
         widget = window.stack.widget(0)
+        window._invoke_page_hook(widget, "on_shutdown")
         window.stack.removeWidget(widget)
         widget.setParent(None)
     window.pages.clear()

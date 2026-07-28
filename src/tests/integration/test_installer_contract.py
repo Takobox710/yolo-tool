@@ -23,7 +23,7 @@ def test_release_artifact_names_and_versions_are_short_and_stable():
     assert "YOLOTool_ExtraEnv_${ExtensionVersion}.7z" in package_script
     assert "YOLOTool_BaseEnv_{package_version}.7z" in base_builder
     assert "YOLOTool_ExtraEnv_{version}.7z" in extra_builder
-    assert Path("installer/base-runtime-models-version.txt").read_text().strip() == "v2"
+    assert Path("installer/base-runtime-models-version.txt").read_text().strip() == "v3"
     assert Path("installer/model-export-runtime-version.txt").read_text().strip() == "v2"
     assert Path("installer/runtime-version.txt").read_text().strip() == "runtime-2"
 
@@ -203,6 +203,36 @@ def test_program_only_spec_skips_external_runtime_analysis():
     assert "collect_submodules(\"ultralytics\"" in spec
     assert "pyi_rth_pyside6.py" in spec
     assert '"ctypes.util"' in spec
+
+
+def test_sam3_vendor_runtime_is_packaged_without_checkpoint():
+    spec = Path("installer/YOLOTool.spec").read_text(encoding="utf-8")
+    pixi = Path("pixi.toml").read_text(encoding="utf-8")
+    build_script = Path("installer/build_windows.ps1").read_text(encoding="utf-8")
+    wheel = Path("installer/vendor/sam3-0.1.0-py3-none-any.whl")
+    license_file = Path("installer/vendor/sam3-LICENSE.txt")
+
+    assert 'SAM3_PACKAGES = ("sam3",)' in spec
+    assert '*SAM3_PACKAGES' in spec
+    assert 'sam3 = { path = "installer/vendor/sam3-0.1.0-py3-none-any.whl" }' in pixi
+    assert wheel.is_file() and wheel.stat().st_size > 0
+    assert license_file.is_file() and "SAM License" in license_file.read_text(encoding="utf-8")
+    assert "sam3.pt" not in build_script
+
+
+def test_sam3_runtime_dependency_contract_excludes_training_accelerators():
+    import zipfile
+
+    pixi = Path("pixi.toml").read_text(encoding="utf-8")
+    with zipfile.ZipFile("installer/vendor/sam3-0.1.0-py3-none-any.whl") as archive:
+        metadata_name = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+        metadata = archive.read(metadata_name).decode("utf-8")
+
+    for dependency in ("timm", "ftfy", "iopath", "huggingface-hub", "einops", "pycocotools"):
+        assert dependency in pixi
+    assert "Requires-Dist: numpy<3" in metadata
+    assert "Requires-Dist: flash-attn" not in metadata
+    assert "Requires-Dist: triton" not in metadata
 
 
 def test_base_archive_extraction_keeps_normal_install_progress():

@@ -5,7 +5,7 @@ Windows 冻结程序使用 PyInstaller `onedir`，正式发布拆成三个独立
 | 发布物 | 内容 | 更新时机 |
 | --- | --- | --- |
 | `YOLOTool_Setup_<程序版本>.exe` | 内嵌图标资源的 `YOLOTool.exe`、程序清单和统一安装逻辑 | 普通功能更新 |
-| `YOLOTool_BaseEnv_<基础包版本>.7z` | `_internal/`、CPU ONNX Runtime、SAM 2/2.1 Base+ 代码与 checkpoint、基础运行时清单和官方模型 | 基础依赖或官方模型变化 |
+| `YOLOTool_BaseEnv_<基础包版本>.7z` | `_internal/`、CPU ONNX Runtime、SAM 2/2.1 Base+ 与 SAM 3 推理代码/依赖、基础运行时清单和官方模型 | 基础依赖或官方模型变化 |
 | `YOLOTool_ExtraEnv_<附加包版本>.7z` | OpenVINO、NCNN/PNNX 和 TensorRT 模型转换运行库 | 模型转换后端或扩展协议变化 |
 
 `Program Setup` 的硬性体积目标是小于 `100 MB`。基础包和附加包都使用 Pixi 锁定的原生 7-Zip CLI 生成非固实 LZMA2 `mx=5` 压缩，并启用 `-mmt=on` 多线程；基础包以兼容 Inno 按文件随机访问。基础运行环境构建时，第三方纯 Python 源码在 Windows 优先通过系统 `robocopy /S /MT:16` 目录级复制，缺少该工具时回退 Python 逐文件复制；测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码不会进入基础包，ONNX 测试数据也会排除。基础运行环境同时携带 `7z.exe` 和 `7z.dll`，软件内安装附加包时优先使用原生解压与 CRC 校验，避免 `py7zr` 解压后再次逐文件读取大包；没有原生工具时才使用 `py7zr + SHA-256` 回退。两者都不包含 `YOLOTool.exe`，目标机不需要另行安装 7-Zip。程序冻结包额外保留 ONNX、ONNX Runtime、OpenCV、Pillow、psutil 和 Ultralytics 的轻量 `.dist-info` 元数据，用于设置页显示精确版本；运行时仍保留模块版本回退。
@@ -42,6 +42,8 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 
 开发快包输出到 `dist/YOLOTool-dev/`，用于本地验证 GUI 和隐藏 CLI，不作为用户安装发布物。完整冻结输出会同时写入根目录 `release-manifest.json` 和 `runtime-manifest.json`，因此可直接启动；运行时清单只用于安装器 `--runtime-probe` 和诊断流程，GUI 启动不再因清单或版本不匹配强制退出。`-ProgramOnly` 输出仍需要已有基础环境才能提供完整功能，但安装器允许在缺少新基础包时保留旧环境完成程序更新。
 
+SAM 智能辅助标注复用基础包 v3 的 SAM 2/2.1 代码、配置、Torch/CUDA、OpenCV、Pillow 和 `data/models/sam2.1_hiera_base_plus.pt`。SAM 3 官方代码固定在提交 `6dbb02bd38288df755dfa1378000a861e65b84f6`，以 Windows 推理专用 vendor wheel 和许可证随基础包发布；wheel 放宽 NumPy 元数据以兼容项目 NumPy 2.x，并使用 OpenCV fallback 替代 Triton，明确不包含 Flash Attention、Triton 或训练依赖。官方 `sam3.pt` checkpoint 不打包、不进 git，由用户自行放入 `data/models/`。GUI 通过 `YOLOTool.exe --sam-assist-runtime` 与 `YOLOTool.exe --yolo-ai-runtime` 启动交互式隐藏子进程；程序层必须包含对应 CLI 分发代码以及由 `src/assets.qrc` 编译进 `assets_rc.py` 的 `sam_assist.svg`。
+
 冻结程序包含系统设置页的 GitHub Release 检查逻辑，不新增运行时依赖；用户需要能访问 `api.github.com` 才能获得版本检查结果。检查失败不会影响程序启动、训练或验证。更新窗口将选中的资源下载到 Windows Shell 解析出的真实 `Downloads` 文件夹；环境包更新通过 Release 文件名版本与本机安装清单或 `package-info.ini` 版本比较，Release 始终携带同版本环境包时不会误报更新。源码开发态使用 `installer/base-runtime-models-version.txt` 和 `installer/model-export-runtime-version.txt` 作为当前环境包版本；基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，不触发“环境包也有更新”；仅当已安装附加包的版本低于 Release 时才触发附加包更新提示。程序与更高版本基础包同时需要更新时默认选择两者，仅程序更新时默认选择程序包，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时显示红色重装提醒，基础包单独留下时在进度条下方显示不可安装的红色提醒。附加环境包在仅勾选附加包、同时勾选程序包或三项全部勾选时，按是否已有附加包显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换。已有安装但缺少更新基础包时，安装器保留旧环境并警告版本不匹配或环境不完整，继续完成程序更新；首次安装缺少基础包时在组件页直接阻止提交，安装提交阶段不会生成没有运行环境的程序-only 首次安装。附加包可以在程序内热安装或替换。下载按钮右侧可暂停/继续下载或安装器进程。下载期间窗口不允许关闭，安装器启动失败会在窗口中显示为可恢复错误。
 
 单独构建两个运行包：
@@ -53,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File installer\build_model_export_runtime.ps
 
 根目录提供两个双击入口：
 
-- `打包更新程序.bat`：直接调用 `package_windows.ps1`，复用 `installer/output/` 中已有的 `YOLOTool_BaseEnv_v2.7z`，只重建程序-only 冻结文件、companion catalog 和程序安装器；已有附加包会登记到 catalog，但不会重建，也不会重新生成基础或附加环境包。
+- `打包更新程序.bat`：直接调用 `package_windows.ps1`，复用 `installer/output/` 中已有的 `YOLOTool_BaseEnv_v3.7z`，只重建程序-only 冻结文件、companion catalog 和程序安装器；已有附加包会登记到 catalog，但不会重建，也不会重新生成基础或附加环境包。
 - `打包程序.bat`：调用 `package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime`，重新构建程序安装器、基础环境包和附加环境包三个发布物；两个环境包默认使用原生 7-Zip `mx=5`。
 
 两个 BAT 均使用纯 ASCII 内容、CRLF 换行和 Windows PowerShell 的绝对系统路径，避免简体中文代码页把 UTF-8 批处理内容解析成乱码并截断命令。
@@ -66,7 +68,7 @@ powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBas
 
 程序更新入口要求当前版本基础包已经存在，否则会明确报错并停止；附加包不存在时仍可生成程序安装器。PowerShell 下也可单独使用 `-SkipBaseRuntimeModels` 或 `-SkipModelExportRuntime`。默认完整命令每次重新复制、哈希和压缩两个环境包 staging。`-Clean` 用于强制完整重建，并清理对应的冻结输出、staging 和归档。压缩参数使用基础包和附加包原生 7-Zip `mx=5`、非固实 LZMA2 与 `-mmt=on`。旧 `Full`、`AppUpdate`、`RuntimeFull` 参数保留一个过渡周期，输出弃用警告后转发到 `Program`。
 
-`installer/base-runtime-models-version.txt`、`runtime-version.txt` 和 `model-export-runtime-version.txt` 分别控制基础包、运行时兼容协议和附加包版本。当前两个包版本均为 `v2`，运行时协议为 `runtime-2`；只有对应内容变化时才提升版本。
+`installer/base-runtime-models-version.txt`、`runtime-version.txt` 和 `model-export-runtime-version.txt` 分别控制基础包、运行时兼容协议和附加包版本。当前基础包为 `v3`、附加包为 `v2`，运行时协议仍为 `runtime-2`；只有对应内容变化时才提升版本。
 
 ## 安装流程
 
@@ -96,7 +98,7 @@ Program 与基础环境先进入 `{app}\.install-staging/`。开始解压基础�
 
 ## 卸载与数据
 
-隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注和运行时维护划分的 handler；handler 只负责参数、服务调用、结构化输出和退出码。`src/train_cli.py` 保留懒加载 `run_*` 兼容转发，冻结态与开发态继续使用同一命令协议。
+隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注、SAM 辅助标注和运行时维护划分的 handler；handler 只负责参数、服务调用、结构化输出和退出码。`src/train_cli.py` 保留懒加载 `run_*` 兼容转发，冻结态与开发态继续使用同一命令协议。`--sam-assist-runtime` 从标准输入逐行接收 `load_model`、`set_image`、`predict_point`、`shutdown` JSON 命令，并以结构化行返回请求 ID、状态、错误或几何，不输出完整 mask。
 
 安装提交前的 `YOLOTool.exe --runtime-probe` 只读取程序清单和 `_internal` 基础环境清单，比较 `required_runtime_version` 与 `runtime_version`；不导入 Torch、PySide6、ONNX、ONNX Runtime、Ultralytics 或 OpenCV。比较不一致或自检无法完成时只显示“部分功能可能无法使用”的警告，不撤销已经完成的文件切换。附加包后台安装的解压进度范围为 5%-95%。
 
@@ -115,6 +117,7 @@ Program 与基础环境先进入 `{app}\.install-staging/`。开始解压基础�
 - 程序安装器小于 `100 MB`，且不包含 `_internal/`、运行时清单和模型；程序-only EXE 启动时必须能在目标目录找到基础包 `_internal/python312.dll`。
 - 两个约 2 GB 伴随包存在时，组件页不执行 SHA-256，必须在 3 秒内完成刷新并保持控件可交互。
 - 基础包不包含 `YOLOTool.exe`、OpenVINO、NCNN、PNNX、TensorRT 和 GPU ONNX Runtime；包含 SAM 2/2.1 Base+ 代码、配置和 checkpoint。
+- 开发快包或 Program-only 产物应能显示内嵌 SAM 图标，并可启动 `YOLOTool.exe --sam-assist-runtime`；在具备 CUDA 的发布机使用 Base+ checkpoint 完成加载、图片编码、单点几何推理和 `shutdown` 冒烟，退出后不得残留子进程。
 - 附加包包含 OpenVINO、NCNN/PNNX 和 TensorRT 发行包，清单中的文件和 DLL 目录完整；原生 7-Zip 安装路径使用归档 CRC，并实时把解压百分比映射到安装进度，兼容回退路径使用清单 SHA-256。
 - 覆盖首次安装、仅程序升级、强制基础包升级、主动重装、确认降级、并行实例与卸载保留数据。
 - 使用 detect 与 OBB 模型完成五格式烟雾导出；TensorRT 仅在兼容 NVIDIA CUDA 13 发布机验证。

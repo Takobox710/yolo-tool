@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from src.shared.paths import ICON_PNG, ICON_PNG_RESOURCE
+from src.shared.paths import (
+    ICON_PNG,
+    ICON_PNG_RESOURCE,
+    SAM_ASSIST_ICON,
+    SAM_ASSIST_ICON_RESOURCE,
+)
 from src.shared.qt import QIcon, QPixmap
 
 
@@ -17,6 +22,14 @@ def load_app_icon() -> QIcon:
     if not icon.isNull():
         return icon
     return QIcon(str(ICON_PNG)) if ICON_PNG.exists() else QIcon()
+
+
+def load_sam_assist_icon() -> QIcon:
+    _register_embedded_assets()
+    icon = QIcon(SAM_ASSIST_ICON_RESOURCE)
+    if not icon.isNull():
+        return icon
+    return QIcon(str(SAM_ASSIST_ICON)) if SAM_ASSIST_ICON.exists() else QIcon()
 
 
 def load_app_pixmap(size: int, device_pixel_ratio: float = 1.0) -> QPixmap:

@@ -13,6 +13,12 @@ from src.services.annotation.editable_document import (
     EditableAnnotation,
     load_labelme_annotations,
 )
+from src.services.annotation.sam3_text import (
+    Sam3TextRuntime,
+    _deduplicate_candidates,
+    normalize_sam3_prompts,
+    sam3_annotations_from_masks,
+)
 from src.services.training.model_resolution import (
     find_training_model_names,
     resolve_training_model_reference,
@@ -169,6 +175,57 @@ def predict_annotations_for_image(
     return annotations, names, model_labels
 
 
+def predict_sam3_annotations_for_image(
+    image_path: Path,
+    runtime: Sam3TextRuntime,
+    confidence: float,
+    dedup_iou: float,
+    output_shape: str,
+    prompts: dict[str, str],
+    enabled_classes: list[str],
+    class_names: list[str],
+    minimum_area: int,
+    simplification_ratio: float,
+) -> tuple[list[EditableAnnotation], dict[str, int]]:
+    prompt_rows = normalize_sam3_prompts(class_names, prompts, enabled_classes)
+    if not prompt_rows:
+        raise ValueError("请至少启用一个带有文本提示词的项目类别。")
+    candidates = []
+    raw_count = 0
+    area_filtered = 0
+    order = 0
+    runtime.set_image(image_path)
+    for class_id, _class_name, prompt in prompt_rows:
+        masks, scores = runtime.predict_prompt(prompt, confidence)
+        raw_count += len(scores)
+        converted, filtered = sam3_annotations_from_masks(
+            masks,
+            scores,
+            class_id,
+            output_shape,
+            minimum_area,
+            simplification_ratio,
+            order,
+        )
+        area_filtered += filtered
+        order += len(scores)
+        candidates.extend(converted)
+    accepted, overlap_filtered = _deduplicate_candidates(candidates, dedup_iou)
+    annotations = [
+        EditableAnnotation(
+            class_id=candidate.class_id,
+            shape="rect" if output_shape == "rect" else output_shape,
+            points=list(candidate.points),
+        )
+        for candidate in accepted
+    ]
+    return annotations, {
+        "raw_count": raw_count,
+        "area_filtered": area_filtered,
+        "overlap_filtered": overlap_filtered,
+    }
+
+
 def apply_ai_labeling(
     image_items: list[Path],
     current_image: Path | None,
@@ -176,6 +233,7 @@ def apply_ai_labeling(
     labels_dir: Path,
     *,
     model_path: str,
+    backend: str = "yolo",
     confidence: float,
     iou: float,
     imgsz: int,
@@ -191,12 +249,23 @@ def apply_ai_labeling(
     save_yolo_fn,
     output_mode: str,
     auto_convert_yolo: bool,
+    sam3_prompts: dict[str, str] | None = None,
+    sam3_enabled_classes: list[str] | None = None,
+    sam3_output_shape: str = "rect",
+    sam3_min_area: int = 4,
+    sam3_polygon_simplify_ratio: float = 0.002,
     progress_callback,
     stop_event: threading.Event,
     model=None,
 ) -> AiLabelResult:
-    ensure_cv2_highgui_compat()
-    from ultralytics import YOLO
+    backend = str(backend or "yolo").strip().lower()
+    if backend not in {"yolo", "sam3"}:
+        raise ValueError(f"不支持的 AI 模型类型：{backend}")
+    if backend == "yolo":
+        ensure_cv2_highgui_compat()
+        from ultralytics import YOLO
+    else:
+        YOLO = None
 
     targets = normalize_ai_target_images(image_items, target_images)
     if not targets:
@@ -212,7 +281,9 @@ def apply_ai_labeling(
     active_model = model
     owns_model = active_model is None
     if active_model is None:
-        active_model = YOLO(model_path)
+        active_model = Sam3TextRuntime() if backend == "sam3" else YOLO(model_path)
+        if backend == "sam3":
+            active_model.load_model(model_path)
     try:
         updated_images: list[Path] = []
         skipped_images: list[Path] = []
@@ -244,15 +315,31 @@ def apply_ai_labeling(
                 names,
                 line_expand_pixels,
             )
-            detected, names, model_labels = predict_annotations_for_image(
-                image_path,
-                active_model,
-                confidence,
-                iou,
-                imgsz,
-                class_mapping,
-                names,
-            )
+            if backend == "sam3":
+                detected, stats = predict_sam3_annotations_for_image(
+                    image_path,
+                    active_model,
+                    confidence,
+                    iou,
+                    sam3_output_shape,
+                    dict(sam3_prompts or {}),
+                    list(sam3_enabled_classes or []),
+                    names,
+                    sam3_min_area,
+                    sam3_polygon_simplify_ratio,
+                )
+                model_labels = []
+            else:
+                detected, names, model_labels = predict_annotations_for_image(
+                    image_path,
+                    active_model,
+                    confidence,
+                    iou,
+                    imgsz,
+                    class_mapping,
+                    names,
+                )
+                stats = {}
             merged = merge_ai_annotations(current_annotations, detected, process_mode)
             save_json_fn(image_size, json_path, image_path, merged, names)
             if auto_convert_yolo:
@@ -267,6 +354,7 @@ def apply_ai_labeling(
                     "result_count": len(detected),
                     "model_labels": model_labels,
                     "class_names": names,
+                    "sam3_stats": stats,
                 }
             )
 
@@ -278,6 +366,9 @@ def apply_ai_labeling(
         )
     finally:
         if owns_model:
-            del active_model
-            release_inference_runtime()
+            if hasattr(active_model, "close"):
+                active_model.close()
+            else:
+                del active_model
+                release_inference_runtime()
 

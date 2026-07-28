@@ -100,6 +100,7 @@ def test_shared_paths_use_dev_and_frozen_resource_roots(monkeypatch, tmp_path):
         PACKAGE_ROOT,
         ROOT,
         RUNTIME_ROOT,
+        SAM_ASSIST_ICON,
     )
 
     repo_root = Path.cwd().resolve()
@@ -111,6 +112,7 @@ def test_shared_paths_use_dev_and_frozen_resource_roots(monkeypatch, tmp_path):
     assert RUNTIME_ROOT == repo_root / "data" / "runtime"
     assert ICON_PNG == repo_root / "src" / "assets" / "app_icon.png"
     assert ICON_ICO == repo_root / "src" / "assets" / "app_icon.ico"
+    assert SAM_ASSIST_ICON == repo_root / "src" / "assets" / "sam_assist.svg"
 
     resource_root = tmp_path / "_internal"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
@@ -181,6 +183,10 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "pyinstaller" in script and "app_assets" not in script
     assert Path("src/assets.qrc").exists()
     assert "assets_rc" in Path("src/ui/shared/assets.py").read_text(encoding="utf-8")
+    assert "sam_assist.svg" in Path("src/assets.qrc").read_text(encoding="utf-8")
+    assert "load_sam_assist_icon" in Path("src/ui/shared/assets.py").read_text(
+        encoding="utf-8"
+    )
     assert "src.devtools.release_package" in script and "PackageType" in script
     assert '"sam2.1_hiera_base_plus.pt"' in script
     assert 'save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")' in script

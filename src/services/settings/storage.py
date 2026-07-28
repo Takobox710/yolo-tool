@@ -26,6 +26,7 @@ PROJECT_PATH_FIELDS: dict[tuple[str, ...], dict[str, bool]] = {
     ("validation", "model_path"): {"keep_bare_name": True},
     ("validation", "source_path"): {},
     ("validation", "save_dir"): {},
+    ("annotation", "sam_assist", "model_path"): {"keep_bare_name": True},
 }
 
 

@@ -35,7 +35,7 @@ def test_latest_release_detects_a_new_version(monkeypatch):
                         "browser_download_url": "https://github.com/example/setup.exe",
                     },
                     {
-                        "name": "YOLOTool_BaseEnv_v2.7z",
+                        "name": "YOLOTool_BaseEnv_v3.7z",
                         "browser_download_url": "https://github.com/example/base.7z",
                     },
                 ],
@@ -52,10 +52,10 @@ def test_latest_release_detects_a_new_version(monkeypatch):
     assert result.release_notes == "- 修复版本检查\n- 优化设置页"
     assert result.installer_asset_name == "YOLOTool_Setup_1.4.0.exe"
     assert result.installer_asset_url.endswith("setup.exe")
-    assert result.environment_asset_names == ("YOLOTool_BaseEnv_v2.7z",)
+    assert result.environment_asset_names == ("YOLOTool_BaseEnv_v3.7z",)
     assert result.environment_asset_urls == ("https://github.com/example/base.7z",)
-    assert result.base_environment_version == "2.0.0"
-    assert result.installed_base_environment_version == "2.0.0"
+    assert result.base_environment_version == "3.0.0"
+    assert result.installed_base_environment_version == "3.0.0"
     assert result.base_environment_update_available is False
     assert captured["url"].endswith("/releases/latest")
     assert captured["user_agent"] == "YOLOTool-version-check"

@@ -2,12 +2,40 @@ from __future__ import annotations
 
 from PySide6.QtGui import QAction, QKeySequence
 from src.shared.qt import QHBoxLayout, QLabel, QMenu, Qt, QWidget, QWidgetAction
+from src.ui.shared.widgets.toggle_switch import AnimatedToggleSwitch
 
 
 class AnnotationCanvasContextMenuMixin:
     def _show_context_menu(self, global_pos) -> None:
         menu = QMenu(self)
         menu.setSeparatorsCollapsible(False)
+        sam_widget_action = QWidgetAction(menu)
+        sam_widget = QWidget(menu)
+        sam_layout = QHBoxLayout(sam_widget)
+        sam_layout.setContentsMargins(14, 5, 14, 5)
+        sam_layout.setSpacing(0)
+        sam_label = QLabel("SAM 智能标注", sam_widget)
+        # QWidgetAction 内容不会自动采用 QMenu 的 QAction 字体。
+        # 显式复用菜单字体，避免 SAM 行与普通菜单项出现字号差异。
+        sam_label.setFont(menu.font())
+        sam_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        # 让文字占据开关左侧的剩余区域并与普通菜单项左对齐。
+        sam_layout.addWidget(sam_label, 1)
+        sam_switch = AnimatedToggleSwitch(sam_widget, width=36, height=18)
+        # 菜单每次打开都会新建控件，初始化状态时不应播放切换动画。
+        sam_switch.blockSignals(True)
+        sam_switch.setChecked(self.sam_assist_enabled)
+        sam_switch.blockSignals(False)
+        has_sam_model = bool(self.sam_model_name)
+        sam_switch.setEnabled(has_sam_model)
+        sam_widget.setToolTip(
+            f"当前模型：{self.sam_model_name}"
+            if has_sam_model
+            else "未找到兼容的 SAM 2/2.1 模型"
+        )
+        sam_layout.addWidget(sam_switch)
+        sam_widget_action.setDefaultWidget(sam_widget)
+
         select_action = QAction("编辑", menu)
         select_action.setCheckable(True)
         select_action.setChecked(self.draw_shape == "select")
@@ -40,6 +68,20 @@ class AnnotationCanvasContextMenuMixin:
             line_expand_action.setShortcutVisibleInContextMenu(True)
             menu.addAction(line_expand_action)
             shape_actions[line_expand_action] = "line_expand"
+        def apply_sam_enabled(enabled: bool) -> None:
+            actual = False
+            if self.sam_toggle_callback is not None:
+                actual = bool(self.sam_toggle_callback(bool(enabled)))
+            if sam_switch.isChecked() != actual:
+                sam_switch.blockSignals(True)
+                sam_switch.setChecked(actual)
+                sam_switch.blockSignals(False)
+            supported = {"rect", "obb_single", "obb_mirror", "polygon"}
+            for action, shape in shape_actions.items():
+                action.setEnabled(not actual or shape in supported)
+
+        sam_switch.toggled.connect(apply_sam_enabled)
+        apply_sam_enabled(self.sam_assist_enabled)
         class_actions: dict[QAction, int] = {}
         if 0 <= self.selected_index < len(self.annotations):
             class_menu = menu.addMenu("目标类型")
@@ -88,6 +130,10 @@ class AnnotationCanvasContextMenuMixin:
             cancel_action.setShortcut(QKeySequence(Qt.Key.Key_Escape))
             cancel_action.setShortcutVisibleInContextMenu(True)
             menu.addAction(cancel_action)
+        sam_separator = QAction(menu)
+        sam_separator.setSeparator(True)
+        menu.addAction(sam_separator)
+        menu.addAction(sam_widget_action)
         selected = menu.exec(global_pos)
         if selected is None:
             return

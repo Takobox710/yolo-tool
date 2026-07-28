@@ -249,6 +249,8 @@ class WorkbenchWindow(QMainWindow):
         if not confirm_close_if_needed(self):
             event.ignore()
             return
+        for page in self.pages.values():
+            self._invoke_page_hook(page, "on_shutdown")
         self.settings.ui.window_width = 1100
         self.settings.ui.window_height = 740
         self.context.save_settings()

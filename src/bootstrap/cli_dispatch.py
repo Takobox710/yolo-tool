@@ -20,6 +20,7 @@ FLAG_HANDLERS: dict[str, CliHandler] = {
     "--yolo-predict": handlers.run_predict,
     "--yolo-ai-label": handlers.run_ai_label,
     "--yolo-ai-runtime": handlers.run_ai_runtime,
+    "--sam-assist-runtime": handlers.run_sam_assist_runtime,
     "--yolo-model-labels": handlers.run_model_labels,
 }
 
@@ -85,6 +86,10 @@ def run_ai_runtime_cli(argv: list[str]) -> int:
     return handlers.run_ai_runtime(argv)
 
 
+def run_sam_assist_runtime_cli(argv: list[str]) -> int:
+    return handlers.run_sam_assist_runtime(argv)
+
+
 __all__ = [
     "FLAG_HANDLERS",
     "dispatch_cli",
@@ -98,6 +103,7 @@ __all__ = [
     "run_predict_cli",
     "run_remove_managed_models_cli",
     "run_runtime_probe_cli",
+    "run_sam_assist_runtime_cli",
     "run_torch_summary_cli",
     "run_train_cli",
     "run_val_cli",

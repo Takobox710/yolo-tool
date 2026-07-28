@@ -5,7 +5,9 @@ from typing import Callable
 from src.shared.qt import (
     QAbstractItemView,
     QComboBox,
+    QCheckBox,
     QHeaderView,
+    QLineEdit,
     QLabel,
     QTableWidget,
     QTableWidgetItem,
@@ -117,5 +119,71 @@ def collect_mapping(table: QTableWidget, mapping_combos: list[QComboBox]) -> dic
         if target:
             mapping[model_label.text()] = target
     return mapping
+
+
+def configure_sam3_prompt_table(table: QTableWidget) -> None:
+    table.setColumnCount(4)
+    table.setHorizontalHeaderLabels(["启用", "标注类别", "文本提示词", "状态"])
+    table.verticalHeader().setVisible(False)
+    table.verticalHeader().setDefaultSectionSize(34)
+    table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+    table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+    table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    table.setMinimumHeight(140)
+    table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+    table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+    table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+    table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+
+
+def populate_sam3_prompt_table(
+    *,
+    table: QTableWidget,
+    summary: QLabel,
+    class_names: list[str],
+    saved_prompts: dict[str, str],
+    saved_enabled_classes: list[str],
+) -> tuple[list[QCheckBox], list[QLineEdit]]:
+    checks: list[QCheckBox] = []
+    edits: list[QLineEdit] = []
+    enabled_saved = {str(value).strip() for value in saved_enabled_classes if str(value).strip()}
+    # An entirely empty legacy settings object means "all classes". Once
+    # prompts have been saved, an empty enabled list represents the user's
+    # intentional choice to disable every row until they re-enable one.
+    use_all = not enabled_saved and not saved_prompts
+    table.setRowCount(len(class_names))
+    for row, class_name in enumerate(class_names):
+        check = QCheckBox()
+        check.setChecked(use_all or class_name in enabled_saved)
+        edit = QLineEdit(str(saved_prompts.get(class_name, class_name)))
+        edit.setPlaceholderText(class_name)
+        table.setCellWidget(row, 0, check)
+        table.setItem(row, 1, QTableWidgetItem(class_name))
+        table.setCellWidget(row, 2, edit)
+        table.setItem(row, 3, QTableWidgetItem("已启用" if check.isChecked() else "跳过"))
+        check.stateChanged.connect(
+            lambda state, item=table.item(row, 3): item.setText("已启用" if state else "跳过")
+        )
+        checks.append(check)
+        edits.append(edit)
+    update_sam3_prompt_status(table, summary, checks, edits)
+    return checks, edits
+
+
+def update_sam3_prompt_status(
+    table: QTableWidget,
+    summary: QLabel,
+    checks: list[QCheckBox],
+    edits: list[QLineEdit],
+) -> None:
+    enabled = 0
+    valid = 0
+    for check, edit in zip(checks, edits):
+        if check.isChecked():
+            enabled += 1
+            if edit.text().strip():
+                valid += 1
+    summary.setText(f"已启用 {enabled} 个类别 | 有效提示词 {valid} 个")
 
 

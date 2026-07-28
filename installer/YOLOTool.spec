@@ -67,6 +67,7 @@ PY7ZR_PACKAGES = (
     "Cryptodome",
 )
 SAM2_PACKAGES = ("sam2",)
+SAM3_PACKAGES = ("sam3",)
 excludes = list(BASE_EXCLUDES)
 
 if is_program_only:
@@ -126,6 +127,7 @@ else:
         "onnx",
         "onnxruntime",
         *SAM2_PACKAGES,
+        *SAM3_PACKAGES,
         *PY7ZR_PACKAGES,
     ):
         binaries += collect_dynamic_libs(package)
@@ -137,6 +139,7 @@ else:
         "onnxslim",
         "onnxruntime",
         *SAM2_PACKAGES,
+        *SAM3_PACKAGES,
         *PY7ZR_PACKAGES,
     ):
         hiddenimports += collect_submodules(package, on_error="ignore")

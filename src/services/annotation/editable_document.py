@@ -21,6 +21,17 @@ def _detect_points_to_rect(points: list[tuple[float, float]]) -> tuple[float, fl
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def _points_to_min_area_obb(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    if len(points) < 3:
+        left, top, right, bottom = _detect_points_to_rect(points)
+        return [(left, top), (right, top), (right, bottom), (left, bottom)]
+    import cv2
+    import numpy as np
+
+    box = cv2.boxPoints(cv2.minAreaRect(np.asarray(points, dtype=np.float32)))
+    return [tuple(map(float, point)) for point in box]
+
+
 def load_editable_annotations(
     image_size: tuple[int, int], label_path: Path
 ) -> list[EditableAnnotation]:
@@ -252,8 +263,7 @@ def save_editable_annotations(
             values: list[float] = []
             points = annotation.points[:4]
             if annotation.shape == "polygon" or len(annotation.points) != 4:
-                left, top, right, bottom = _detect_points_to_rect(annotation.points)
-                points = [(left, top), (right, top), (right, bottom), (left, bottom)]
+                points = _points_to_min_area_obb(annotation.points)
             for x_pos, y_pos in points:
                 values.extend(
                     [
@@ -293,6 +303,7 @@ def save_editable_annotations(
 __all__ = [
     "EditableAnnotation",
     "_detect_points_to_rect",
+    "_points_to_min_area_obb",
     "load_editable_annotations",
     "load_labelme_annotations",
     "save_labelme_annotations",

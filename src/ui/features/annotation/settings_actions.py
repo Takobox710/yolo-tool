@@ -15,9 +15,25 @@ from src.ui.features.annotation.dialogs import (
 
 class AnnotationPageSettingsMixin:
     def enable_draw_mode(self) -> None:
-        dialog = DrawShapeDialog(self.canvas.line_expand_enabled, self)
+        self.sam_assist.refresh_models()
+        dialog = DrawShapeDialog(
+            self.canvas.line_expand_enabled,
+            self,
+            sam_models=self.sam_assist.models,
+            selected_sam_model=(
+                self.sam_assist.selected_model.key
+                if self.sam_assist.selected_model is not None
+                else ""
+            ),
+            sam_enabled=self.sam_assist.enabled,
+            sam_toggle_callback=self.sam_assist.set_enabled,
+            sam_model_callback=self.sam_assist.select_model,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        if dialog.selected_sam_model:
+            self.sam_assist.select_model(dialog.selected_sam_model)
+        self.sam_assist.set_enabled(dialog.sam_enabled)
         self.canvas.set_draw_shape(dialog.selected_shape)
         self.canvas.setFocus()
 

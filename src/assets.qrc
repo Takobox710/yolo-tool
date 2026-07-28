@@ -2,5 +2,6 @@
 <qresource prefix="/yolotool">
     <file alias="app_icon.png">assets/app_icon.png</file>
     <file alias="app_icon.ico">assets/app_icon.ico</file>
+    <file alias="sam_assist.svg">assets/sam_assist.svg</file>
 </qresource>
 </RCC>

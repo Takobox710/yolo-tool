@@ -25,6 +25,7 @@ run_model_labels = _legacy_handler("model_labels_cli")
 run_predict = _legacy_handler("predict_cli")
 run_ai_label = _legacy_handler("ai_label_cli")
 run_ai_runtime = _legacy_handler("ai_runtime_cli")
+run_sam_assist_runtime = _legacy_handler("sam_assist_runtime_cli")
 
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "run_predict",
     "run_remove_managed_models",
     "run_runtime_probe",
+    "run_sam_assist_runtime",
     "run_train",
     "run_val",
 ]

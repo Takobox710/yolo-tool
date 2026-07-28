@@ -29,6 +29,14 @@ def register_annotation_shortcuts(page) -> None:
     def activate_shape(shape: str) -> None:
         if shape == "line_expand" and not page.canvas.line_expand_enabled:
             return
+        if page.canvas.sam_assist_enabled and shape not in {
+            "select",
+            "rect",
+            "obb_single",
+            "obb_mirror",
+            "polygon",
+        }:
+            return
         page.canvas.set_draw_shape(shape)
 
     shape_shortcuts = {}

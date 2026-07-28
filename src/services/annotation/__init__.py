@@ -38,12 +38,18 @@ from src.services.annotation.preview_render import (
     load_yolo_annotations,
     render_annotation_preview,
 )
+from src.services.annotation.sam_assist import (
+    SamModelSpec,
+    find_sam_model_specs,
+    preferred_sam_model,
+)
 
 __all__ = [
     "AiLabelRange",
     "AiLabelResult",
     "Annotation",
     "EditableAnnotation",
+    "SamModelSpec",
     "circle_bounds",
     "collect_labelme_class_counts",
     "collect_labelme_class_names",
@@ -55,6 +61,7 @@ __all__ = [
     "collect_annotation_presence",
     "collect_ai_target_images",
     "extract_model_labels",
+    "find_sam_model_specs",
     "load_editable_annotations",
     "load_labelme_annotations",
     "load_model_labels",
@@ -62,6 +69,7 @@ __all__ = [
     "merge_ai_annotations",
     "normalize_ai_target_images",
     "predict_annotations_for_image",
+    "preferred_sam_model",
     "render_annotation_preview",
     "resolve_ai_model_path",
     "scan_annotation_image_items",

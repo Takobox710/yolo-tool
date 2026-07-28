@@ -90,7 +90,25 @@
     "quick_draw": false,
     "line_expand_enabled": false,
     "line_expand_pixels": 10,
-    "optimize_mirror_edit": false
+    "optimize_mirror_edit": false,
+    "ai_prelabel": {
+      "model_path": "",
+      "confidence": 0.5,
+      "iou": 0.45,
+      "sam3_confidence": 0.5,
+      "sam3_dedup_iou": 0.8,
+      "sam3_output_shape": "rect",
+      "sam3_prompts": {},
+      "sam3_enabled_classes": [],
+      "sam3_min_area": 4,
+      "sam3_polygon_simplify_ratio": 0.002,
+      "range_mode": "当前图片",
+      "process_mode": "追加",
+      "custom_selected_images": []
+    },
+    "sam_assist": {
+      "model_path": ""
+    }
   },
   "rename": {
     "prefix": "A",

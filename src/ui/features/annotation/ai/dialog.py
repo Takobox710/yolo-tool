@@ -9,10 +9,12 @@ from src.services.annotation import (
     collect_ai_target_images,
     resolve_ai_model_path,
 )
+from src.services.annotation.sam3_text import find_sam3_model_paths, is_sam3_checkpoint
 from src.services.data_ops import simplified_model_path
 from src.services.validation import find_result_model_paths
 from src.shared.qt import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -24,17 +26,23 @@ from src.shared.qt import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QSpinBox,
     QSizePolicy,
     QTableWidget,
     QTextEdit,
     QVBoxLayout,
+    QToolButton,
+    Qt,
 )
 from src.ui.features.annotation.ai.image_selection_dialog import CustomAiImageSelectionDialog
 from src.ui.features.annotation.ai.mapping import (
     collect_mapping as collect_ai_mapping,
     configure_mapping_table,
+    configure_sam3_prompt_table,
     populate_mapping_table as populate_ai_mapping_table,
+    populate_sam3_prompt_table,
     update_mapping_status as update_ai_mapping_status,
+    update_sam3_prompt_status,
 )
 from src.ui.features.annotation.ai.preferences import (
     ai_prelabel_settings,
@@ -59,6 +67,10 @@ class AiPrelabelDialog(QDialog):
         self._pending_labels_model_path = ""
         self.model_labels: list[str] = []
         self.mapping_combos: list[QComboBox] = []
+        self.sam3_checks: list[QCheckBox] = []
+        self.sam3_prompt_edits = []
+        self.sam3_class_names: list[str] = []
+        self.active_backend = ""
         self.backups: dict[Path, tuple[str | None, str | None]] = {}
         self.custom_selected_images: list[Path] = []
         self.original_class_names = list(page.class_names())
@@ -128,6 +140,51 @@ class AiPrelabelDialog(QDialog):
         threshold_row.addWidget(self.iou_spin)
         threshold_row.addStretch(1)
         model_layout.addLayout(threshold_row)
+
+        shape_row = QHBoxLayout()
+        shape_row.setContentsMargins(0, 0, 0, 0)
+        shape_row.setSpacing(8)
+        self.shape_label = QLabel("标注形状:")
+        self.shape_label.setObjectName("annotationPathLabel")
+        shape_row.addWidget(self.shape_label)
+        self.shape_combo = QComboBox()
+        self.shape_combo.addItem("矩形框", "rect")
+        self.shape_combo.addItem("有向矩形", "obb")
+        self.shape_combo.addItem("多边形", "polygon")
+        self.shape_combo.currentIndexChanged.connect(self._on_sam3_shape_changed)
+        shape_row.addWidget(self.shape_combo, 1)
+        model_layout.addLayout(shape_row)
+
+        self.sam3_advanced_toggle = QToolButton()
+        self.sam3_advanced_toggle.setText("高级参数")
+        self.sam3_advanced_toggle.setCheckable(True)
+        self.sam3_advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.sam3_advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.sam3_advanced_toggle.toggled.connect(self._toggle_sam3_advanced)
+        model_layout.addWidget(self.sam3_advanced_toggle)
+        self.sam3_advanced_frame = QFrame()
+        advanced_layout = QHBoxLayout(self.sam3_advanced_frame)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(8)
+        min_area_label = QLabel("最小面积:")
+        min_area_label.setObjectName("annotationPathLabel")
+        advanced_layout.addWidget(min_area_label)
+        self.sam3_min_area_spin = QSpinBox()
+        self.sam3_min_area_spin.setRange(1, 100000000)
+        self.sam3_min_area_spin.setValue(self.saved_sam3_min_area)
+        advanced_layout.addWidget(self.sam3_min_area_spin)
+        simplify_label = QLabel("轮廓简化 %:")
+        simplify_label.setObjectName("annotationPathLabel")
+        advanced_layout.addWidget(simplify_label)
+        self.sam3_simplify_spin = QDoubleSpinBox()
+        self.sam3_simplify_spin.setRange(0.0, 10.0)
+        self.sam3_simplify_spin.setSingleStep(0.1)
+        self.sam3_simplify_spin.setDecimals(2)
+        self.sam3_simplify_spin.setValue(self.saved_sam3_polygon_simplify_ratio * 100.0)
+        advanced_layout.addWidget(self.sam3_simplify_spin)
+        advanced_layout.addStretch(1)
+        self.sam3_advanced_frame.setVisible(False)
+        model_layout.addWidget(self.sam3_advanced_frame)
         top_row.addWidget(model_card, 3)
 
         options_card = QFrame()
@@ -267,6 +324,18 @@ class AiPrelabelDialog(QDialog):
         self.saved_model_path = str(preferences["model_path"])
         self.saved_confidence = float(preferences["confidence"])
         self.saved_iou = float(preferences["iou"])
+        self.saved_sam3_confidence = float(preferences["sam3_confidence"])
+        self.saved_sam3_dedup_iou = float(preferences["sam3_dedup_iou"])
+        self.saved_sam3_output_shape = str(preferences["sam3_output_shape"])
+        self.saved_sam3_prompts = dict(preferences["sam3_prompts"])
+        self.saved_sam3_enabled_classes = list(preferences["sam3_enabled_classes"])
+        if not self.saved_sam3_prompts and not self.saved_sam3_enabled_classes:
+            if str(self.page.output_mode).strip() == "obb":
+                self.saved_sam3_output_shape = "obb"
+        self.saved_sam3_min_area = int(preferences["sam3_min_area"])
+        self.saved_sam3_polygon_simplify_ratio = float(
+            preferences["sam3_polygon_simplify_ratio"]
+        )
         self.saved_range_mode = str(preferences["range_mode"])
         self.saved_process_mode = str(preferences["process_mode"])
         self.custom_selected_images = list(preferences["custom_selected_images"])
@@ -275,12 +344,21 @@ class AiPrelabelDialog(QDialog):
         return preferred_ai_model_text(self.page, self.saved_model_path)
 
     def _save_preferences(self) -> None:
+        self._capture_backend_values()
+        prompts, enabled = self.collect_sam3_prompts()
         save_ai_prelabel_preferences(
             self.page,
             model_path=self.resolved_model_path(),
             fallback_model_text=self.model_combo.currentText().strip(),
-            confidence=float(self.conf_spin.value()),
-            iou=float(self.iou_spin.value()),
+            confidence=self.saved_confidence,
+            iou=self.saved_iou,
+            sam3_confidence=self.saved_sam3_confidence,
+            sam3_dedup_iou=self.saved_sam3_dedup_iou,
+            sam3_output_shape=self.saved_sam3_output_shape,
+            sam3_prompts=prompts,
+            sam3_enabled_classes=enabled,
+            sam3_min_area=self.saved_sam3_min_area,
+            sam3_polygon_simplify_ratio=self.saved_sam3_polygon_simplify_ratio,
             range_mode=self.current_range_mode(),
             process_mode=self.current_process_mode(),
             custom_selected_images=self.custom_selected_images,
@@ -297,6 +375,7 @@ class AiPrelabelDialog(QDialog):
         super().reject()
 
     def closeEvent(self, event):  # noqa: N802 - Qt API name
+        self._save_preferences()
         self._shutdown_runtime_worker()
         super().closeEvent(event)
 
@@ -331,9 +410,21 @@ class AiPrelabelDialog(QDialog):
             display_names.append(display_name)
             seen.add(resolved_text)
 
+        for path in find_sam3_model_paths(project_root):
+            resolved_path = path.resolve()
+            resolved_text = str(resolved_path)
+            if resolved_text in seen:
+                continue
+            display_name = simplified_model_path(resolved_text, project_root)
+            self._model_display_paths[display_name] = resolved_path
+            display_names.append(display_name)
+            seen.add(resolved_text)
+
         for model_name in available_ai_models(project_root):
             resolved_text = resolve_ai_model_path(model_name, project_root)
             if resolved_text in seen:
+                continue
+            if Path(resolved_text).name.lower().startswith("sam2"):
                 continue
             display_names.append(model_name)
             if resolved_text:
@@ -406,11 +497,17 @@ class AiPrelabelDialog(QDialog):
         model_path = self.resolved_model_path()
         self._pending_labels_model_path = model_path
         self.model_labels = []
-        self.mapping_summary.setText("正在加载模型类别...")
+        backend = "sam3" if is_sam3_checkpoint(model_path) else "yolo"
+        self._set_backend_controls(backend)
         self.mapping_table.setRowCount(0)
         if not model_path:
             self.mapping_summary.setText("未选择模型")
             return
+        if backend == "sam3":
+            self.mapping_summary.setText("正在准备 SAM 3 文本提示词")
+            self.populate_sam3_prompts()
+            return
+        configure_mapping_table(self.mapping_table)
         model_file = Path(model_path)
         if not model_file.exists() or model_file.stat().st_size < 1024:
             self.mapping_summary.setText("模型类别待加载")
@@ -433,6 +530,93 @@ class AiPrelabelDialog(QDialog):
             return
         self.model_labels = list(labels)
         self.populate_mapping_table()
+
+    def populate_sam3_prompts(self) -> None:
+        self.sam3_class_names = list(self.page.class_names())
+        configure_sam3_prompt_table(self.mapping_table)
+        self.sam3_checks, self.sam3_prompt_edits = populate_sam3_prompt_table(
+            table=self.mapping_table,
+            summary=self.mapping_summary,
+            class_names=self.sam3_class_names,
+            saved_prompts=self.saved_sam3_prompts,
+            saved_enabled_classes=self.saved_sam3_enabled_classes,
+        )
+        for check, edit in zip(self.sam3_checks, self.sam3_prompt_edits):
+            check.stateChanged.connect(self.update_sam3_prompt_status)
+            edit.textChanged.connect(self.update_sam3_prompt_status)
+
+    def update_sam3_prompt_status(self, *_args) -> None:
+        update_sam3_prompt_status(
+            self.mapping_table,
+            self.mapping_summary,
+            self.sam3_checks,
+            self.sam3_prompt_edits,
+        )
+
+    def collect_sam3_prompts(self) -> tuple[dict[str, str], list[str]]:
+        prompts: dict[str, str] = {}
+        enabled: list[str] = []
+        for name, check, edit in zip(
+            self.sam3_class_names,
+            self.sam3_checks,
+            self.sam3_prompt_edits,
+        ):
+            prompts[name] = edit.text().strip()
+            if check.isChecked():
+                enabled.append(name)
+        return prompts, enabled
+
+    def _capture_backend_values(self) -> None:
+        if self.active_backend == "sam3":
+            self.saved_sam3_confidence = float(self.conf_spin.value())
+            self.saved_sam3_dedup_iou = float(self.iou_spin.value())
+            self.saved_sam3_output_shape = str(self.shape_combo.currentData() or "rect")
+            self.saved_sam3_min_area = int(self.sam3_min_area_spin.value())
+            self.saved_sam3_polygon_simplify_ratio = self.sam3_simplify_spin.value() / 100.0
+        else:
+            self.saved_confidence = float(self.conf_spin.value())
+            self.saved_iou = float(self.iou_spin.value())
+
+    def _set_backend_controls(self, backend: str) -> None:
+        backend = "sam3" if backend == "sam3" else "yolo"
+        if backend == self.active_backend:
+            if backend == "sam3" and self.sam3_class_names == []:
+                self._on_sam3_shape_changed()
+            return
+        self._capture_backend_values()
+        self.active_backend = backend
+        if backend == "sam3":
+            self.conf_spin.setValue(self.saved_sam3_confidence)
+            self.iou_spin.setValue(self.saved_sam3_dedup_iou)
+            index = self.shape_combo.findData(self.saved_sam3_output_shape)
+            self.shape_combo.setCurrentIndex(max(0, index))
+            self.sam3_min_area_spin.setValue(self.saved_sam3_min_area)
+            self.sam3_simplify_spin.setValue(self.saved_sam3_polygon_simplify_ratio * 100.0)
+            self.conf_spin.setToolTip("SAM 3 概念分割置信度阈值")
+            self.iou_spin.setToolTip("不同文本类别结果的 mask 去重阈值")
+            self.shape_label.setVisible(True)
+            self.shape_combo.setVisible(True)
+            self.sam3_advanced_toggle.setVisible(True)
+            self.shape_label.setText("标注形状:")
+        else:
+            self.conf_spin.setValue(self.saved_confidence)
+            self.iou_spin.setValue(self.saved_iou)
+            self.conf_spin.setToolTip("YOLO 置信度阈值")
+            self.iou_spin.setToolTip("YOLO NMS IoU 阈值")
+            self.sam3_advanced_toggle.setVisible(False)
+            self.sam3_advanced_frame.setVisible(False)
+            self.shape_label.setVisible(False)
+            self.shape_combo.setVisible(False)
+
+    def _on_sam3_shape_changed(self, *_args) -> None:
+        if self.active_backend == "sam3":
+            self.saved_sam3_output_shape = str(self.shape_combo.currentData() or "rect")
+
+    def _toggle_sam3_advanced(self, expanded: bool) -> None:
+        self.sam3_advanced_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+        self.sam3_advanced_frame.setVisible(bool(expanded and self.active_backend == "sam3"))
 
     def apply_model_labels_error(self, model_path: str, message: str) -> None:
         if str(model_path) != self.resolved_model_path():
@@ -496,15 +680,29 @@ class AiPrelabelDialog(QDialog):
         if not targets:
             QMessageBox.information(self, "AI 预标注", "当前没有可处理的图片。")
             return
-        mapping = self.collect_mapping()
-        if not mapping:
-            QMessageBox.warning(self, "AI 预标注", "请至少匹配一个模型类别到标注类别。")
-            return
+        self._capture_backend_values()
+        sam3_prompts, sam3_enabled = self.collect_sam3_prompts()
+        if self.active_backend == "sam3":
+            valid_prompts = [
+                name for name in sam3_enabled if sam3_prompts.get(name, "").strip()
+            ]
+            if not valid_prompts:
+                QMessageBox.warning(self, "AI 预标注", "请至少启用一个带文本提示词的项目类别。")
+                return
+            mapping = {}
+        else:
+            mapping = self.collect_mapping()
+            if not mapping:
+                QMessageBox.warning(self, "AI 预标注", "请至少匹配一个模型类别到标注类别。")
+                return
         self._snapshot_targets(targets)
         self.original_class_names = list(self.page.class_names())
         self.progress_bar.setValue(0)
         self.progress_log.clear()
-        self.append_log(f"已加载 {len(self.model_labels)} 个模型类别")
+        if self.active_backend == "sam3":
+            self.append_log(f"已启用 {len(valid_prompts)} 个 SAM 3 文本提示词")
+        else:
+            self.append_log(f"已加载 {len(self.model_labels)} 个模型类别")
         self.stop_event.clear()
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
@@ -529,6 +727,7 @@ class AiPrelabelDialog(QDialog):
             "annotations_dir": str(self.page.path_from_setting("annotations_dir")),
             "labels_dir": str(self.page.path_from_setting("labels_dir")),
             "model_path": model_path,
+            "backend": self.active_backend,
             "confidence": float(self.conf_spin.value()),
             "iou": float(self.iou_spin.value()),
             "imgsz": max(640, int(self.page.canvas.image_size[0] or 640)),
@@ -538,6 +737,11 @@ class AiPrelabelDialog(QDialog):
             "process_mode": self.current_process_mode(),
             "class_mapping": mapping,
             "class_names": list(self.page.class_names()),
+            "sam3_prompts": sam3_prompts,
+            "sam3_enabled_classes": sam3_enabled,
+            "sam3_output_shape": self.saved_sam3_output_shape,
+            "sam3_min_area": self.saved_sam3_min_area,
+            "sam3_polygon_simplify_ratio": self.saved_sam3_polygon_simplify_ratio,
             "line_expand_pixels": self.page.context.settings.annotation.line_expand_pixels,
             "output_mode": self.page.output_mode,
             "auto_convert_yolo": bool(self.page.context.settings.annotation.auto_convert_yolo),
@@ -555,6 +759,13 @@ class AiPrelabelDialog(QDialog):
         image_name = str(payload.get("image_name") or "")
         result_count = int(payload.get("result_count") or 0)
         self.append_log(f"{index}/{total} {image_name} -> 新增 {result_count} 个标注")
+        stats = dict(payload.get("sam3_stats") or {})
+        if stats:
+            self.append_log(
+                f"  SAM 3 候选 {stats.get('raw_count', 0)}，"
+                f"面积过滤 {stats.get('area_filtered', 0)}，"
+                f"重叠去重 {stats.get('overlap_filtered', 0)}"
+            )
 
     def finish_ai_labeling(self, result) -> None:
         if not self.page.context.tasks.is_current(self._ai_lease):
@@ -562,7 +773,7 @@ class AiPrelabelDialog(QDialog):
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         if self.stop_event.is_set():
-            self.undo_btn.setEnabled(False)
+            self.undo_btn.setEnabled(bool(self.backups))
             self.progress_bar.setValue(0)
             self.append_log("AI 预标注已停止")
             self.stop_event.clear()
@@ -583,6 +794,7 @@ class AiPrelabelDialog(QDialog):
             return
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.undo_btn.setEnabled(bool(self.backups))
         self.stop_event.clear()
         self.page.context.tasks.finish(self._ai_lease)
         self._ai_lease = None

@@ -4,6 +4,7 @@ from pathlib import Path
 
 RANGE_MODES = {"当前图片", "当前及以后图片", "全部未标注图片", "全部图片", "自定义图片"}
 PROCESS_MODES = {"追加", "替换"}
+SAM3_OUTPUT_SHAPES = {"rect", "obb", "polygon"}
 
 
 def ai_prelabel_settings(page):
@@ -18,6 +19,15 @@ def load_ai_prelabel_preferences(page) -> dict:
     process_mode = str(saved.process_mode or "追加")
     if process_mode not in PROCESS_MODES:
         process_mode = "追加"
+    output_shape = str(saved.sam3_output_shape or "rect")
+    if output_shape not in SAM3_OUTPUT_SHAPES:
+        output_shape = "rect"
+    prompts = saved.sam3_prompts if isinstance(saved.sam3_prompts, dict) else {}
+    enabled_classes = (
+        saved.sam3_enabled_classes
+        if isinstance(saved.sam3_enabled_classes, list)
+        else []
+    )
 
     selected_images = saved.custom_selected_images
     if not isinstance(selected_images, list):
@@ -36,6 +46,15 @@ def load_ai_prelabel_preferences(page) -> dict:
         "model_path": str(saved.model_path).strip(),
         "confidence": float(saved.confidence or 0.50),
         "iou": float(saved.iou or 0.45),
+        "sam3_confidence": float(saved.sam3_confidence or 0.50),
+        "sam3_dedup_iou": float(saved.sam3_dedup_iou or 0.80),
+        "sam3_output_shape": output_shape,
+        "sam3_prompts": {str(key): str(value) for key, value in prompts.items()},
+        "sam3_enabled_classes": [str(value) for value in enabled_classes],
+        "sam3_min_area": max(1, int(saved.sam3_min_area or 4)),
+        "sam3_polygon_simplify_ratio": max(
+            0.0, float(saved.sam3_polygon_simplify_ratio or 0.002)
+        ),
         "range_mode": range_mode,
         "process_mode": process_mode,
         "custom_selected_images": resolved_images,
@@ -57,6 +76,13 @@ def save_ai_prelabel_preferences(
     fallback_model_text: str,
     confidence: float,
     iou: float,
+    sam3_confidence: float,
+    sam3_dedup_iou: float,
+    sam3_output_shape: str,
+    sam3_prompts: dict[str, str],
+    sam3_enabled_classes: list[str],
+    sam3_min_area: int,
+    sam3_polygon_simplify_ratio: float,
     range_mode: str,
     process_mode: str,
     custom_selected_images: list[Path],
@@ -65,6 +91,13 @@ def save_ai_prelabel_preferences(
     settings.model_path = model_path or fallback_model_text
     settings.confidence = float(confidence)
     settings.iou = float(iou)
+    settings.sam3_confidence = float(sam3_confidence)
+    settings.sam3_dedup_iou = float(sam3_dedup_iou)
+    settings.sam3_output_shape = str(sam3_output_shape)
+    settings.sam3_prompts = {str(key): str(value) for key, value in sam3_prompts.items()}
+    settings.sam3_enabled_classes = [str(value) for value in sam3_enabled_classes]
+    settings.sam3_min_area = max(1, int(sam3_min_area))
+    settings.sam3_polygon_simplify_ratio = max(0.0, float(sam3_polygon_simplify_ratio))
     settings.range_mode = range_mode
     settings.process_mode = process_mode
     project_root = page.project_root().resolve()

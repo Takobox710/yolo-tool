@@ -24,6 +24,19 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
             return
         if event.button() != Qt.MouseButton.LeftButton:
             return
+        if self._sam_shape_supported():
+            if image_point is None:
+                self.cancel_sam_hover()
+                return
+            if self._hit_test(image_point) >= 0:
+                self.cancel_sam_hover()
+                return
+            if self._confirm_sam_preview():
+                self.update()
+                return
+            if self.sam_hover_callback is not None:
+                self.sam_hover_callback(image_point, self.draw_shape)
+            return
         if self.draw_shape == "select":
             if image_point is None:
                 self._clear_selection()
@@ -90,6 +103,14 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
     def mouseMoveEvent(self, event):  # noqa: N802 - Qt API name
         self.set_crosshair_position(event.position())
         image_point = self._widget_to_image(event.position(), clamp=True)
+        if self._sam_shape_supported():
+            inside_point = self._widget_to_image(event.position())
+            if inside_point is None or self._hit_test(inside_point) >= 0:
+                self.cancel_sam_hover()
+                return
+            if self.sam_hover_callback is not None:
+                self.sam_hover_callback(inside_point, self.draw_shape)
+            return
         if self.draw_shape == "select":
             self._update_hover_state(image_point)
         elif self.draw_shape == "polygon":
@@ -144,6 +165,8 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
             self._update_hover_cursor()
             self.update()
             return
+        if self._sam_shape_supported():
+            return
         if self.draw_shape == "line_expand" and self.quick_draw:
             if event.button() != Qt.MouseButton.LeftButton or self.drag_start is None:
                 return
@@ -177,6 +200,7 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
         self.hovered_index = -1
         self.hovered_handle = None
         self.hovered_polygon_close_index = -1
+        self.cancel_sam_hover()
         if self.active_handle is None and self.move_anchor is None:
             self.setCursor(Qt.CursorShape.ArrowCursor)
         self.update()

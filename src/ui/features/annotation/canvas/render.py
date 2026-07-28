@@ -16,6 +16,13 @@ from src.ui.features.annotation.canvas.geometry import mirror_edit_points
 SHORT_CURSOR_CLEARANCE = 20.0
 CROSSHAIR_MAX_GRAY = 72
 PREVIEW_FILL_COLOR = QColor(0, 255, 0, 64)
+SAM_PREVIEW_PEN_WIDTH = 2.0
+# Qt dash values are multiples of the 2px pen width: 6*2=12px, 2.5*2=5px.
+SAM_PREVIEW_DASH_PATTERN = [6.0, 2.5]
+SAM_PREVIEW_EDGE_COLOR = QColor(0, 255, 0, 255)
+SAM_PREVIEW_FILL_ALPHA = 50
+
+
 class AnnotationCanvasRenderMixin(AnnotationCanvasHandleRenderMixin):
     def paintEvent(self, event):  # noqa: N802 - Qt API name
         super().paintEvent(event)
@@ -39,6 +46,16 @@ class AnnotationCanvasRenderMixin(AnnotationCanvasHandleRenderMixin):
                 "show_label": self.show_annotation_names,
             }
             self._draw_annotation(painter, annotation, **draw_kwargs)
+        if self.sam_preview_annotation is not None:
+            self._draw_annotation(
+                painter,
+                self.sam_preview_annotation,
+                dashed=True,
+                preview=True,
+                preview_fill=True,
+                show_handles=False,
+                show_label=False,
+            )
         if self.draw_shape == "line_expand" and self.quick_draw and self.drag_start and self.drag_current:
             preview = self._make_obb_annotation(self.drag_start, self.drag_current, None)
             if preview:
@@ -106,16 +123,29 @@ class AnnotationCanvasRenderMixin(AnnotationCanvasHandleRenderMixin):
         dashed: bool = False,
         flashing: bool = False,
         preview: bool = False,
+        preview_fill: bool = False,
         show_label: bool = True,
+        show_handles: bool = True,
         handle_reference_point: tuple[float, float] | None = None,
     ) -> None:
         color = PREVIEW_COLOR if preview else class_color(annotation.class_id)
+        if dashed:
+            # Match LabelPaw: an opaque green edge and a translucent green body.
+            # Keep the pen cosmetic so its appearance stays fixed on resize.
+            color = SAM_PREVIEW_EDGE_COLOR
         pen = QPen(color, 2 if selected else 1)
         if dashed:
-            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setWidthF(SAM_PREVIEW_PEN_WIDTH)
+            pen.setStyle(Qt.PenStyle.CustomDashLine)
+            pen.setDashPattern(SAM_PREVIEW_DASH_PATTERN)
+            pen.setCapStyle(Qt.PenCapStyle.SquareCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setCosmetic(True)
         painter.setPen(pen)
         fill = QColor(color)
-        if flashing:
+        if preview_fill:
+            fill.setAlpha(SAM_PREVIEW_FILL_ALPHA if dashed else 64)
+        elif flashing:
             fill.setAlpha(90)
         elif selected and not preview:
             fill.setAlpha(90)
@@ -167,6 +197,8 @@ class AnnotationCanvasRenderMixin(AnnotationCanvasHandleRenderMixin):
                 painter.drawRect(label_rect)
                 painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
         painter.setBrush(Qt.BrushStyle.NoBrush)
+        if not show_handles:
+            return
         if handle_reference_point is None and preview and annotation.shape == "circle":
             handle_reference_point = self.drag_current
         draw_handle_kwargs = {

@@ -4,6 +4,8 @@ from pathlib import Path
 
 from src.services.data_ops import display_project_path, resolve_project_path
 from src.ui.shared.forms import FormPageMixin
+from src.ui.shared.assets import load_sam_assist_icon
+from src.ui.shared.widgets.toggle_switch import AnimatedToggleSwitch
 from src.shared.qt import (
     QCheckBox,
     QComboBox,
@@ -202,18 +204,61 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
 
 
 class DrawShapeDialog(QDialog):
-    def __init__(self, line_expand_enabled: bool, parent=None):
+    def __init__(
+        self,
+        line_expand_enabled: bool,
+        parent=None,
+        *,
+        sam_models=None,
+        selected_sam_model: str = "",
+        sam_enabled: bool = False,
+        sam_toggle_callback=None,
+        sam_model_callback=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("选择标注类型")
-        self.resize(220, 386 if line_expand_enabled else 342)
+        self.resize(240, 424 if line_expand_enabled else 380)
         self.selected_shape = "rect"
+        self.sam_models = list(sam_models or [])
+        self.sam_enabled = bool(sam_enabled)
+        self.sam_toggle_callback = sam_toggle_callback
+        self.sam_model_callback = sam_model_callback
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(0)
-        title_label = QLabel("请选择要绘制的标注类型")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_label)
-        layout.addSpacing(8)
+
+        sam_widget = QWidget()
+        sam_layout = QVBoxLayout(sam_widget)
+        sam_layout.setContentsMargins(4, 4, 4, 12)
+        sam_layout.setSpacing(8)
+        sam_header = QHBoxLayout()
+        sam_header.setContentsMargins(0, 0, 0, 0)
+        sam_icon = QLabel()
+        sam_icon.setFixedSize(24, 24)
+        sam_icon.setPixmap(load_sam_assist_icon().pixmap(22, 22))
+        sam_header.addWidget(sam_icon)
+        sam_header.addWidget(QLabel("SAM 智能标注"))
+        sam_header.addStretch(1)
+        self.sam_switch = AnimatedToggleSwitch()
+        self.sam_switch.setToolTip("开启或关闭 SAM 智能标注")
+        sam_header.addWidget(self.sam_switch)
+        sam_layout.addLayout(sam_header)
+        self.sam_model_combo = QComboBox()
+        if self.sam_models:
+            for model in self.sam_models:
+                self.sam_model_combo.addItem(model.display_name, model.key)
+            selected_index = self.sam_model_combo.findData(selected_sam_model)
+            self.sam_model_combo.setCurrentIndex(max(0, selected_index))
+        else:
+            self.sam_model_combo.addItem("未找到兼容的 SAM 2/2.1 模型")
+            self.sam_model_combo.setEnabled(False)
+            self.sam_switch.setEnabled(False)
+            self.sam_enabled = False
+        self.sam_switch.setChecked(self.sam_enabled)
+        self.sam_switch.toggled.connect(self._set_sam_enabled)
+        self.sam_model_combo.currentIndexChanged.connect(self._select_sam_model)
+        sam_layout.addWidget(self.sam_model_combo)
+        layout.addWidget(sam_widget)
 
         list_frame = QFrame()
         list_frame.setObjectName("drawShapeList")
@@ -241,6 +286,7 @@ class DrawShapeDialog(QDialog):
         if line_expand_enabled:
             options.append(("直线扩展", "line_expand"))
         self._options = options
+        self._shape_buttons = {}
 
         for index, (text, value) in enumerate(options):
             button = QPushButton(text)
@@ -257,6 +303,7 @@ class DrawShapeDialog(QDialog):
             button.setObjectName(object_name)
             button.clicked.connect(lambda _checked=False, shape=value: self.choose_shape(shape))
             list_layout.addWidget(button)
+            self._shape_buttons[value] = button
         layout.addWidget(list_frame)
         layout.addStretch(1)
         self.setStyleSheet(
@@ -315,10 +362,44 @@ class DrawShapeDialog(QDialog):
             QPushButton#drawShapeOptionLast:hover {
                 background: #F5F8FB;
             }
+            QPushButton#drawShapeOptionSingle:disabled,
+            QPushButton#drawShapeOptionFirst:disabled,
+            QPushButton#drawShapeOption:disabled,
+            QPushButton#drawShapeOptionLast:disabled {
+                background: #F3F5F7;
+                color: #9AA7B4;
+            }
             """
         )
+        self._refresh_sam_shape_availability()
+
+    @property
+    def selected_sam_model(self) -> str:
+        return str(self.sam_model_combo.currentData() or "")
+
+    def _set_sam_enabled(self, enabled: bool) -> None:
+        actual = bool(enabled)
+        if self.sam_toggle_callback is not None:
+            actual = bool(self.sam_toggle_callback(actual))
+        self.sam_enabled = actual
+        if self.sam_switch.isChecked() != actual:
+            self.sam_switch.blockSignals(True)
+            self.sam_switch.setChecked(actual)
+            self.sam_switch.blockSignals(False)
+        self._refresh_sam_shape_availability()
+
+    def _select_sam_model(self, _index: int) -> None:
+        if self.sam_model_callback is not None and self.selected_sam_model:
+            self.sam_model_callback(self.selected_sam_model)
+
+    def _refresh_sam_shape_availability(self) -> None:
+        supported = {"rect", "obb_single", "obb_mirror", "polygon"}
+        for shape, button in self._shape_buttons.items():
+            button.setEnabled(not self.sam_enabled or shape in supported)
 
     def choose_shape(self, shape: str) -> None:
+        if self.sam_enabled and shape not in {"select", "rect", "obb_single", "obb_mirror", "polygon"}:
+            return
         self.selected_shape = shape
         self.accept()
 

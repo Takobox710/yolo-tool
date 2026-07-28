@@ -133,9 +133,21 @@ class AiPrelabelSettings:
     model_path: str
     confidence: float
     iou: float
+    sam3_confidence: float
+    sam3_dedup_iou: float
+    sam3_output_shape: str
+    sam3_prompts: dict[str, str]
+    sam3_enabled_classes: list[str]
+    sam3_min_area: int
+    sam3_polygon_simplify_ratio: float
     range_mode: str
     process_mode: str
     custom_selected_images: list[str]
+
+
+@dataclass(slots=True)
+class SamAssistSettings:
+    model_path: str
 
 
 @dataclass(slots=True)
@@ -151,6 +163,7 @@ class AnnotationSettings:
     line_expand_pixels: int
     optimize_mirror_edit: bool
     ai_prelabel: AiPrelabelSettings
+    sam_assist: SamAssistSettings
 
 
 @dataclass(slots=True)
@@ -303,6 +316,7 @@ __all__ = [
     "PathSettings",
     "ProjectSettings",
     "RenameSettings",
+    "SamAssistSettings",
     "SettingsIssue",
     "SettingsLoadResult",
     "SplitRatios",
