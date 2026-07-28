@@ -135,7 +135,7 @@ def test_release_update_dialog_hides_environment_update_hint_for_equal_versions(
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             installer_asset_name="YOLOTool_Setup_1.4.0.exe",
             installer_asset_url="https://github.com/example/setup.exe",
@@ -181,7 +181,7 @@ def test_release_update_dialog_explains_missing_optional_extra_environment():
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             installer_asset_name="YOLOTool_Setup_1.4.0.exe",
             installer_asset_url="https://github.com/example/setup.exe",
@@ -216,9 +216,9 @@ def test_release_update_dialog_hides_all_environment_notice_when_everything_matc
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
-            latest_version="1.3.1",
-            installer_asset_name="YOLOTool_Setup_1.3.1.exe",
+            current_version="1.3.2",
+            latest_version="1.3.2",
+            installer_asset_name="YOLOTool_Setup_1.3.2.exe",
             installer_asset_url="https://github.com/example/setup.exe",
             environment_asset_names=(
                 "YOLOTool_BaseEnv_v2.7z",
@@ -256,9 +256,9 @@ def test_release_update_dialog_shows_latest_message_when_nothing_needs_update(
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
-            latest_version="1.3.1",
-            installer_asset_name="YOLOTool_Setup_1.3.1.exe",
+            current_version="1.3.2",
+            latest_version="1.3.2",
+            installer_asset_name="YOLOTool_Setup_1.3.2.exe",
             installer_asset_url="https://github.com/example/setup.exe",
             base_environment_version="2.0.0",
             installed_base_environment_version="2.0.0",
@@ -317,7 +317,7 @@ def test_release_dialog_warns_when_base_environment_has_no_program():
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             installer_asset_name="YOLOTool_Setup_1.4.0.exe",
             installer_asset_url="https://github.com/example/setup.exe",
@@ -348,7 +348,7 @@ def test_release_dialog_warns_before_program_only_update(monkeypatch):
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             installer_asset_name="YOLOTool_Setup_1.4.0.exe",
             installer_asset_url="https://github.com/example/setup.exe",
@@ -384,7 +384,7 @@ def test_release_dialog_hot_installs_extra_environment_when_selected_alone(tmp_p
     dialog = ReleaseUpdateDialog(
         host,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
             environment_asset_urls=("https://github.com/example/extra.7z",),
@@ -413,7 +413,7 @@ def test_release_dialog_uses_install_copy_for_extra_only_selection():
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
             environment_asset_urls=("https://github.com/example/extra.7z",),
@@ -439,7 +439,7 @@ def test_release_dialog_pauses_and_resumes_download():
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             installer_asset_name="YOLOTool_Setup_1.4.0.exe",
             installer_asset_url="https://github.com/example/setup.exe",
@@ -473,7 +473,7 @@ def test_release_dialog_pauses_and_resumes_running_installer(monkeypatch):
     app = QApplication.instance() or QApplication([])
     dialog = ReleaseUpdateDialog(
         None,
-        ReleaseCheckResult(current_version="1.3.1", latest_version="1.4.0"),
+        ReleaseCheckResult(current_version="1.3.2", latest_version="1.4.0"),
     )
     process = object()
     calls = []
@@ -507,7 +507,7 @@ def test_release_dialog_confirms_replacing_installed_extra_environment(monkeypat
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
             environment_asset_urls=("https://github.com/example/extra.7z",),
@@ -552,7 +552,7 @@ def test_release_dialog_distinguishes_extra_environment_with_program_selected(
 
     app = QApplication.instance() or QApplication([])
     result = ReleaseCheckResult(
-        current_version="1.3.1",
+        current_version="1.3.2",
         latest_version="1.4.0",
         installer_asset_name="YOLOTool_Setup_1.4.0.exe",
         installer_asset_url="https://github.com/example/setup.exe",
@@ -600,7 +600,7 @@ def test_release_dialog_distinguishes_all_three_selected_resources(monkeypatch):
 
     app = QApplication.instance() or QApplication([])
     result = ReleaseCheckResult(
-        current_version="1.3.1",
+        current_version="1.3.2",
         latest_version="1.4.0",
         installer_asset_name="YOLOTool_Setup_1.4.0.exe",
         installer_asset_url="https://github.com/example/setup.exe",
@@ -665,7 +665,7 @@ def test_release_dialog_reports_installer_launch_failure_without_sticking(
     dialog = ReleaseUpdateDialog(
         None,
         ReleaseCheckResult(
-            current_version="1.3.1",
+            current_version="1.3.2",
             latest_version="1.4.0",
             installer_asset_name="YOLOTool_Setup_1.4.0.exe",
             installer_asset_url="https://github.com/example/setup.exe",
@@ -697,7 +697,7 @@ def test_release_dialog_blocks_close_while_download_is_active():
     app = QApplication.instance() or QApplication([])
     dialog = ReleaseUpdateDialog(
         None,
-        ReleaseCheckResult(current_version="1.3.1", latest_version="1.4.0"),
+        ReleaseCheckResult(current_version="1.3.2", latest_version="1.4.0"),
     )
     dialog._worker = object()
 
@@ -744,4 +744,4 @@ def test_settings_page_starts_release_check_when_shown(tmp_path, monkeypatch):
     page.on_show()
 
     assert started == ["env", "release_check", "env"]
-    assert checked_versions == ["1.3.1"]
+    assert checked_versions == ["1.3.2"]

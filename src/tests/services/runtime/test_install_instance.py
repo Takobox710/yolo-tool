@@ -14,7 +14,7 @@ def test_install_instance_id_is_stable_and_settings_are_readable(tmp_path):
     instance_id = instance_id_for_path(tmp_path)
     write_install_instance(
         tmp_path,
-        app_version="1.3.1",
+        app_version="1.3.2",
         runtime_version="runtime-2",
         base_package_version="base-runtime-models-2",
         model_bundle_version="models-2",
@@ -24,7 +24,7 @@ def test_install_instance_id_is_stable_and_settings_are_readable(tmp_path):
     payload = load_install_instance(tmp_path)
     assert len(instance_id) == 32
     assert payload["instance_id"] == instance_id
-    assert payload["app_version"] == "1.3.1"
+    assert payload["app_version"] == "1.3.2"
     assert payload["model_export_installed"] == "true"
     assert payload["model_export_version"] == "model-export-runtime-2"
     assert installed_instance_id(tmp_path) == instance_id

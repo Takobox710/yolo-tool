@@ -44,7 +44,7 @@ def test_latest_release_detects_a_new_version(monkeypatch):
 
     monkeypatch.setattr(release_updates, "urlopen", fake_urlopen)
 
-    result = release_updates.check_latest_release("1.3.1")
+    result = release_updates.check_latest_release("1.3.2")
 
     assert result.latest_version == "1.4.0"
     assert result.update_available is True
@@ -70,14 +70,14 @@ def test_latest_release_does_not_mark_equal_or_older_versions(monkeypatch):
         "urlopen",
         lambda *_args, **_kwargs: _Response({"tag_name": "v1.3.0"}),
     )
-    assert release_updates.check_latest_release("1.3.1").update_available is False
+    assert release_updates.check_latest_release("1.3.2").update_available is False
 
     monkeypatch.setattr(
         release_updates,
         "urlopen",
         lambda *_args, **_kwargs: _Response({"tag_name": "v1.2.9"}),
     )
-    assert release_updates.check_latest_release("1.3.1").update_available is False
+    assert release_updates.check_latest_release("1.3.2").update_available is False
 
 
 def test_latest_release_failure_is_reported_without_raising(monkeypatch):
@@ -91,7 +91,7 @@ def test_latest_release_failure_is_reported_without_raising(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(URLError("offline")),
     )
 
-    result = release_updates.check_latest_release("1.3.1")
+    result = release_updates.check_latest_release("1.3.2")
 
     assert result.succeeded is False
     assert result.update_available is False
@@ -145,7 +145,7 @@ def test_environment_update_requires_a_higher_package_version(monkeypatch):
         ),
     )
 
-    result = release_updates.check_latest_release("1.3.1")
+    result = release_updates.check_latest_release("1.3.2")
 
     assert result.base_environment_update_available is False
     assert result.extra_environment_update_available is False
@@ -182,7 +182,7 @@ def test_environment_update_is_detected_when_release_package_is_newer(monkeypatc
         ),
     )
 
-    result = release_updates.check_latest_release("1.3.1")
+    result = release_updates.check_latest_release("1.3.2")
 
     assert result.installed_base_environment_version == "1.0.0"
     assert result.installed_extra_environment_version == "1.0.0"
