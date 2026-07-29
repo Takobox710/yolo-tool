@@ -16,7 +16,7 @@ def test_runtime_compatibility_requires_matching_manifests(tmp_path):
         json.dumps(
             {
                 "schema_version": 1,
-                "app_version": "1.3.2",
+                "app_version": "1.3.3",
                 "runtime_version": "runtime-2",
                 "required_runtime_version": "runtime-2",
             }
@@ -77,7 +77,7 @@ def test_release_package_builds_program_without_runtime_or_user_data(tmp_path):
     build_program_package(
         app_root,
         output,
-        app_version="1.3.2",
+        app_version="1.3.3",
         required_runtime_version="runtime-1",
     )
 

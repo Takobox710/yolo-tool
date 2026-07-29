@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "1.3.2"
+#define MyAppVersion "1.3.3"
 #endif
 #ifndef RequiredRuntimeVersion
 #define RequiredRuntimeVersion "runtime-2"

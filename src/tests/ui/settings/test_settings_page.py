@@ -65,7 +65,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
                 "Pillow": "12.2.0",
                 "TensorRT": "11.1.0",
             },
-            "app_version": "1.3.2",
+            "app_version": "1.3.3",
         }
     )
 
@@ -86,7 +86,7 @@ def test_settings_page_applies_dependency_payload_to_cards(tmp_path):
         "TensorRT",
         "程序版本",
     ]
-    assert page.status_cards["程序版本"].text() == "1.3.2"
+    assert page.status_cards["程序版本"].text() == "1.3.3"
     assert page.acceptDrops()
 
 
