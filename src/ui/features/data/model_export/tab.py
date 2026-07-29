@@ -19,18 +19,13 @@ from src.services.runtime import spawn_structured_process, stop_process
 from src.shared.paths import ROOT
 from src.shared.qt import (
     QFileDialog,
-    QGridLayout,
-    QHBoxLayout,
     QLabel,
     QMessageBox,
-    QPushButton,
-    QProgressBar,
-    QTextEdit,
     QTimer,
-    QVBoxLayout,
 )
 from src.ui.shared.page_base import BasePage
 from src.ui.features.data.model_export.state import ModelExportStateMixin
+from src.ui.features.data.model_export.layout import build_model_export_layout
 from src.ui.shared.model_export_package import ModelExportPackageDropMixin
 
 
@@ -52,96 +47,7 @@ class ModelExportTab(
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.poll_export_queue)
 
-        settings = context.settings.model_export
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(10)
-
-        self.model_box, self.model_combo = self.stacked_combo_field(
-            "源模型",
-            self._model_display_path(settings.model_path),
-            [],
-            self.choose_model,
-            "选择 .pt 模型",
-            "仅支持从 Ultralytics YOLO .pt 模型导出。",
-        )
-        self.output_box, self.output_edit = self.path_field(
-            "输出目录",
-            settings.output_dir,
-            self.choose_dir,
-            "选择模型转换结果目录",
-        )
-        current_format = resolve_export_format(settings.format).display_name
-        self.format_box, self.format_combo = self.combo_field(
-            "目标格式",
-            current_format,
-            export_display_names(),
-        )
-        self.imgsz_box, self.imgsz_edit = self.field(
-            "输入尺寸",
-            str(settings.imgsz),
-            placeholder="例如 640",
-            help_text="第一版导出固定 batch=1 和静态方形输入。",
-        )
-        self.simplify_box, self.simplify_check = self.checkbox_with_help(
-            "简化 ONNX",
-            settings.simplify,
-            "仅用于 ONNX 和 TensorRT 的中间 ONNX 图。",
-        )
-        grid.addWidget(self.model_box, 0, 0)
-        grid.addWidget(self.output_box, 0, 1)
-        grid.addWidget(self.format_box, 1, 0)
-        grid.addWidget(self.imgsz_box, 1, 1)
-        grid.addWidget(self.simplify_box, 2, 0)
-
-        self.install_btn = QPushButton("安装/替换附加包")
-        self.install_btn.setFixedWidth(150)
-        self.install_btn.setToolTip("选择并安装或替换模型格式转换附加环境包")
-        self.install_btn.clicked.connect(self.choose_model_export_package)
-        self.install_progress = QProgressBar()
-        self.install_progress.setRange(0, 100)
-        self.install_progress.setValue(0)
-        self.install_progress.setFormat("正在安装 %p%")
-        self.install_progress.setMinimumWidth(180)
-        self.install_progress.setVisible(False)
-        self.install_controls = QHBoxLayout()
-        self.install_controls.setContentsMargins(0, 0, 0, 0)
-        self.install_controls.setSpacing(8)
-        self.install_controls.addStretch(1)
-        self.install_controls.addWidget(self.install_btn)
-        self.install_controls.addWidget(self.install_progress, 1)
-        grid.addLayout(self.install_controls, 2, 1)
-
-        self.environment_status = QLabel()
-        self.environment_status.setVisible(False)
-        layout.addLayout(grid)
-
-        actions = QHBoxLayout()
-        self.preview_btn = QPushButton("预览转换")
-        self.preview_btn.clicked.connect(self.preview_export)
-        self.start_btn = QPushButton("开始转换")
-        self.start_btn.clicked.connect(self.start_export)
-        self.stop_btn = QPushButton("停止")
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop_export)
-        self.open_btn = QPushButton("打开结果文件夹")
-        self.open_btn.clicked.connect(self.open_output_dir)
-        for button in (self.preview_btn, self.start_btn, self.stop_btn, self.open_btn):
-            actions.addWidget(button)
-        actions.addStretch(1)
-        layout.addLayout(actions)
-
-        self.log = QTextEdit()
-        self.prepare_readonly_text(self.log)
-        self.log.setAcceptDrops(False)
-        self.model_combo.setAcceptDrops(False)
-        self.output_edit.setAcceptDrops(False)
-        self.imgsz_edit.setAcceptDrops(False)
-        self.log.setPlaceholderText("预览或转换后将在这里显示环境、目标路径和运行日志。")
-        layout.addWidget(self.log, 1)
+        build_model_export_layout(self)
 
         self.refresh_model_choices()
         self._connect_persistence()

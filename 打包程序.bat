@@ -2,9 +2,19 @@
 setlocal
 
 cd /d "%~dp0"
-echo Building full release: setup, base environment, and extra environment.
+echo Packaging mode:
+echo   Press Enter for program and base environment only.
+echo   Type anything and press Enter for the full release, including extra environment.
+set /p "PACKAGE_MODE=Select packaging mode: "
 echo.
-"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer\package_windows.ps1" -BuildBaseRuntimeModels -BuildModelExportRuntime
+if defined PACKAGE_MODE (
+    echo Building full release: setup, base environment, and extra environment.
+    set "PACKAGE_ARGS=-BuildBaseRuntimeModels -BuildModelExportRuntime"
+) else (
+    echo Building program and base environment setup; skipping extra environment.
+    set "PACKAGE_ARGS=-BuildBaseRuntimeModels"
+)
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer\package_windows.ps1" %PACKAGE_ARGS%
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (

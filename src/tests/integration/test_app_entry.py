@@ -196,6 +196,10 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "package_windows.ps1" in full_bat
     assert "-BuildBaseRuntimeModels" in full_bat
     assert "-BuildModelExportRuntime" in full_bat
+    assert 'set /p "PACKAGE_MODE=' in full_bat
+    assert "if defined PACKAGE_MODE" in full_bat
+    assert 'set "PACKAGE_ARGS=-BuildBaseRuntimeModels"' in full_bat
+    assert 'set "PACKAGE_ARGS=-BuildBaseRuntimeModels -BuildModelExportRuntime"' in full_bat
     assert "package_windows.ps1" in program_only_bat
     assert "-BuildBaseRuntimeModels" not in program_only_bat
     assert "-BuildModelExportRuntime" not in program_only_bat

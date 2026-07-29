@@ -3,6 +3,26 @@ import os
 from types import SimpleNamespace
 
 
+def test_release_download_progress_uses_requested_weights():
+    from src.ui.features.settings.update_dialog import (
+        _aggregate_download_percent,
+        _download_percent,
+        _download_weights,
+    )
+
+    assert _download_percent(0, 100) == 0
+    assert _download_percent(0, 0) == 0
+    assert _download_weights(False, 1) == (100,)
+    assert _download_weights(True, 2) == (20, 80)
+    assert _download_weights(True, 3) == (10, 45, 45)
+
+    assert _aggregate_download_percent(0, 2, 100, 100, weights=(20, 80)) == 20
+    assert _aggregate_download_percent(1, 2, 50, 100, weights=(20, 80)) == 60
+    assert _aggregate_download_percent(0, 3, 100, 100, weights=(10, 45, 45)) == 10
+    assert _aggregate_download_percent(1, 3, 100, 100, weights=(10, 45, 45)) == 55
+    assert _aggregate_download_percent(2, 3, 100, 100, weights=(10, 45, 45)) == 100
+
+
 def test_release_dialog_hot_installs_extra_environment_when_selected_alone(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -96,6 +116,31 @@ def test_release_dialog_pauses_and_resumes_download():
     dialog._worker = None
     dialog.close()
 
+
+
+def test_release_dialog_stop_cancels_download():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(current_version="1.3.3", latest_version="1.4.0"),
+    )
+    dialog._worker = object()
+    dialog.stop_button.setEnabled(True)
+
+    dialog._stop_download()
+
+    assert dialog._stop_event.is_set()
+    assert dialog.stop_button.isEnabled() is False
+    assert dialog.pause_button.isEnabled() is False
+    assert dialog.progress_message.text() == "正在取消下载…"
+    dialog._worker = None
+    dialog.close()
 
 
 def test_release_dialog_pauses_and_resumes_running_installer(monkeypatch):
@@ -328,7 +373,7 @@ def test_release_dialog_reports_installer_launch_failure_without_sticking(
 
 
 
-def test_release_dialog_blocks_close_while_download_is_active():
+def test_release_dialog_hides_and_keeps_download_active_when_closed():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from src.services.runtime.release_updates import ReleaseCheckResult
@@ -342,9 +387,10 @@ def test_release_dialog_blocks_close_while_download_is_active():
     )
     dialog._worker = object()
 
+    dialog.show()
     dialog.reject()
 
-    assert "下载进行中" in dialog.progress_message.text()
+    assert dialog.isVisible() is False
     dialog._worker = None
     dialog.close()
 

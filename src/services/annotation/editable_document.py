@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.services.annotation.circle_geometry import circle_bounds, circle_polygon
+from src.services.annotation.geometry import (
+    detect_points_to_rect as _detect_points_to_rect,
+    line_points_to_obb as _line_points_to_obb,
+    points_to_min_area_obb as _points_to_min_area_obb,
+)
 
 
 @dataclass
@@ -13,23 +18,6 @@ class EditableAnnotation:
     shape: str
     points: list[tuple[float, float]]
     radius_point: tuple[float, float] | None = None
-
-
-def _detect_points_to_rect(points: list[tuple[float, float]]) -> tuple[float, float, float, float]:
-    xs = [point[0] for point in points]
-    ys = [point[1] for point in points]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
-def _points_to_min_area_obb(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    if len(points) < 3:
-        left, top, right, bottom = _detect_points_to_rect(points)
-        return [(left, top), (right, top), (right, bottom), (left, bottom)]
-    import cv2
-    import numpy as np
-
-    box = cv2.boxPoints(cv2.minAreaRect(np.asarray(points, dtype=np.float32)))
-    return [tuple(map(float, point)) for point in box]
 
 
 def load_editable_annotations(
@@ -100,27 +88,6 @@ def _labelme_class_id(label: str, class_names: list[str]) -> int:
         return class_names.index(text)
     class_names.append(text)
     return len(class_names) - 1
-
-
-def _line_points_to_obb(
-    points: list[tuple[float, float]], half_width: float
-) -> list[tuple[float, float]] | None:
-    if len(points) != 2:
-        return None
-    (x1, y1), (x2, y2) = points
-    dx = x2 - x1
-    dy = y2 - y1
-    length = (dx * dx + dy * dy) ** 0.5
-    if length < 1:
-        return None
-    nx = -dy / length
-    ny = dx / length
-    return [
-        (x1 + nx * half_width, y1 + ny * half_width),
-        (x2 + nx * half_width, y2 + ny * half_width),
-        (x2 - nx * half_width, y2 - ny * half_width),
-        (x1 - nx * half_width, y1 - ny * half_width),
-    ]
 
 
 def load_labelme_annotations(

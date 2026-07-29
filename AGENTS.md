@@ -78,7 +78,7 @@ yolo_tool/
 
 - 用户要求“更新项目版本为 `X.Y.Z`”时，除更新 `CHANGELOG.md` 版本块外，必须同步更新程序版本源 `src/__init__.py` 的 `APP_VERSION` 与安装器版本源 `installer/yolo_tool.iss` 的 `MyAppVersion`。
 - 同步检查并更新受影响的版本断言、发布脚本、安装器配置和文档；`installer/package_windows.ps1` 会从 `APP_VERSION` 传递安装器版本，但 `yolo_tool.iss` 的默认兜底值仍必须保持一致。
-- 版本归档提交前必须执行完整正式打包：`pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Clean -BuildBaseRuntimeModels -BuildModelExportRuntime`。该命令生成程序安装器、基础环境包和附加环境包；打包失败时停止版本归档，不提交、不推送，并报告失败原因。
+- 版本归档提交前按环境包变化范围选择打包方式：基础环境、模型或运行时协议未变化时，只执行程序更新打包 `pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1`，复用已有环境包；只有环境包内容、版本或运行时协议实际变化时，才执行完整正式打包 `pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Clean -BuildBaseRuntimeModels -BuildModelExportRuntime`。对应打包失败时停止版本归档，不提交、不推送，并报告失败原因。
 - 基础环境、运行时协议和附加环境包版本只有在对应内容或协议实际变化时才更新，不因程序版本变更机械递增。
 
 ## AI 修改流程
@@ -152,7 +152,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode 
 pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1
 ```
 
-完整发布（程序安装器、基础环境包和附加环境包）：
+完整发布（仅在程序、基础环境包或附加环境包有实际变化时使用）：
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime

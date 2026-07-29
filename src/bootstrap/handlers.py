@@ -1,31 +1,82 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+
+def run_train(argv: list[str]) -> int:
+    from src.bootstrap.cli_training import run_train as handler
+
+    return handler(argv)
 
 
-def _legacy_handler(name: str) -> Callable[[list[str]], int]:
-    """Load CLI implementation lazily so GUI startup never imports Ultralytics."""
-    def handler(argv: list[str]) -> int:
-        from src import train_cli
+def run_val(argv: list[str]) -> int:
+    from src.bootstrap.cli_validation import run_val as handler
 
-        return getattr(train_cli, f"_run_{name}_impl")(argv)
-
-    return handler
+    return handler(argv)
 
 
-run_train = _legacy_handler("train_cli")
-run_export = _legacy_handler("export_cli")
-run_export_probe = _legacy_handler("export_probe_cli")
-run_install_model_export_package = _legacy_handler("install_model_export_package_cli")
-run_migrate_legacy_extension = _legacy_handler("migrate_legacy_extension_cli")
-run_runtime_probe = _legacy_handler("runtime_probe_cli")
-run_remove_managed_models = _legacy_handler("remove_managed_models_cli")
-run_val = _legacy_handler("val_cli")
-run_model_labels = _legacy_handler("model_labels_cli")
-run_predict = _legacy_handler("predict_cli")
-run_ai_label = _legacy_handler("ai_label_cli")
-run_ai_runtime = _legacy_handler("ai_runtime_cli")
-run_sam_assist_runtime = _legacy_handler("sam_assist_runtime_cli")
+def run_predict(argv: list[str]) -> int:
+    from src.bootstrap.cli_validation import run_predict as handler
+
+    return handler(argv)
+
+
+def run_export(argv: list[str]) -> int:
+    from src.bootstrap.cli_model_export import run_export as handler
+
+    return handler(argv)
+
+
+def run_export_probe(argv: list[str]) -> int:
+    from src.bootstrap.cli_model_export import run_export_probe as handler
+
+    return handler(argv)
+
+
+def run_install_model_export_package(argv: list[str]) -> int:
+    from src.bootstrap.cli_model_export import run_install_model_export_package as handler
+
+    return handler(argv)
+
+
+def run_migrate_legacy_extension(argv: list[str]) -> int:
+    from src.bootstrap.cli_model_export import run_migrate_legacy_extension as handler
+
+    return handler(argv)
+
+
+def run_runtime_probe(argv: list[str]) -> int:
+    from src.bootstrap.cli_runtime import run_runtime_probe as handler
+
+    return handler(argv)
+
+
+def run_remove_managed_models(argv: list[str]) -> int:
+    from src.bootstrap.cli_runtime import run_remove_managed_models as handler
+
+    return handler(argv)
+
+
+def run_model_labels(argv: list[str]) -> int:
+    from src.bootstrap.cli_annotation import run_model_labels as handler
+
+    return handler(argv)
+
+
+def run_ai_label(argv: list[str]) -> int:
+    from src.bootstrap.cli_annotation import run_ai_label as handler
+
+    return handler(argv)
+
+
+def run_ai_runtime(argv: list[str]) -> int:
+    from src.bootstrap.cli_annotation import run_ai_runtime as handler
+
+    return handler(argv)
+
+
+def run_sam_assist_runtime(argv: list[str]) -> int:
+    from src.bootstrap.cli_annotation import run_sam_assist_runtime as handler
+
+    return handler(argv)
 
 
 __all__ = [

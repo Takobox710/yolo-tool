@@ -112,7 +112,6 @@ def test_modules_and_service_exports_stay_within_size_limits():
 
 def test_feature_modules_keep_explicit_top_level_class_boundaries():
     expected = {
-        Path("src/ui/features/annotation/file_browser.py"): 2,
         Path("src/ui/features/validation/helpers.py"): 2,
         Path("src/ui/features/validation/video_player.py"): 2,
     }

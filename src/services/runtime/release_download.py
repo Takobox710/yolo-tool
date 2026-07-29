@@ -30,6 +30,7 @@ def download_release_asset(
     timeout: float = 60.0,
     progress: Callable[[int, int], None] | None = None,
     pause_event=None,
+    stop_event=None,
     urlopen_fn,
     downloads_directory_fn,
     wait_if_paused_fn,
@@ -66,7 +67,9 @@ def download_release_asset(
             if progress:
                 progress(0, total)
             while True:
-                wait_if_paused_fn(pause_event)
+                wait_if_paused_fn(pause_event, stop_event)
+                if stop_event is not None and stop_event.is_set():
+                    raise RuntimeError("下载已取消。")
                 chunk = response.read(_DOWNLOAD_CHUNK_SIZE)
                 if not chunk:
                     break
@@ -74,6 +77,8 @@ def download_release_asset(
                 downloaded += len(chunk)
                 if progress:
                     progress(downloaded, total)
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError("下载已取消。")
         os.replace(partial, target)
     except Exception:
         try:

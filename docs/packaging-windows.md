@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 
 SAM 智能辅助标注复用基础包 v3 的 SAM 2/2.1 代码、配置、Torch/CUDA、OpenCV、Pillow 和 `data/models/sam2.1_hiera_base_plus.pt`；模型目录会识别全部 `sam` 前缀权重，未知自定义名称只显示、不猜测配置。SAM 3 官方代码固定在提交 `6dbb02bd38288df755dfa1378000a861e65b84f6`，以 Windows 推理专用 vendor wheel 和许可证随基础包发布；同一 runtime 同时提供文本预标注和启用实例交互的 CUDA 画布单点预测。wheel 放宽 NumPy 元数据以兼容项目 NumPy 2.x，并使用 OpenCV fallback 替代 Triton，明确不包含 Flash Attention、Triton 或训练依赖。官方 `sam3.pt` checkpoint 不打包、不进 git，由用户自行放入 `data/models/`；它可在 CUDA 下用于画布点提示辅助标注和 AI 文本预标注。GUI 通过 `YOLOTool.exe --sam-assist-runtime` 与 `YOLOTool.exe --yolo-ai-runtime` 启动交互式隐藏子进程；程序层必须包含对应 CLI 分发代码以及由 `src/assets.qrc` 编译进 `assets_rc.py` 的 `sam_assist.svg`。
 
-冻结程序包含系统设置页的 GitHub Release 检查逻辑，不新增运行时依赖；用户需要能访问 `api.github.com` 才能获得版本检查结果。检查失败不会影响程序启动、训练或验证。更新窗口将选中的资源下载到 Windows Shell 解析出的真实 `Downloads` 文件夹；环境包更新通过 Release 文件名版本与本机安装清单或 `package-info.ini` 版本比较，Release 始终携带同版本环境包时不会误报更新。源码开发态使用 `installer/base-runtime-models-version.txt` 和 `installer/model-export-runtime-version.txt` 作为当前环境包版本；基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，不触发“环境包也有更新”；仅当已安装附加包的版本低于 Release 时才触发附加包更新提示。程序与更高版本基础包同时需要更新时默认选择两者，仅程序更新时默认选择程序包，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时显示红色重装提醒，基础包单独留下时在进度条下方显示不可安装的红色提醒。附加环境包在仅勾选附加包、同时勾选程序包或三项全部勾选时，按是否已有附加包显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换。已有安装但缺少更新基础包时，安装器保留旧环境并警告版本不匹配或环境不完整，继续完成程序更新；首次安装缺少基础包时在组件页直接阻止提交，安装提交阶段不会生成没有运行环境的程序-only 首次安装。附加包可以在程序内热安装或替换。下载按钮右侧可暂停/继续下载或安装器进程。下载期间窗口不允许关闭，安装器启动失败会在窗口中显示为可恢复错误。
+冻结程序包含系统设置页的 GitHub Release 检查逻辑，不新增运行时依赖；用户需要能访问 `api.github.com` 才能获得版本检查结果。检查失败不会影响程序启动、训练或验证。更新窗口将选中的资源下载到 Windows Shell 解析出的真实 `Downloads` 文件夹；环境包更新通过 Release 文件名版本与本机安装清单或 `package-info.ini` 版本比较，Release 始终携带同版本环境包时不会误报更新。源码开发态使用 `installer/base-runtime-models-version.txt` 和 `installer/model-export-runtime-version.txt` 作为当前环境包版本；基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，不触发“环境包也有更新”；仅当已安装附加包的版本低于 Release 时才触发附加包更新提示。程序与更高版本基础包同时需要更新时默认选择两者，仅程序更新时默认选择程序包，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时显示红色重装提醒，基础包单独留下时在进度条下方显示不可安装的红色提醒。附加环境包在仅勾选附加包、同时勾选程序包或三项全部勾选时，按是否已有附加包显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换。已有安装但缺少更新基础包时，安装器保留旧环境并警告版本不匹配或环境不完整，继续完成程序更新；首次安装缺少基础包时在组件页直接阻止提交，安装提交阶段不会生成没有运行环境的程序-only 首次安装。附加包可以在程序内热安装或替换。下载按钮右侧提供暂停和停止，下载期间可隐藏窗口且后台任务继续，重新打开时复用原窗口；安装器启动失败会在窗口中显示为可恢复错误。
 
 单独构建两个运行包：
 
@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File installer\build_model_export_runtime.ps
 根目录提供两个双击入口：
 
 - `打包更新程序.bat`：直接调用 `package_windows.ps1`，复用 `installer/output/` 中已有的 `YOLOTool_BaseEnv_v3.7z`，只重建程序-only 冻结文件、companion catalog 和程序安装器；已有附加包会登记到 catalog，但不会重建，也不会重新生成基础或附加环境包。
-- `打包程序.bat`：调用 `package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime`，重新构建程序安装器、基础环境包和附加环境包三个发布物；两个环境包默认使用原生 7-Zip `mx=5`。
+- `打包程序.bat`：启动时直接按回车调用 `package_windows.ps1 -BuildBaseRuntimeModels`，只重新构建程序安装器和基础环境包；输入任意内容后回车则追加 `-BuildModelExportRuntime`，同时重新构建附加环境包。两个环境包默认使用原生 7-Zip `mx=5`。
 
 两个 BAT 均使用纯 ASCII 内容、CRLF 换行和 Windows PowerShell 的绝对系统路径，避免简体中文代码页把 UTF-8 批处理内容解析成乱码并截断命令。
 
@@ -104,7 +104,7 @@ Program 与基础环境先进入 `{app}\.install-staging/`。开始解压基础�
 
 ## 卸载与数据
 
-隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注、SAM 辅助标注和运行时维护划分的 handler；handler 只负责参数、服务调用、结构化输出和退出码。`src/train_cli.py` 保留懒加载 `run_*` 兼容转发，冻结态与开发态继续使用同一命令协议。`--sam-assist-runtime` 从标准输入逐行接收 `load_model`、`set_image`、`predict_point`、`shutdown` JSON 命令，并以结构化行返回请求 ID、状态、错误或几何，不输出完整 mask。
+隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注、SAM 辅助标注和运行时维护划分的 handler；具体实现位于 `src/bootstrap/cli_training.py`、`cli_validation.py`、`cli_model_export.py`、`cli_annotation.py` 与 `cli_runtime.py`，`src/train_cli.py` 只保留 `run_*_cli` 兼容转发。冻结态与开发态继续使用同一命令协议。`--sam-assist-runtime` 从标准输入逐行接收 `load_model`、`set_image`、`predict_point`、`shutdown` JSON 命令，并以结构化行返回请求 ID、状态、错误或几何，不输出完整 mask。
 
 安装提交前的 `YOLOTool.exe --runtime-probe` 只读取程序清单和 `_internal` 基础环境清单，比较 `required_runtime_version` 与 `runtime_version`；不导入 Torch、PySide6、ONNX、ONNX Runtime、Ultralytics 或 OpenCV。比较不一致或自检无法完成时只显示“部分功能可能无法使用”的警告，不撤销已经完成的文件切换。附加包后台安装的解压进度范围为 5%-95%。
 
@@ -119,6 +119,11 @@ Program 与基础环境先进入 `{app}\.install-staging/`。开始解压基础�
 若安装根目录仍含用户数据，卸载器不会删除该根目录，也不会影响其他并行实例。
 
 ## 发布验证
+
+- 应验证首次进入系统设置页时在 Release 检查完成前打开更新窗口，结果返回后窗口会原地刷新；“检测更新”按钮可再次发起检查，并在后台任务完成后恢复可用。
+- 系统设置更新窗口的汇总下载进度从 `0%` 开始；程序与一个环境包按 `20%/80%` 分配，程序、基础环境和附加环境三项同时下载时按 `10%/45%/45%` 分配。
+- 应验证更新窗口进度条上方右侧显示下载速度和已下载/总大小；无 `Content-Length` 时总大小显示为 `--`。
+- 应验证下载期间关闭更新窗口后任务仍继续，重新打开时复用原进度；点击暂停后的“停止”按钮应取消下载并允许重新开始。
 
 - 完整发布完成后必须检查 `dist/packages/Program/YOLOTool.exe` 来自最后一次 `-ProgramOnly` 构建，且 `dist/packages/Program/` 不含 `_internal/`；完整冻结目录仅作为基础环境包的输入和独立启动验证物。
 

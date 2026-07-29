@@ -91,6 +91,7 @@ yolo_tool/
 ### `src/services/settings/`
 
 - `model.py` 使用嵌套 `slots=True` dataclass 定义 `AppSettings` 及各设置分区，并提供字典编解码和字段级类型回退。
+- `types.py` 只保存设置域 dataclass；`model.py` 负责序列化和类型校验，并继续 re-export 原有 dataclass 导入路径，避免设置 JSON 格式和调用方发生变化。
 - `defaults.py` 提供默认设置构造；`project_settings.py` 负责 schema v0 迁移、字段级校验、损坏配置备份、项目路径序列化/反序列化与最近项目状态读写。
 - `SettingsService.load()` 返回 `SettingsLoadResult`，携带设置、迁移状态和问题列表；`save()` 只接受类型化 `AppSettings`，未知字段忽略并报告，保存前再次校验。
 - 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
@@ -107,8 +108,8 @@ yolo_tool/
 - `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程。
 - `windows_spawn.py` 提供 Windows 隐藏窗口参数，确保打包后的后台任务不弹终端。
 - `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测；依赖版本优先读取 `importlib.metadata`，冻结态缺少发行版元数据时回退读取模块的 `__version__`。GUI 启动不强制比较运行环境版本；安装器调用的 `--runtime-probe` 仍不加载这些模块，只比较程序清单要求的运行时版本与 `_internal` 基础环境清单中的版本。
-- `release_updates.py` 通过标准库 HTTPS 请求读取 `Takobox710/yolo-tool` 的最新稳定 GitHub Release，负责程序与环境包版本号规范化、比较、发布说明和安装器/环境包资源解析、Release 资源顺序下载、Windows Shell 已知 Downloads 路径解析、安装包启动及失败结果封装；环境包版本来自 `YOLOTool_BaseEnv_<版本>.7z` / `YOLOTool_ExtraEnv_<版本>.7z` 文件名，并与 `install-instance.ini` / `package-info.ini` 的包版本比较；基础包缺失按环境缺失处理，附加包缺失只作为可选资源，不触发更新判定；源码开发态缺少安装清单时回退读取 `installer/*-version.txt`，网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
-- `installer/YOLOTool.spec` 在 `YOLO_TOOL_PROGRAM_ONLY=1` 时只分析应用代码，第三方运行时模块由基础包 `_internal/` 提供；程序本体明确收集 `ctypes.util` 和 `ctypes.wintypes`，兼容 Cryptodome 在 Python 3.12 Windows 下从 CFFI 回退到 ctypes 的导入链。打包链路只保留实际需要的 `installer/hooks/hook-torch.py` 与 `installer/hooks/program_external_runtime.py`：前者收集完整环境所需的 Torch 源码、动态库和隐藏导入，后者只在程序-only 模式注册固定的后端 DLL 目录和基础包路径，不递归扫描运行时目录；已排除的 PySide6 deploy_lib 和 tensorboard 模块不再配置空 hook。基础环境构建时，`src/devtools/release_package.py` 将 PyInstaller 通常嵌入 PYZ 的动态导入标准库打入 `python_stdlib.zip`，并只补齐运行所需的第三方纯 Python 源码，过滤测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码，避免程序-only 启动时出现 Python DLL 或动态导入模块缺失。
+- Release 更新服务按职责拆为 `release_catalog.py`（Release 检查和资源解析）、`release_download.py`（流式下载）与 `release_installer.py`（安装器生命周期），`release_updates.py` 只保留兼容 façade；环境包版本来自 `YOLOTool_BaseEnv_<版本>.7z` / `YOLOTool_ExtraEnv_<版本>.7z` 文件名，并与 `install-instance.ini` / `package-info.ini` 的包版本比较。网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
+- `installer/YOLOTool.spec` 在 `YOLO_TOOL_PROGRAM_ONLY=1` 时只分析应用代码，第三方运行时模块由基础包 `_internal/` 提供；程序本体明确收集 `ctypes.util` 和 `ctypes.wintypes`，兼容 Cryptodome 在 Python 3.12 Windows 下从 CFFI 回退到 ctypes 的导入链。打包链路只保留实际需要的 `installer/hooks/hook-torch.py` 与 `installer/hooks/program_external_runtime.py`：前者收集完整环境所需的 Torch 源码、动态库和隐藏导入，后者只在程序-only 模式注册固定的后端 DLL 目录和基础包路径，不递归扫描运行时目录；已排除的 PySide6 deploy_lib 和 tensorboard 模块不再配置空 hook。基础环境构建由 `src/devtools/base_runtime_builder.py` 与 `package_files.py` 负责，`release_package.py` 仅保留兼容导出；动态导入标准库打入 `python_stdlib.zip`，第三方纯 Python 源码过滤测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码。
 - GUI 日志写入前必须通过这里的终端输出清洗逻辑去掉 ANSI/控制字符。
 
 ### `src/services/training/`
@@ -141,13 +142,13 @@ yolo_tool/
 - 摄像头检测模式仍由 `state.py` 保留左侧启动/停止按钮，按钮可见性与右侧批量导航工具栏独立控制。
 - 视频文件检测按输入后缀自动进入视频进度模式，后台每秒发送一次进度事件并写出 MP4 结果；视频检测不生成帧级 YOLO TXT 标注。
 - 验证页视频模式由 `src/ui/features/validation/video_player.py` 管理源视频与结果视频的 Qt 播放器，页面加载时暂停在当前视频第一帧；源视频作为播放时钟，顶部滑块同步拖动两侧视频，播放按钮与检测按钮状态分离，两个视频面板使用等权横向伸缩，后续批量视频事件不得替换当前预览。
-- 验证页在图片检测与视频检测间切换时，由 `src/ui/features/validation/state.py` 暂停页面绘制，完成所有模式控件和播放器状态更新后再统一刷新，避免视频切换为图片时出现中间画面闪动。
+- 验证页在图片检测与视频检测间切换时，由 `mode_state.py` 暂停页面绘制，完成所有模式控件和播放器状态更新后再统一刷新；`source_state.py`、`config_state.py`、`persistence_state.py`、`log_state.py` 分别承载输入源、检测配置、设置持久化和日志状态，`state.py` 保留兼容导出，避免视频切换为图片时出现中间画面闪动。
 - 验证页源视频播放器监听 `playbackStateChanged` 和 `mediaStatusChanged`；视频自然结束时由页面统一恢复播放按钮状态并暂停结果视频。
 - 验证页拖放由 `ValidationPageActionsMixin` 识别本地图片/视频文件并更新模式与输入源；输入源选项通过 `source_selection` 区分批量目录和单文件选择，`collect_prediction_sources()` 对图片检测/视频检测模式同时支持目录和单文件路径，复用同一检测 worker。
 - 验证页检测前预览由 `results.show_source_preview()` 负责加载图片源或暂停视频首帧；检测会话开始后由 `detection_started_for_source` 切回原有结果缓存与列表逻辑。
 - 验证页源图和检测结果图使用无视觉容器承载图片/视频切换，容器零内边距；`ImageView` 自身边框直接占据原图片区外框位置，避免出现大框套小框。
 
-验证页左侧布局将普通检测日志控件设为纵向伸缩项，使日志区域填满左侧面板的剩余高度；数据集验证模式则切换为顶部对齐和固定表单高度，避免右侧验证日志面板把左侧控件均匀拉开，并通过 `source_scope` 支持按钮选择自定义验证目录后临时覆盖 `data.yaml` 的 `val:`。验证页外层保持标准页面内边距，右侧内部装配布局清除默认 margin，避免右侧模块边缘间距被重复计算。页面专属布局代码位于 `src/ui/features/validation/layout.py`。
+验证页左侧布局将普通检测日志控件设为纵向伸缩项，使日志区域填满左侧面板的剩余高度；数据集验证模式则切换为顶部对齐和固定表单高度，避免右侧验证日志面板把左侧控件均匀拉开，并通过 `source_scope` 支持按钮选择自定义验证目录后临时覆盖 `data.yaml` 的 `val:`。`left_layout.py` 与 `result_layout.py` 分别装配左右区域，`layout.py` 仅保留组合入口。
 
 ### `src/services/annotation/`
 
@@ -165,6 +166,7 @@ yolo_tool/
 - AI 预标注模型选择使用显示名到绝对路径的映射；SAM 3 的显示名固定为 checkpoint 文件名，避免将项目目录结构暴露在下拉框中。
 - `sam_assist.py` 是不依赖 Qt 的 SAM 模型目录与几何服务：按项目优先级扫描所有 `sam` 前缀 checkpoint，识别 SAM 1 ViT、SAM 2/2.1 各架构和官方 SAM 3，生成简化显示名称及运行后端标识；未知自定义名称保留原文件名并不猜测配置，将最大外轮廓转换为简化多边形、轴对齐矩形及角点顺序稳定的普通 OBB。
 - `sam_runtime.py` 延迟导入 Torch、SAM2、SAM3、OpenCV 与 Pillow，长期保留当前模型及图片 embedding；SAM 2/2.1 使用点提示 predictor，SAM 3 使用启用实例交互的 `predict_inst`，CUDA 使用 `torch.inference_mode()` 与 bfloat16 autocast，SAM 2/2.1 可回退 CPU。点预测统一按项目参数决定单结果/三候选，选择最高质量候选后执行最低质量、最小面积和轮廓简化过滤。模型切换和页面生命周期结束时清理 predictor/model、执行垃圾回收并释放 CUDA cache；关闭 SAM 开关只停止预览和推理，不终止页面运行时。
+- AI 预标注对话框由 `prelabel_state.py`、`prelabel_mapping.py`、`prelabel_runtime.py` 分担参数、类别映射和 worker 生命周期；`dialog.py` 只保留协调入口。SAM 控制器由模型状态、hover 调度和 runtime bridge 组成，公开的 `SamAssistController` 不变；文件浏览器的行控件与扫描职责也分离到 `file_item.py`。
 
 ### `src/services/conversion/`
 
@@ -223,13 +225,18 @@ yolo_tool/
 
 ## 关键运行规则
 
+- `ReleaseUpdateDialog` 的下载汇总进度从 `0%` 开始；程序与一个环境包按 `20%/80%` 分配，三项资源全选按 `10%/45%/45%` 分配，单资源选择占满 `100%`。
+- 更新窗口由 `update_dialog_layout.py`、`update_dialog_selection.py`、`update_dialog_download.py`、`update_dialog_install.py` 分担布局、资源选择、下载生命周期和安装器控制，`update_dialog.py` 保留 `ReleaseUpdateDialog` 协调入口；标题行右侧通过 worker 的附加进度信号显示下载速度和已下载/总字节数，总大小未知时使用 `--`，格式化逻辑位于 `update_dialog_state.py`。
+- 更新窗口下载期间关闭请求只隐藏并保留 `ReleaseUpdateDialog` 实例，设置页再次打开时复用该实例；停止按钮通过独立取消事件终止下载并清理临时文件，暂停事件仍只负责暂停读取。
+- `apply_release_check` 除了刷新设置页版本卡片和通知，还会把结果转发给已打开的 `ReleaseUpdateDialog`；对话框的“检测更新”按钮复用 `release_check` 后台任务，检测期间禁用，结果返回后原地更新版本、说明、环境提示和资源选项。
+
 - 训练与检测都只允许一次启动；运行期间按钮禁用，任务结束后恢复。
 - 项目切换、恢复默认设置和关闭程序遇到写入/推理任务时，统一由任务协调器执行确认、停止和回收；过期结果按任务 token 与项目 generation 丢弃。
 - 模型验证、AI 预标注和 Torch/CUDA 摘要读取都优先走短生命周期隐藏子进程，避免主 GUI 长驻推理运行时。
 - `--yolo-ai-runtime` 按 payload 的 `backend` 延迟加载 YOLO 或 SAM3；相同模型会话复用实例，切换模型或关闭时释放旧模型与 CUDA cache。SAM3 payload 额外携带提示词映射、启用类别、输出形状、置信度、去重 IoU、最小面积和轮廓简化参数；旧 YOLO payload 保持兼容。
 - SAM 辅助标注使用长期但按页面会话限定的隐藏 `--sam-assist-runtime`：协议包含 `load_model`、`set_image`、`predict_point` 和 `shutdown`，`load_model` 携带 `runtime_kind`，点预测携带四项高级参数，响应只传请求元数据与几何结果，不通过 JSON 传输完整 mask。悬停调度由页面控制器完成，首个点立即提交，最多一个推理在途并保留一个最新坐标，后续间隔根据最近推理耗时在 `50~120 ms` 内自适应；响应必须通过请求、模型、图片和形状代次过滤。关闭开关时仅异步取消预览与待处理请求并保留运行时，页面导航、项目重载和主窗口退出时才异步结束子进程；AI 预标注开始前则同步关闭该运行时释放显存，任务结束不自动重启。清理钩子保持幂等并等待残留 QThread。
 - 每次启动后首次进入系统设置页时，GitHub Release 检查通过 `WorkbenchWindow.run_background()` 非阻塞执行；检查标志由 `WorkbenchContext` 持有，后续切换页面不重复检查，设置页顶部通知不使用模态对话框。
-- 系统设置程序版本号或升级图标点击后打开 `ReleaseUpdateDialog`；该对话框展示版本、发布说明、资源勾选项、环境包更新信息模块、进度条下方的选择规则提示和汇总进度，环境更新信息和基础包默认勾选只在 Release 包版本高于本机版本时生效，首次安装缺少本机版本时视为需要环境包；冻结版优先读取安装清单/包信息，源码版使用当前环境包版本文本文件；同版本环境包仍可手动下载但不作为更新提示，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时使用红字提醒将执行一次重装；基础包被单独留下时显示红色不可安装提示；附加包可单独下载，并在仅勾选附加包、同时勾选程序包或三项全部勾选时根据是否已有附加包分别显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换；按钮显示“下载并安装所选资源”并在程序包未选中时热安装；勾选安装器时下载完成后启动，启动失败会转为可见错误状态；下载按钮支持通过事件暂停/继续下载或通过进程挂起/恢复暂停/继续安装器；已有安装但未提供新基础包时程序-only 下载保留旧环境并警告版本不匹配或环境不完整，首次安装缺少基础包时安装器阻止提交；下载期间拦截更新窗口关闭请求。
+- 系统设置程序版本号或升级图标点击后打开 `ReleaseUpdateDialog`；该对话框展示版本、发布说明、资源勾选项、环境包更新信息模块、进度条下方的选择规则提示和汇总进度，环境更新信息和基础包默认勾选只在 Release 包版本高于本机版本时生效，首次安装缺少本机版本时视为需要环境包；冻结版优先读取安装清单/包信息，源码版使用当前环境包版本文本文件；同版本环境包仍可手动下载但不作为更新提示，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时使用红字提醒将执行一次重装；基础包被单独留下时显示红色不可安装提示；附加包可单独下载，并在仅勾选附加包、同时勾选程序包或三项全部勾选时根据是否已有附加包分别显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换；按钮显示“下载并安装所选资源”并在程序包未选中时热安装；勾选安装器时下载完成后启动，启动失败会转为可见错误状态；下载按钮支持暂停/继续下载、停止取消下载，或在下载期间隐藏窗口并在重新打开时复用原窗口；安装器启动后仍支持通过进程挂起/恢复暂停/继续；已有安装但未提供新基础包时程序-only 下载保留旧环境并警告版本不匹配或环境不完整，首次安装缺少基础包时安装器阻止提交。
 - 安装器在进入文件事务前通过 Inno Setup 的 Windows Restart Manager 注册安装目录中的目标 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不使用 PowerShell 或 WMI；自动关闭不负责恢复程序中的未保存状态。
 - 安装器完成页的安装包清理选项挂在右侧运行选项下方，勾选后延迟删除本次使用的安装器、基础环境包和附加环境包。
 - 系统设置页的八个环境状态卡固定为四列等宽网格，避免长内容把最后一列异常拉宽。
@@ -240,16 +247,17 @@ yolo_tool/
 ## 打包链路
 
 - 完整发布先用完整冻结目录构建基础运行环境，再清理并重建 program-only 程序 staging；Inno Setup 的程序层只允许使用后一次 staging，避免完整冻结 EXE 将 `_internal` 运行库重复带入安装器。
+- 根目录 `打包程序.bat` 在进入上述流程前提供模式选择：空输入只构建程序和基础环境，非空输入才同时构建模型转换附加环境；`打包更新程序.bat` 继续复用已有环境包。
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
 - 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；应用图标和 `sam_assist.svg` 由 PyInstaller/Qt 资源模块随程序本体提供。
 - 基础包模型来源固定为 `data/models/yolo11s.pt`、`data/models/yolo26n.pt`、`data/models/yolov8n.pt` 和 `data/models/sam2.1_hiera_base_plus.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集用户 checkpoint。SAM3 代码与推理依赖随基础包 v3 提供，但官方 `sam3.pt` 不进入源码、基础包或程序包，用户需自行接受条款并放入项目或程序根目录 `data/models/`。
 - `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型路径。
-- `src/devtools/release_package.py` 分别生成 `Program` staging 和 `BaseRuntimeModels` staging/`.7z`；基础包清单登记 `_internal` 与模型文件路径及解压体积，不读取大型运行时文件内容；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、运行时协议和解压体积，不把一次性压缩产物哈希作为版本身份。
+- `src/devtools/program_package.py` 生成 `Program` staging，`base_runtime_builder.py` 生成 `BaseRuntimeModels` staging/`.7z`，`package_files.py` 负责复制、清单和源码过滤；`release_package.py` 只保留兼容导出。基础包清单登记 `_internal` 与模型文件路径及解压体积，不读取大型运行时文件内容；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、运行时协议和解压体积。
 - 基础包和模型转换附加包都不生成或读取 `.cache.json`，完整发布时每次重新构建 staging 和归档。基础包和附加包都通过原生 7-Zip `-mmt=on` 压缩；`-Clean` 仍可清理并强制重建输出。
 - `installer/yolo_tool.iss` 生成统一的小型 `YOLOTool_Setup_<版本>.exe`。组件页只按版本化文件名和 `.7z` 扩展名识别候选包，不绑定压缩大小或归档哈希；程序与必选基础环境在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。
 - 每个实例的 `install-instance.ini` 与其他安装清单存放在 `_internal/yolotool_metadata/`；基础包维护规范模型 `data/models/yolo26n.pt` 和受管的根目录兼容副本。
-- 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py` 与 `src/bootstrap/cli_dispatch.py`。
+- 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/bootstrap/cli_dispatch.py`；训练、验证/预测、导出、标注和运行时实现分别位于 `bootstrap/cli_training.py`、`cli_validation.py`、`cli_model_export.py`、`cli_annotation.py`、`cli_runtime.py`，`src/train_cli.py` 仅保留兼容转发。
 
 ## 维护建议
 

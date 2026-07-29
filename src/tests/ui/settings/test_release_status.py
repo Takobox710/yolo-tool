@@ -86,6 +86,41 @@ def test_settings_page_hides_upgrade_indicator_when_current(tmp_path):
 
 
 
+def test_settings_page_refreshes_open_release_dialog(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.page import SettingsPage
+
+    app = QApplication.instance() or QApplication([])
+    fake_app = SimpleNamespace(
+        settings=build_default_settings(tmp_path),
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda *_args, **_kwargs: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        workers=[],
+    )
+    page = SettingsPage(fake_app)
+    received = []
+    page.release_update_dialog = SimpleNamespace(
+        apply_release_check_result=received.append
+    )
+    result = ReleaseCheckResult(
+        current_version="1.3.3",
+        latest_version="1.4.0",
+        update_available=True,
+    )
+
+    page.apply_release_check(result)
+
+    assert received == [result]
+    page.release_update_dialog = None
+    page.close()
+
+
 def test_release_update_dialog_shows_version_progress_and_environment_hint(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -112,6 +147,10 @@ def test_release_update_dialog_shows_version_progress_and_environment_hint(tmp_p
     assert dialog.windowTitle() == "GitHub Release 更新"
     assert dialog.notes.toPlainText().startswith("- 修复环境显示")
     assert dialog.progress_bar.value() == 0
+    assert dialog.download_speed_label.text() == "下载速度：0 B/s"
+    assert dialog.download_size_label.text() == "已下载：0 B / --"
+    assert dialog._download_speed_timer.interval() == 1000
+    assert dialog.stop_button.isEnabled() is False
     assert dialog.download_button.isEnabled()
     assert dialog.github_button.isEnabled()
     assert dialog.program_checkbox.isChecked()
@@ -123,8 +162,74 @@ def test_release_update_dialog_shows_version_progress_and_environment_hint(tmp_p
     assert dialog.progress_message.property("warning") is False
     assert dialog.findChild(type(dialog.progress_message), "releaseEnvironmentTitle")
     assert dialog.findChild(type(dialog.progress_message), "releaseMetricValue").text() == "1.3.0"
+    dialog._apply_download_detail({"downloaded": 1048576, "total": 2097152})
+    assert dialog.download_size_label.text() == "已下载：1.0 MB / 2.0 MB"
     dialog.close()
 
+
+
+def test_release_update_dialog_refreshes_after_background_result():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(current_version="1.3.3"),
+    )
+    assert dialog.latest_version_label.text() == "-"
+    assert dialog.program_checkbox.isEnabled() is False
+
+    dialog.apply_release_check_result(
+        ReleaseCheckResult(
+            current_version="1.3.3",
+            latest_version="1.4.0",
+            release_notes="- 修复更新检测时序。",
+            installer_asset_name="YOLOTool_Setup_1.4.0.exe",
+            installer_asset_url="https://github.com/example/setup.exe",
+            environment_asset_names=("YOLOTool_BaseEnv_v3.7z",),
+            environment_asset_urls=("https://github.com/example/base.7z",),
+            base_environment_update_available=True,
+            update_available=True,
+        )
+    )
+
+    assert dialog.latest_version_label.text() == "1.4.0"
+    assert "更新检测时序" in dialog.notes.toPlainText()
+    assert dialog.program_checkbox.isChecked()
+    assert dialog.base_environment_checkbox.isChecked()
+    assert dialog.findChild(type(dialog.progress_message), "releaseEnvironmentTitle")
+    dialog.close()
+
+
+def test_release_update_dialog_manual_check_uses_background_task():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication, QWidget
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    host = QWidget()
+    calls = []
+    host.context = SimpleNamespace(
+        run_background=lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    result = ReleaseCheckResult(current_version="1.3.3")
+    dialog = ReleaseUpdateDialog(host, result)
+
+    dialog.refresh_button.click()
+
+    assert calls[0][0][0] == "release_check"
+    assert calls[0][1]["receiver"] is host
+    assert dialog.refresh_button.isEnabled() is False
+    dialog.apply_release_check_result(result)
+    assert dialog.refresh_button.isEnabled() is True
+    dialog.close()
+    host.close()
 
 
 def test_release_update_dialog_hides_environment_update_hint_for_equal_versions():
