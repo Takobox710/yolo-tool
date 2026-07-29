@@ -92,7 +92,7 @@ class SamAssistController(QObject):
             "polygon_simplification_ratio": max(
                 0.0,
                 min(
-                    0.1,
+                    0.015,
                     float(values.get("polygon_simplification_ratio", 0.002)),
                 ),
             ),

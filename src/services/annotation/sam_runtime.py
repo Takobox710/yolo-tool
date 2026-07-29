@@ -215,7 +215,7 @@ class SamAssistRuntime:
                 masks[best_index],
                 score,
                 minimum_area=max(1, int(minimum_area)),
-                simplification_ratio=max(0.0, min(0.1, float(simplification_ratio))),
+                simplification_ratio=max(0.0, min(0.015, float(simplification_ratio))),
             )
         return {
             "state": "prediction",

@@ -21,6 +21,7 @@ from src.shared.qt import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QSizePolicy,
     Qt,
     QVBoxLayout,
     QWidget,
@@ -220,7 +221,7 @@ class DrawShapeDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("选择标注类型")
-        self.resize(340, 424 if line_expand_enabled else 380)
+        self.resize(240, 424 if line_expand_enabled else 380)
         self.selected_shape = "rect"
         self.sam_models = list(sam_models or [])
         self.sam_enabled = bool(sam_enabled)
@@ -229,12 +230,12 @@ class DrawShapeDialog(QDialog):
         self.sam_settings = dict(sam_settings or {})
         self.sam_settings_callback = sam_settings_callback
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(0)
 
         sam_widget = QWidget()
         sam_layout = QVBoxLayout(sam_widget)
-        sam_layout.setContentsMargins(4, 4, 4, 12)
+        sam_layout.setContentsMargins(4, 0, 4, 12)
         sam_layout.setSpacing(8)
         sam_header = QHBoxLayout()
         sam_header.setContentsMargins(0, 0, 0, 0)
@@ -252,6 +253,10 @@ class DrawShapeDialog(QDialog):
         model_row.setContentsMargins(0, 0, 0, 0)
         model_row.setSpacing(8)
         self.sam_model_combo = QComboBox()
+        self.sam_model_combo.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )
         if self.sam_models:
             for model in self.sam_models:
                 self.sam_model_combo.addItem(model.display_name, model.key)
@@ -268,7 +273,7 @@ class DrawShapeDialog(QDialog):
         model_row.addWidget(self.sam_model_combo, 1)
         self.sam_advanced_button = QPushButton("高级")
         self.sam_advanced_button.setObjectName("samAdvancedButton")
-        self.sam_advanced_button.setFixedSize(76, 36)
+        self.sam_advanced_button.setFixedSize(50, 36)
         self.sam_advanced_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sam_advanced_button.setToolTip("打开 SAM 高级参数设置")
         selected_model_supported = self._selected_sam_supports_assist()
@@ -398,6 +403,7 @@ class DrawShapeDialog(QDialog):
                 color: #24364B;
                 border: 1px solid #CFD9E3;
                 border-radius: 6px;
+                padding: 0 8px;
                 font-size: 14px;
             }
             QPushButton#samAdvancedButton:hover {
@@ -450,9 +456,16 @@ class DrawShapeDialog(QDialog):
             self.sam_settings,
             self.sam_model_combo.currentText(),
             self,
+            sam_models=self.sam_models,
+            selected_model_key=self.selected_sam_model,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        selected_model_key = dialog.selected_model_key()
+        if selected_model_key and selected_model_key != self.selected_sam_model:
+            selected_index = self.sam_model_combo.findData(selected_model_key)
+            if selected_index >= 0:
+                self.sam_model_combo.setCurrentIndex(selected_index)
         values = dialog.values()
         if self.sam_settings_callback is not None:
             applied = self.sam_settings_callback(values)

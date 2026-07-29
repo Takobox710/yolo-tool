@@ -60,6 +60,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QAbstractItemView,
+    QAbstractSpinBox,
     QTabWidget,
     QTextEdit,
     QToolTip,

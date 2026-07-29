@@ -557,6 +557,8 @@ def test_draw_shape_dialog_disables_unsupported_shapes_when_sam_enabled(tmp_path
 
     assert dialog.sam_switch.isChecked() is True
     assert dialog.selected_sam_model == spec.key
+    assert dialog.sam_advanced_button.size().width() == 50
+    assert dialog.sam_advanced_button.size().height() == 36
     assert dialog._shape_buttons["rect"].isEnabled() is True
     assert dialog._shape_buttons["obb_single"].isEnabled() is True
     assert dialog._shape_buttons["polygon"].isEnabled() is True
@@ -567,6 +569,23 @@ def test_draw_shape_dialog_disables_unsupported_shapes_when_sam_enabled(tmp_path
         label.text() == "请选择要绘制的标注类型"
         for label in dialog.findChildren(QLabel)
     )
+
+
+def test_draw_shape_dialog_uses_compact_default_width():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.dialogs import DrawShapeDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = DrawShapeDialog(False)
+    dialog.show()
+    app.processEvents()
+
+    assert dialog.width() == 240
+    assert dialog.layout().contentsMargins().top() == 12
+    sam_widget = dialog.layout().itemAt(0).widget()
+    assert sam_widget.layout().itemAt(0).geometry().top() == 0
 
 
 def test_draw_shape_dialog_lists_sam3_and_preserves_custom_model_name(tmp_path):
@@ -619,13 +638,16 @@ def test_draw_shape_dialog_applies_sam_switch_and_model_immediately(tmp_path):
     assert dialog._shape_buttons["circle"].isEnabled() is False
 
 
-def test_sam_advanced_settings_dialog_restores_values_and_defaults():
+def test_sam_advanced_settings_dialog_restores_values_and_defaults(tmp_path, monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+    from src.services.annotation.sam_assist import sam_model_spec_from_path
     from src.shared.qt import QApplication
+    from src.ui.features.annotation.sam import settings_dialog as sam_settings_dialog
     from src.ui.features.annotation.sam.settings_dialog import SamAdvancedSettingsDialog
 
     app = QApplication.instance() or QApplication([])
+    model = sam_model_spec_from_path(tmp_path / "sam3.pt")
     dialog = SamAdvancedSettingsDialog(
         {
             "multimask_output": True,
@@ -634,15 +656,42 @@ def test_sam_advanced_settings_dialog_restores_values_and_defaults():
             "polygon_simplification_ratio": 0.015,
         },
         "SAM 3",
+        sam_models=[model],
+        selected_model_key=model.key,
     )
 
-    assert dialog.model_value.text() == "SAM 3"
+    assert dialog.model_combo.currentText() == "SAM 3"
+    assert dialog.selected_model_key() == model.key
+    assert dialog.area_spin.width() == 102
+    assert dialog.area_slider.maximum() == 1000
+    dialog.area_slider.setValue(1000)
+    assert dialog.area_spin.value() == 100_000_000
+    dialog.area_spin.setValue(1)
+    assert dialog.area_slider.value() == 0
+    dialog.area_spin.setValue(120)
+    from src.shared.qt import QAbstractSpinBox
+    assert dialog.score_spin.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+    assert dialog.area_spin.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+    assert dialog.simplify_spin.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+    opened = []
+    monkeypatch.setattr(
+        sam_settings_dialog.QDesktopServices,
+        "openUrl",
+        staticmethod(lambda url: opened.append(url.toLocalFile()) or True),
+    )
+    dialog.open_model_folder_button.click()
+    assert [Path(path) for path in opened] == [tmp_path.resolve()]
     assert dialog.values() == {
         "multimask_output": True,
         "minimum_score": 0.65,
         "minimum_area": 120,
         "polygon_simplification_ratio": 0.015,
     }
+    assert dialog.simplify_slider.maximum() == 30
+    assert dialog.simplify_spin.maximum() == 1.5
+
+    dialog.set_values({"polygon_simplification_ratio": 0.1})
+    assert dialog.values()["polygon_simplification_ratio"] == 0.015
 
     dialog.reset_button.click()
 
@@ -667,10 +716,13 @@ def test_draw_shape_dialog_applies_advanced_sam_settings(tmp_path, monkeypatch):
     applied = []
 
     class FakeAdvancedDialog:
-        def __init__(self, values, model_name, parent):
+        def __init__(self, values, model_name, parent, **kwargs):
             assert values["minimum_area"] == 4
             assert model_name == "SAM 3"
             assert parent is dialog
+
+        def selected_model_key(self):
+            return ""
 
         def exec(self):
             return QDialog.DialogCode.Accepted
@@ -728,11 +780,12 @@ def test_sam_controller_applies_parameters_without_reloading_model(tmp_path):
             "multimask_output": True,
             "minimum_score": 0.7,
             "minimum_area": 30,
-            "polygon_simplification_ratio": 0.01,
+            "polygon_simplification_ratio": 0.1,
         }
     )
 
     assert result["minimum_score"] == 0.7
+    assert result["polygon_simplification_ratio"] == 0.015
     assert controller._worker is worker
     assert controller._model_loaded is True
     assert controller._image_ready is True
@@ -1290,7 +1343,7 @@ def test_ai_prelabel_dialog_switches_to_sam3_text_prompts(tmp_path):
 
     from PIL import Image
     from src.services.settings import build_default_settings
-    from src.shared.qt import QApplication
+    from src.shared.qt import QAbstractSpinBox, QApplication
     from src.ui.features.annotation.page import AiPrelabelDialog, AnnotationPage
 
     images_dir = tmp_path / "images"
@@ -1310,7 +1363,10 @@ def test_ai_prelabel_dialog_switches_to_sam3_text_prompts(tmp_path):
 
     page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AiPrelabelDialog(page)
-    dialog.model_combo.setCurrentText(str(model_path))
+    dialog.refresh_model_choices(str(model_path))
+    assert dialog.model_combo.currentText() == "sam3.pt"
+    assert dialog.model_combo.findText(str(model_path)) == -1
+    assert dialog.resolved_model_path() == str(model_path.resolve())
     dialog.reload_model_labels()
 
     assert dialog.active_backend == "sam3"
@@ -1322,7 +1378,54 @@ def test_ai_prelabel_dialog_switches_to_sam3_text_prompts(tmp_path):
         "状态",
     ]
     assert [edit.text() for edit in dialog.sam3_prompt_edits] == ["weld", "scratch"]
+    assert "padding: 5px" in dialog.mapping_table.styleSheet()
+    assert dialog.mapping_table.rowHeight(0) == 38
+    assert all(
+        "padding: 0" in edit.styleSheet() and edit.height() >= 28
+        for edit in dialog.sam3_prompt_edits
+    )
     assert all(check.isChecked() for check in dialog.sam3_checks)
+    dialog.show()
+    app.processEvents()
+    assert dialog.threshold_widget.isHidden() is True
+    assert dialog.sam3_advanced_toggle.isHidden() is False
+    assert dialog.sam3_advanced_toggle.geometry().top() == dialog.shape_combo.geometry().top()
+    assert "padding: 0" in dialog.model_combo.lineEdit().styleSheet()
+    assert (
+        dialog.sam3_simplify_spin.buttonSymbols()
+        == QAbstractSpinBox.ButtonSymbols.NoButtons
+    )
+    dialog._set_backend_controls("yolo")
+    assert dialog.threshold_widget.isVisible() is True
+    dialog.close()
+
+
+def test_ai_prelabel_dialog_keeps_scope_controls_compact(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, QLabel
+    from src.ui.features.annotation.page import AiPrelabelDialog, AnnotationPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AiPrelabelDialog(page)
+    dialog.reload_model_labels = lambda: None
+    dialog.resize(700, 620)
+    dialog.show()
+    app.processEvents()
+
+    options_title = next(
+        label for label in dialog.findChildren(QLabel) if label.text() == "范围与模式"
+    )
+    assert dialog.range_combo.geometry().top() - options_title.geometry().bottom() <= 16
+    assert dialog.append_radio.geometry().top() - dialog.range_combo.geometry().bottom() <= 16
     dialog.close()
 
 
