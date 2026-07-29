@@ -11,9 +11,29 @@ from src.services.annotation import (
     save_editable_annotations,
     save_labelme_annotations,
 )
+from src.services.annotation.yolo_format import detect_yolo_mode, infer_yolo_file_mode
 
 
 class AnnotationPersistenceMixin:
+    def _sync_dirty_flag(self) -> None:
+        self.dirty = bool(self.labelme_dirty or self.yolo_dirty)
+
+    def _current_yolo_source_mode(self, yolo_path: Path) -> str | None:
+        mode = infer_yolo_file_mode(yolo_path)
+        if mode == "ambiguous":
+            mode = detect_yolo_mode(self.path_from_setting("labels_dir"))
+        return mode if mode in {"detect", "obb", "seg"} else None
+
+    def _yolo_needs_save(self, yolo_path: Path, annotations: list[EditableAnnotation]) -> bool:
+        if not self.yolo_features_enabled() or not self.output_mode:
+            return False
+        if not annotations:
+            return False
+        if not yolo_path.exists():
+            return True
+        source_mode = self._current_yolo_source_mode(yolo_path)
+        return source_mode != self.output_mode
+
     def _sync_project_labelme_class_names(self) -> None:
         names = collect_labelme_class_names(
             self.path_from_setting("annotations_dir"), self.class_names()
@@ -50,15 +70,23 @@ class AnnotationPersistenceMixin:
                 self.context.settings.dataset.class_names = class_names
                 self.save_settings()
                 self._refresh_class_state()
-        else:
+        elif self.load_yolo_when_labelme_missing() and yolo_path.exists():
+            source_mode = self._current_yolo_source_mode(yolo_path) or self.output_mode
             annotations = load_editable_annotations(
-                image_size, yolo_path, task_mode=self.output_mode
+                image_size,
+                yolo_path,
+                task_mode=source_mode or "detect",
             )
+        else:
+            annotations = []
+
         self.current_json_path = json_path
         self.current_yolo_path = yolo_path
         self.current_image_path = image_path
         self.canvas.set_image(image_path, annotations, self.class_names())
-        self.dirty = False
+        self.labelme_dirty = False
+        self.yolo_dirty = self._yolo_needs_save(yolo_path, annotations)
+        self._sync_dirty_flag()
         self.refresh_annotation_list()
         self._update_current_file_list_item()
         self._refresh_manual_action_buttons()
@@ -75,6 +103,7 @@ class AnnotationPersistenceMixin:
             if save_yolo is not None
             else (self.annotation_settings().auto_convert_yolo or force)
         )
+        should_save_yolo = should_save_yolo and self.output_mode in {"detect", "obb", "seg"}
         if not self.dirty and not force and not should_save_yolo:
             return False
         if self.current_json_path is None or self.current_image_path is None:
@@ -100,13 +129,19 @@ class AnnotationPersistenceMixin:
             )
             saved_any = True
         if save_json:
-            self.dirty = False
+            self.labelme_dirty = False
+        if should_save_yolo:
+            self.yolo_dirty = False
+        self._sync_dirty_flag()
         self._update_current_file_list_item()
         self._refresh_manual_action_buttons()
         return saved_any
 
     def mark_dirty_and_save(self) -> None:
-        self.dirty = True
+        self.labelme_dirty = True
+        if self.output_mode in {"detect", "obb", "seg"}:
+            self.yolo_dirty = True
+        self._sync_dirty_flag()
         sync_target_type = getattr(self, "_sync_target_type_to_selection", None)
         if callable(sync_target_type):
             sync_target_type()
@@ -114,10 +149,12 @@ class AnnotationPersistenceMixin:
         annotation_settings = self.annotation_settings()
         self._update_current_file_list_item()
         self._refresh_manual_action_buttons()
-        if annotation_settings.auto_save or annotation_settings.auto_convert_yolo:
+        if annotation_settings.auto_save or (
+            annotation_settings.auto_convert_yolo and self.output_mode
+        ):
             self.save_current(
                 save_json=annotation_settings.auto_save,
-                save_yolo=annotation_settings.auto_convert_yolo,
+                save_yolo=annotation_settings.auto_convert_yolo and bool(self.output_mode),
             )
 
     def _annotation_file_paths(self, image_path: Path) -> tuple[Path, Path]:

@@ -95,6 +95,7 @@ class AnnotationCanvasContextMenuMixin:
         save_labelme_action = None
         save_yolo_action = None
         undo_action = None
+        redo_action = None
         if self.can_save_default:
             save_default_action = QAction("保存", menu)
             save_default_action.setShortcut(QKeySequence.StandardKey.Save)
@@ -109,7 +110,15 @@ class AnnotationCanvasContextMenuMixin:
             save_yolo_action = QAction("保存YOLO标注", menu)
             menu.addAction(save_yolo_action)
         has_selected_annotation = self._has_selected_annotation()
-        if save_default_action is not None or save_labelme_action is not None or save_yolo_action is not None or has_selected_annotation:
+        if (
+            save_default_action is not None
+            or save_labelme_action is not None
+            or save_yolo_action is not None
+            or has_selected_annotation
+            or self.can_undo
+            or self.can_redo
+            or self._can_show_cancel_drawing_action()
+        ):
             separator_bottom = QAction(menu)
             separator_bottom.setSeparator(True)
             menu.addAction(separator_bottom)
@@ -124,6 +133,11 @@ class AnnotationCanvasContextMenuMixin:
             undo_action.setShortcut(QKeySequence.StandardKey.Undo)
             undo_action.setShortcutVisibleInContextMenu(True)
             menu.addAction(undo_action)
+        if self.can_redo:
+            redo_action = QAction("恢复", menu)
+            redo_action.setShortcut(QKeySequence("Ctrl+Y"))
+            redo_action.setShortcutVisibleInContextMenu(True)
+            menu.addAction(redo_action)
         cancel_action = None
         if self._can_show_cancel_drawing_action():
             cancel_action = QAction("取消当前绘制", menu)
@@ -153,13 +167,19 @@ class AnnotationCanvasContextMenuMixin:
         elif undo_action is not None and selected == undo_action:
             if self.undo_callback is not None:
                 self.undo_callback()
+        elif redo_action is not None and selected == redo_action:
+            if self.redo_callback is not None:
+                self.redo_callback()
         elif cancel_action is not None and selected == cancel_action:
             self._reset_transient_draw_state()
             self.update()
         elif selected in class_actions and 0 <= self.selected_index < len(self.annotations):
-            self.annotations[self.selected_index].class_id = class_actions[selected]
-            self._emit_changed()
-            self.update()
+            if self.class_change_callback is not None:
+                self.class_change_callback(class_actions[selected])
+            else:
+                self.annotations[self.selected_index].class_id = class_actions[selected]
+                self._emit_changed()
+                self.update()
         elif selected in shape_actions:
             self.set_draw_shape(shape_actions[selected])
 

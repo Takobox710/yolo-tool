@@ -39,9 +39,7 @@ class AnnotationSelectionMixin:
         annotation = self.canvas.annotations[selected_index]
         if annotation.class_id == self.current_class_id:
             return
-        annotation.class_id = self.current_class_id
-        self.mark_dirty_and_save()
-        self.canvas.update()
+        self.set_selected_annotation_class(self.current_class_id)
 
     def change_shape(self, text: str) -> None:
         mapping = {

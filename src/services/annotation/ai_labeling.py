@@ -8,27 +8,28 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from src.services.annotation.file_index import annotation_exists
 from src.services.annotation.editable_document import (
     EditableAnnotation,
     load_labelme_annotations,
 )
-from src.services.annotation.sam3_text import (
-    Sam3TextRuntime,
-    _deduplicate_candidates,
-    normalize_sam3_prompts,
-    sam3_annotations_from_masks,
-)
+from src.services.annotation.sam3_text import Sam3TextRuntime
 from src.services.training.model_resolution import (
     find_training_model_names,
     resolve_training_model_reference,
 )
 from src.services.ultralytics_compat import ensure_cv2_highgui_compat
-from src.services.validation.prediction_runner import (
-    extract_detection_items,
-    release_inference_runtime,
-)
+from src.services.validation.prediction_runner import release_inference_runtime
 
+
+from src.services.annotation.ai_prediction import (
+    predict_annotations_for_image,
+    predict_sam3_annotations_for_image,
+)
+from src.services.annotation.ai_targets import (
+    collect_ai_target_images,
+    merge_ai_annotations,
+    normalize_ai_target_images,
+)
 
 @dataclass
 class AiLabelRange:
@@ -70,162 +71,6 @@ def load_model_labels(model_path: str) -> list[str]:
     finally:
         del model
         release_inference_runtime()
-def collect_ai_target_images(
-    image_items: list[Path],
-    current_image: Path | None,
-    annotations_dir: Path,
-    labels_dir: Path,
-    range_mode: str,
-    *,
-    current_index: int = -1,
-    selected_images: list[Path] | None = None,
-) -> list[Path]:
-    mode = str(range_mode).strip()
-    if mode == "当前图片":
-        return [current_image] if current_image is not None else []
-    if mode == "当前及以后图片":
-        if not image_items:
-            return []
-        index = current_index
-        if index < 0 and current_image is not None:
-            try:
-                index = image_items.index(current_image)
-            except ValueError:
-                index = -1
-        if index < 0:
-            return []
-        return list(image_items[index:])
-    if mode == "自定义图片":
-        selected_set = {Path(path).resolve() for path in (selected_images or [])}
-        return [path for path in image_items if Path(path).resolve() in selected_set]
-    if mode == "全部未标注图片":
-        return [
-            path
-            for path in image_items
-            if not annotation_exists(
-                annotations_dir / f"{path.stem}.json",
-                labels_dir / f"{path.stem}.txt",
-            )
-        ]
-    return list(image_items)
-
-
-def normalize_ai_target_images(
-    image_items: list[Path],
-    target_images: list[Path] | None,
-) -> list[Path]:
-    if target_images is None:
-        return []
-    target_set = {Path(path).resolve() for path in target_images}
-    return [path for path in image_items if Path(path).resolve() in target_set]
-
-
-def merge_ai_annotations(
-    current: list["EditableAnnotation"],
-    incoming: list["EditableAnnotation"],
-    process_mode: str,
-) -> list["EditableAnnotation"]:
-    if str(process_mode).strip() == "替换":
-        return list(incoming)
-    return list(current) + list(incoming)
-
-
-def predict_annotations_for_image(
-    image_path: Path,
-    model,
-    confidence: float,
-    iou: float,
-    imgsz: int,
-    class_mapping: dict[str, str],
-    class_names: list[str],
-) -> tuple[list[EditableAnnotation], list[str], list[str]]:
-    result = model.predict(
-        source=str(image_path),
-        conf=confidence,
-        iou=iou,
-        imgsz=imgsz,
-        verbose=False,
-    )[0]
-    items = extract_detection_items(result)
-    model_labels = sorted(
-        {
-            str(getattr(item, "label", "")).strip()
-            for item in items
-            if str(getattr(item, "label", "")).strip()
-        }
-    )
-    names = list(class_names)
-    annotations: list[EditableAnnotation] = []
-    for item in items:
-        raw_label = str(item.label or "").strip()
-        target_label = class_mapping.get(raw_label, "")
-        if not target_label:
-            continue
-        if target_label not in names:
-            names.append(target_label)
-        class_id = names.index(target_label)
-        shape = "obb" if abs(float(item.angle or 0.0)) > 1e-6 else "rect"
-        annotations.append(
-            EditableAnnotation(
-                class_id=class_id,
-                shape=shape,
-                points=[(float(x), float(y)) for x, y in item.points[:4]],
-            )
-        )
-    return annotations, names, model_labels
-
-
-def predict_sam3_annotations_for_image(
-    image_path: Path,
-    runtime: Sam3TextRuntime,
-    confidence: float,
-    dedup_iou: float,
-    output_shape: str,
-    prompts: dict[str, str],
-    enabled_classes: list[str],
-    class_names: list[str],
-    minimum_area: int,
-    simplification_ratio: float,
-) -> tuple[list[EditableAnnotation], dict[str, int]]:
-    prompt_rows = normalize_sam3_prompts(class_names, prompts, enabled_classes)
-    if not prompt_rows:
-        raise ValueError("请至少启用一个带有文本提示词的项目类别。")
-    candidates = []
-    raw_count = 0
-    area_filtered = 0
-    order = 0
-    runtime.set_image(image_path)
-    for class_id, _class_name, prompt in prompt_rows:
-        masks, scores = runtime.predict_prompt(prompt, confidence)
-        raw_count += len(scores)
-        converted, filtered = sam3_annotations_from_masks(
-            masks,
-            scores,
-            class_id,
-            output_shape,
-            minimum_area,
-            simplification_ratio,
-            order,
-        )
-        area_filtered += filtered
-        order += len(scores)
-        candidates.extend(converted)
-    accepted, overlap_filtered = _deduplicate_candidates(candidates, dedup_iou)
-    annotations = [
-        EditableAnnotation(
-            class_id=candidate.class_id,
-            shape="rect" if output_shape == "rect" else output_shape,
-            points=list(candidate.points),
-        )
-        for candidate in accepted
-    ]
-    return annotations, {
-        "raw_count": raw_count,
-        "area_filtered": area_filtered,
-        "overlap_filtered": overlap_filtered,
-    }
-
-
 def apply_ai_labeling(
     image_items: list[Path],
     current_image: Path | None,
@@ -371,4 +216,3 @@ def apply_ai_labeling(
             else:
                 del active_model
                 release_inference_runtime()
-

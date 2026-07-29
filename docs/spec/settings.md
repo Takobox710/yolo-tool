@@ -43,6 +43,7 @@
 ## 设置项行为
 
 - `annotation.sam_assist` 按项目保存画布辅助模型文件名及四项高级参数：`multimask_output=false`、`minimum_score=0.0`、`minimum_area=4`、`polygon_simplification_ratio=0.002`（可调范围 `0.0~0.015`）；启用状态不保存。旧设置缺少字段时按默认值补齐，非法类型只回退对应字段。
+- 标注页保存 `annotation.load_yolo_when_labelme_missing`，默认关闭；开启后无 Labelme JSON 时自动读取同名 YOLO 标注显示，任务类别探测始终独立执行。任务设置同时保存 `task.mode_selected`，用于区分全局任务类型与初始化时的`未选择`占位状态。
 - `训练前显示自定义命令框` 控制训练页是否弹出命令编辑对话框。
 - `显示配置解释符号` 只控制字段名后的 `ⓘ` 是否显示；关闭后仍保留字段名称自身的 Qt tooltip。
 - `模型验证显示 last` 控制模型验证页是否显示训练结果中的 `last.pt`，默认关闭时只显示 `best.pt`。

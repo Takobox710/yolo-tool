@@ -45,6 +45,8 @@ class AnnotationPageSettingsMixin:
 
     def open_annotation_settings(self) -> None:
         current = self.context.settings.annotation
+        previous_labels_dir = self.path_from_setting("labels_dir")
+        previous_load_yolo = current.load_yolo_when_labelme_missing
         dialog = AnnotationSettingsDialog(
             current.line_expand_enabled,
             current.line_expand_pixels,
@@ -55,6 +57,7 @@ class AnnotationPageSettingsMixin:
             current.quick_draw,
             self.display_path(self.path_from_setting("labels_dir")),
             self,
+            load_yolo_when_labelme_missing=current.load_yolo_when_labelme_missing,
             show_annotation_names=current.show_annotation_names,
             show_canvas_status=current.show_canvas_status,
             optimize_mirror_edit=current.optimize_mirror_edit,
@@ -66,6 +69,7 @@ class AnnotationPageSettingsMixin:
             pixels,
             auto_save,
             auto_convert_yolo,
+            load_yolo_when_labelme_missing,
             show_yolo_save_in_context_menu,
             continuous_draw,
             quick_draw,
@@ -78,6 +82,7 @@ class AnnotationPageSettingsMixin:
         current.line_expand_pixels = pixels
         current.auto_save = auto_save
         current.auto_convert_yolo = auto_convert_yolo
+        current.load_yolo_when_labelme_missing = load_yolo_when_labelme_missing
         current.show_yolo_save_in_context_menu = show_yolo_save_in_context_menu
         current.continuous_draw = continuous_draw
         current.quick_draw = quick_draw
@@ -89,8 +94,18 @@ class AnnotationPageSettingsMixin:
             self.context.settings.paths.labels_dir = str(resolved_yolo_dir)
             resolved_yolo_dir.mkdir(parents=True, exist_ok=True)
         self.save_settings()
+        labels_dir_changed = self.path_from_setting("labels_dir") != previous_labels_dir
+        load_yolo_changed = (
+            current.load_yolo_when_labelme_missing != previous_load_yolo
+        )
+        if labels_dir_changed:
+            self._refresh_task_mode_from_paths(force=True)
         self._refresh_class_state()
         self._refresh_manual_action_buttons()
+        self._refresh_task_mode_controls()
+        self.refresh_annotation_list()
+        if labels_dir_changed or load_yolo_changed:
+            self.load_current()
         if auto_save or auto_convert_yolo:
             self.save_current(
                 force=True,

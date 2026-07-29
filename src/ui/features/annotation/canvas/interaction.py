@@ -50,6 +50,7 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
                 self.hovered_index = annotation_index
                 self.hovered_handle = handle
                 self._emit_selection()
+                self._begin_annotation_mutation(annotation_index)
                 self.active_handle = handle
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self.update()
@@ -58,9 +59,9 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
             if hit_index >= 0:
                 self.selected_index = hit_index
                 self._emit_selection()
-                if hit_index == self.selected_index:
-                    self.move_anchor = image_point
-                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self._begin_annotation_mutation(hit_index)
+                self.move_anchor = image_point
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self.update()
                 return
             self._clear_selection()
@@ -154,14 +155,18 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
 
     def mouseReleaseEvent(self, event):  # noqa: N802 - Qt API name
         if self.active_handle is not None:
+            before = self._mutation_before
             self.active_handle = None
-            self._emit_changed()
+            if before is not None:
+                self._emit_annotation_mutation(before, self.selected_index)
             self._update_hover_cursor()
             self.update()
             return
         if self.move_anchor is not None:
+            before = self._mutation_before
             self.move_anchor = None
-            self._emit_changed()
+            if before is not None:
+                self._emit_annotation_mutation(before, self.selected_index)
             self._update_hover_cursor()
             self.update()
             return

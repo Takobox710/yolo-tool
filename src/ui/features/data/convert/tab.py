@@ -62,7 +62,7 @@ class ConvertTab(BasePage):
             "选择已有 YOLO 标注目录",
         )
         self.output_box, self.output_edit = self.path_field(
-            "输出目录",
+            "数据集输出目录",
             paths.dataset_dir,
             self.choose_dir,
             "选择数据集输出目录",

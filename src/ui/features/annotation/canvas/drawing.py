@@ -71,12 +71,13 @@ class AnnotationCanvasDrawingMixin:
         reset_transient_draw_state(self)
 
     def _finish_annotation(self, annotation: EditableAnnotation, *, flash: bool = False) -> None:
+        before = self._snapshot_annotations()
         self.annotations.append(annotation)
         annotation_index = len(self.annotations) - 1
         self.selected_index = -1
         self.hovered_index = -1
         self.hovered_handle = None
-        self._emit_changed()
+        self._emit_annotation_mutation(before, annotation_index)
         self._emit_selection()
         if flash:
             self._flash_annotation(annotation_index)

@@ -68,13 +68,10 @@ class AnnotationClassPanelMixin:
                 else str(annotation.class_id)
             )
             shape_text = _SHAPE_LABELS.get(annotation.shape, annotation.shape)
-            format_text = self.output_mode if self.output_mode in {"detect", "obb", "seg"} else (
-                "obb"
-                if annotation.shape in {"obb", "obb_mirror", "obb_single", "line_expand"}
-                else "detect"
-            )
+            format_text = self.output_mode or ""
+            suffix = f"（{format_text}）" if self.yolo_features_enabled() and format_text else ""
             item = self._list_widget_item_factory(
-                f"{index + 1}.{label}-{shape_text}（{format_text}）"
+                f"{index + 1}.{label}-{shape_text}{suffix}"
             )
             self.annotation_list.addItem(item)
         self.annotation_list.setCurrentRow(self.canvas.selected_index)

@@ -116,15 +116,21 @@ def test_workbench_window_close_event_prompts_for_unsaved_annotations(monkeypatc
     window = WorkbenchWindow()
     annotation_widget = window.ensure_page("annotation")
     annotation_page = getattr(annotation_widget, "inner_page", annotation_widget)
-    annotation_page.dirty = True
+    annotation_page.current_image_path = Path("image.jpg")
+    annotation_page.context.settings.annotation.auto_save = False
+    annotation_page.labelme_dirty = True
+    annotation_page.yolo_dirty = False
+    annotation_page._sync_dirty_flag()
     asked = {"text": ""}
     save_calls = {"count": 0}
 
-    def fake_question(_parent, _title, text, *_args, **_kwargs):
-        asked["text"] = text
+    def fake_exec(message_box):
+        asked["text"] = message_box.text()
+        asked["yes_text"] = message_box.button(QMessageBox.StandardButton.Yes).text()
+        asked["no_text"] = message_box.button(QMessageBox.StandardButton.No).text()
         return QMessageBox.StandardButton.No
 
-    monkeypatch.setattr(QMessageBox, "question", fake_question)
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
     monkeypatch.setattr(window.settings_service, "save", lambda _data: save_calls.__setitem__("count", save_calls["count"] + 1))
     monkeypatch.setattr("src.ui.shell.window.stop_process", lambda _handle: None)
 
@@ -134,6 +140,31 @@ def test_workbench_window_close_event_prompts_for_unsaved_annotations(monkeypatc
     assert event.isAccepted() is False
     assert save_calls["count"] == 0
     assert "当前有未保存的标注" in asked["text"]
+    assert asked["yes_text"] == "是"
+    assert asked["no_text"] == "否"
+
+
+def test_workbench_window_close_ignores_hidden_yolo_unsaved_state(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.shell.close_guard import collect_close_warnings
+    from src.ui.shell.window import WorkbenchWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    annotation_widget = window.ensure_page("annotation")
+    annotation_page = getattr(annotation_widget, "inner_page", annotation_widget)
+    annotation_page.current_image_path = Path("image.jpg")
+    annotation_page.labelme_dirty = False
+    annotation_page.yolo_dirty = True
+    annotation_page._sync_dirty_flag()
+
+    assert "当前有未保存的标注" not in collect_close_warnings(window)
+
+    window.hide()
+    window.deleteLater()
+    app.processEvents()
 
 
 def test_workbench_window_close_event_ignores_environment_refresh(monkeypatch):

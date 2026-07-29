@@ -20,6 +20,8 @@ def build_center(page) -> QVBoxLayout:
     layout.setSpacing(0)
     page.canvas = AnnotationCanvas()
     page.canvas.changed_callback = page.mark_dirty_and_save
+    page.canvas.history_callback = page.record_annotation_history
+    page.canvas.class_change_callback = page.set_selected_annotation_class
     page.canvas.selection_callback = page.sync_selection
     layout.addWidget(page.canvas, 1)
     return layout
@@ -52,16 +54,15 @@ def build_right_panel(page) -> QFrame:
     layout.setSpacing(8)
     mode_label = QLabel("任务类别：")
     mode_label.setObjectName("annotationPathLabel")
+    page.output_mode_label = mode_label
     layout.addWidget(mode_label)
     page.output_mode_combo = QComboBox()
     page.output_mode_combo.addItems(["detect", "obb", "seg"])
-    page.output_mode_combo.setCurrentText(
-        page.output_mode
-        if page.output_mode in {"detect", "obb", "seg"}
-        else "detect"
-    )
+    page.output_mode_combo.setPlaceholderText("未选择")
+    page.output_mode_combo.setCurrentText(page.output_mode or "")
     page.output_mode_combo.currentTextChanged.connect(page.change_output_mode)
     layout.addWidget(page.output_mode_combo)
+    page._refresh_task_mode_controls()
     class_label = QLabel("目标类型：")
     class_label.setObjectName("annotationPathLabel")
     layout.addWidget(class_label)

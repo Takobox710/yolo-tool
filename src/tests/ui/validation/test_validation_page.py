@@ -154,7 +154,7 @@ def test_validation_page_source_options_choose_single_media_files(tmp_path, monk
     ][-1:] == ["单张图片"]
 
     monkeypatch.setattr(
-        "src.ui.features.validation.page_actions.QFileDialog.getOpenFileName",
+        "src.ui.features.validation.source_actions.QFileDialog.getOpenFileName",
         lambda *_args: (str(image), ""),
     )
     page.source_combo.setCurrentText("单张图片")
@@ -170,7 +170,7 @@ def test_validation_page_source_options_choose_single_media_files(tmp_path, monk
         for index in range(page.source_combo.count())
     ] == ["批量视频", "单个视频"]
     monkeypatch.setattr(
-        "src.ui.features.validation.page_actions.QFileDialog.getOpenFileName",
+        "src.ui.features.validation.source_actions.QFileDialog.getOpenFileName",
         lambda *_args: (str(video), ""),
     )
     page.source_combo.setCurrentText("单个视频")

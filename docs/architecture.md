@@ -75,14 +75,15 @@ yolo_tool/
 - `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。
 - `src/ui/shared/` 负责跨页面 UI 复用能力，例如页面基类、共享表单、共享对话框、后台 worker、`WorkbenchContext` 和 `TaskCoordinator`。
 - `src/ui/features/<feature>/` 负责各页面真实实现；`page.py` 只做页面装配，复杂逻辑继续拆到该功能包子模块。
-- 数据标注页的目标类型联动由 `src/ui/features/annotation/selection.py` 统一维护：选中画布或列表标注时同步右侧下拉框，选中标注时修改下拉框会回写该标注类别；未选中标注时下拉框仍只控制新建标注的默认类别。
+- 数据标注页的目标类型联动由 `src/ui/features/annotation/selection.py` 统一维护：选中画布或列表标注时同步右侧下拉框，选中标注时修改下拉框会回写该标注类别；未选中标注时下拉框仍只控制新建标注的默认类别。任务类别是独立的项目全局 YOLO 输出设置，不随图片切换。
 - `src/services/annotation/class_names.py` 扫描当前项目 Labelme 标注目录中的非空类别名并追加到项目设置；`ClassManagerDialog` 负责类别编辑、删除依赖保护和转换按钮，`ClassConversionDialog` 作为独立窗口选择源/目标类别；确认后由标注页统一保存设置和标注，取消不产生转换。
+- `src/services/annotation/yolo_format.py` 按排序后的 YOLO `.txt` 文件探测首个有效格式，处理空文件、detect/seg 判定和 OBB/四点 Seg 歧义；标注页以此初始化或重新判断全局任务类别。
 - `src/ui/shared/widgets/` 放基础控件与图表组件，旧的 `src/ui/widgets/` 已删除。主页 `DatasetDistributionWidget` 和 `TrainingCurveWidget` 使用当前控件 DPR 创建物理 pixmap、以逻辑坐标绘制，并通过 `refresh_for_device_pixel_ratio()` 响应主窗口跨屏切换，避免高 DPI 下图表文字、坐标轴和曲线被放大模糊；图表内框在 pixmap 内部绘制，与训练历史表格统一使用 `1 px #CFD9E3` 边框和 `5 px` 圆角，避免 QLabel 内容覆盖圆角造成断开空隙；各类别图片分布坐标轴保持 `20 px` 左边距、`38 px` 顶部位置和 `33 px` 底部留白；训练曲线横轴使用 `results.csv` 的 `epoch` 列。
-- `src/tests/architecture/` 只保留依赖方向、旧入口、模块体量和 Qt 生命周期四类结构围栏，不扫描文档措辞或代码清单内容。
+- `src/tests/architecture/` 只保留依赖方向、旧入口、模块体量、UI 顶层类职责和 Qt 生命周期五类结构围栏，不扫描文档措辞或代码清单内容。
 - `src/tests/services/` 按领域保护文件读写、转换、设置、命令构造和运行时安全等业务规则。
 - `src/tests/ui/` 按业务域和 shell 分目录保留关键页面工作流与服务接线；数据处理 UI 测试使用 `data_processing/`，避免与项目级 `data/` 忽略规则冲突；精确布局、颜色、尺寸与提示文本改由发布前人工检查。
 - `src/tests/integration/` 放开发/冻结入口、隐藏 CLI 和 Windows 打包契约回归。
-- `pixi run test` 是完整测试入口，当前通过 162 项测试；`pixi run test-fast` 提供服务层、架构围栏和入口的快速回归，`pixi run test-ui`、`pixi run test-integration` 和 `pixi run test-full` 保留分层/兼容入口。
+- `pixi run test` 是完整测试入口，当前通过 269 项测试；测试文件按业务职责拆分但不为减少数字删除语义不同的覆盖；`pixi run test-fast` 提供服务层、架构围栏和入口的快速回归，`pixi run test-ui`、`pixi run test-integration` 和 `pixi run test-full` 保留分层/兼容入口。
 - pytest 缓存由 Pixi 测试任务写入 `.pixi/pytest-cache`，避免在项目根目录生成 `.pytest_cache`；该目录随本地 Pixi 环境一起被忽略。
 
 ## 服务层说明
@@ -98,6 +99,7 @@ yolo_tool/
 - 设置文件写入 `schema_version: 1`；旧版本或无版本文件按 v0 迁移，保持原有字段含义、相对路径存储、外部绝对路径和裸模型名规则。
 - `model_export` 节点保存 `model_path`、`output_dir`、`format`、`imgsz` 和 `simplify`；扩展安装状态从当前安装目录 `_internal/extensions/` 下的活动清单读取，不写入项目设置。旧版本位于 `%LOCALAPPDATA%/YOLOTool/instances/<实例ID>/extensions/` 或 `%LOCALAPPDATA%/YOLOTool/extensions/` 的扩展会在升级时迁移，同盘使用原子移动，跨盘复制完成后删除旧目录。
 - 标注页名称显示由项目设置 `annotation.show_annotation_names` 控制，默认值为 `false`。
+- 标注页的 Labelme 与 YOLO 脏状态独立维护；右键 YOLO 保存开启时，图片列表和退出确认显示对应格式的未保存提示，关闭该选项时隐藏的 YOLO 脏状态不触发退出确认；未选择任务类别时所有 YOLO 保存动作均不可用。
 - 标注页未配置 `dataset.class_names` 时类别下拉框保持为空，不再自动添加 `weld`；进入项目标注目录时会按文件顺序读取所有 Labelme JSON 的非空 `label`，将缺少的类别追加到当前项目 `data/runtime/settings.json`。
 
 ### `src/services/runtime/`
@@ -202,6 +204,7 @@ yolo_tool/
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
 - 通用短任务 worker 实现放在 `src/ui/shared/workers/`；需要维护交互式子进程协议的功能专属 worker 可留在对应 feature 包，例如 `annotation/sam/runtime.py`。页面持有 QThread 时必须在原生 `finished` 信号后再清理对象。
 - `src/ui/features/annotation/page.py` 与 `src/ui/features/annotation/canvas/widget.py` 都只保留页面 / 画布装配；交互、保存、菜单、快捷键、AI 与编辑细节继续拆在 feature 子模块。
+- `src/services/annotation/history.py` 保存不可变标注快照和最近 5 次操作；`src/ui/features/annotation/canvas/history.py` 只负责把新增、删除、拖动、变形和类别修改的提交边界通知页面。换页不产生历史，撤销/恢复按历史项所属图片自动定位；选中和未发生实际几何变化的鼠标操作不触发脏状态或历史记录。
 - `src/ui/features/annotation/sam/controller.py` 负责模型发现、项目级模型与高级参数保存、首帧立即提交与 `50~120 ms` 自适应移动调度（同一形状下小于 `2 px` 的微小移动过滤）、模型/图片编码状态及页面生命周期；参数保存只使旧悬停请求失效，不重载模型或图片 embedding。移动期间保留最近完成的预览帧，并使用失效代次隔离离开、命中标注、确认、切图和切模式前的结果。`sam/runtime.py` 通过隐藏子进程维持一个在途预测，只保留一个最新待发送坐标。
 - 标注画布只持有 SAM 启用状态、预览几何和输入回调，不导入 Torch、SAM2、OpenCV 或子进程实现。SAM 预览为独立绿色图层，复刻 LabelPaw 的纯绿色不透明边缘与低透明度填充，边框使用较粗、较长且 `cosmetic` 的固定像素虚线，确认时创建正式 `EditableAnnotation` 并复用 `_finish_annotation()`；命中已有标注的悬停不发起请求。
 - `DrawShapeDialog` 与画布右键菜单共用 `AnimatedToggleSwitch`；`240 px` 宽的窗口在模型框右侧提供 `50 x 36 px` 的紧凑`高级`按钮，SAM 标题行距窗口顶部 `12 px`，模型下拉框允许横向压缩并省略过长名称，由 `sam/settings_dialog.py` 承载独立参数窗口。高级窗口顶部通过模型下拉框切换候选 checkpoint，并可直接打开当前模型目录；取消不提交模型切换，保存后由标注窗口同步选择。最小掩码面积与轮廓简化比例共用对齐滑块/数值列，前者使用对数刻度覆盖 `1~100000000 px²`；最低预测质量、最小掩码面积和轮廓简化比例的数值框均关闭上下调按钮，保留直接输入和滑块联动。SAM 图标只保留在“画标注框”窗口，右键菜单的 SAM 行置于菜单底部、与标注形状之间使用分隔线并使用普通自定义菜单行间距，后者只负责同步开关；SAM 开启时只允许矩形、普通有向矩形、镜像有向矩形、多边形和编辑模式。
@@ -254,4 +257,4 @@ yolo_tool/
 - 新增页面逻辑直接放入 `src/ui/features/<feature>/`，不要恢复任何 `views`、`legacy` 或顶层 UI 兼容壳。
 - `src/services/<domain>/__init__.py` 只做轻量导出，不塞入业务实现。
 - 修改结构后同步更新 `docs/spec/*.md`、`docs/packaging-windows.md` 和 `docs/code-inventory.md`。
-- 当前阶段的结构围栏由 `src/tests/architecture/test_structure_boundaries.py` 的 4 项场景负责：分层依赖、旧路径与导入禁用、页面/worker/service 体量阈值，以及 Qt 延迟回调上下文和通配导入限制。模块体量采用“建议拆分线 + 硬安全线”：`page.py` 与标注画布模块建议在 250 行附近审查职责、硬上限 350 行，共享 worker 建议线 220 行、硬上限 300 行，服务实现建议线 300 行、硬上限 400 行；服务包 `__init__.py` 仍不得超过 80 行。超过建议线本身不导致测试失败，只有越过硬安全线才要求按职责拆分，禁止为满足行数而压缩排版或删除合理空白。代码清单在结构变化后由生成器更新并通过 diff 审查，不再占用 pytest 时间。
+- 当前阶段的结构围栏由 `src/tests/architecture/test_structure_boundaries.py` 的 8 项测试负责：分层依赖、旧路径与导入禁用、页面/worker/service 体量阈值、顶层 UI 类职责、已登记大型 UI 模块安全线，以及 Qt 延迟回调上下文和通配导入限制。模块体量采用“建议拆分线 + 硬安全线”：`page.py` 与标注画布模块建议在 250 行附近审查职责、硬上限 350 行，共享 worker 建议线 220 行、硬上限 300 行，服务实现建议线 300 行、硬上限 400 行；服务包 `__init__.py` 仍不得超过 80 行；未登记 UI 模块超过 600 行或登记模块超过 900 行时结构测试失败。超过建议线本身不导致测试失败，禁止为满足行数而压缩排版或删除合理空白。代码清单在结构变化后由生成器更新并通过 diff 审查，不再占用 pytest 时间。

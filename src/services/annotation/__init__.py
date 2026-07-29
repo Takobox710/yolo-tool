@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from src.services.annotation.ai_labeling import (
@@ -39,12 +38,12 @@ from src.services.annotation.preview_render import (
     load_yolo_annotations,
     render_annotation_preview,
 )
+from src.services.annotation.yolo_format import detect_yolo_mode
 from src.services.annotation.sam_assist import (
     SamModelSpec,
     find_sam_model_specs,
     preferred_sam_model,
 )
-
 __all__ = [
     "AiLabelRange",
     "AiLabelResult",
@@ -68,6 +67,7 @@ __all__ = [
     "load_labelme_annotations",
     "load_model_labels",
     "load_yolo_annotations",
+    "detect_yolo_mode",
     "merge_ai_annotations",
     "normalize_ai_target_images",
     "predict_annotations_for_image",

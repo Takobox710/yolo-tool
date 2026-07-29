@@ -4,11 +4,14 @@ from pathlib import Path
 
 from src.services.annotation import (
     EditableAnnotation,
+    detect_yolo_mode,
     load_editable_annotations,
     load_labelme_annotations,
     save_editable_annotations,
     save_labelme_annotations,
 )
+from src.services.annotation.history import AnnotationHistory
+from src.services.annotation.yolo_format import YOLO_MODES
 from src.ui.shared.page_base import BasePage
 from src.shared.qt import (
     QAbstractItemView,
@@ -58,11 +61,19 @@ class AnnotationPage(
         self.image_items: list[Path] = []
         self.current_index = -1
         self.dirty = False
+        self.annotation_history = AnnotationHistory(limit=5)
         self.current_json_path: Path | None = None
         self.current_yolo_path: Path | None = None
         self.current_image_path: Path | None = None
-        self.output_mode = self.context.settings.task.mode
+        self.output_mode = (
+            self.context.settings.task.mode
+            if self.context.settings.task.mode_selected
+            else None
+        )
         self.current_class_id = 0
+        self.labelme_dirty = False
+        self.yolo_dirty = False
+        self._mode_probe_signature: tuple[str, str] | None = None
         self._annotation_statuses: dict[str, bool] = {}
         self._file_list_rendered_count = 0
         self._file_list_batch_size = 20
@@ -110,6 +121,7 @@ class AnnotationPage(
         if not directory:
             return
         self.save_current()
+        self.clear_annotation_history()
         self.update_setting("paths", "images_dir", value=directory)
         self._refresh_path_labels()
         self.scan_images(select_first=True)
@@ -121,6 +133,7 @@ class AnnotationPage(
         if not directory:
             return
         self.save_current()
+        self.clear_annotation_history()
         self.update_setting("paths", "annotations_dir", value=directory)
         Path(directory).mkdir(parents=True, exist_ok=True)
         self._refresh_path_labels()
@@ -139,30 +152,95 @@ class AnnotationPage(
     def yolo_auto_save_enabled(self) -> bool:
         return bool(self.annotation_settings().auto_convert_yolo)
 
+    def load_yolo_when_labelme_missing(self) -> bool:
+        return bool(self.annotation_settings().load_yolo_when_labelme_missing)
+
     def show_yolo_save_in_context_menu(self) -> bool:
         return bool(self.annotation_settings().show_yolo_save_in_context_menu)
+
+    def yolo_features_enabled(self) -> bool:
+        return self.yolo_auto_save_enabled() or self.show_yolo_save_in_context_menu()
+
+    def _task_mode_probe_signature(self) -> tuple[str, str]:
+        return (
+            str(self.path_from_setting("images_dir").resolve()),
+            str(self.path_from_setting("labels_dir").resolve()),
+        )
+
+    def _refresh_task_mode_from_paths(self, *, force: bool = False) -> None:
+        signature = self._task_mode_probe_signature()
+        if not force and signature == self._mode_probe_signature:
+            return
+        previous_signature = self._mode_probe_signature
+        self._mode_probe_signature = signature
+        detected = detect_yolo_mode(self.path_from_setting("labels_dir"))
+        settings_task = self.context.settings.task
+        if detected in YOLO_MODES:
+            self.output_mode = detected
+            settings_task.mode = detected
+            settings_task.mode_selected = True
+        elif (
+            settings_task.mode_selected
+            and self.output_mode in YOLO_MODES
+            and previous_signature is None
+            and not force
+        ):
+            pass
+        else:
+            self.output_mode = None
+            settings_task.mode_selected = False
+        self.save_settings()
+        self._refresh_task_mode_controls()
+
+    def _refresh_task_mode_controls(self) -> None:
+        if not hasattr(self, "output_mode_combo"):
+            return
+        visible = self.yolo_features_enabled()
+        self.output_mode_label.setVisible(visible)
+        self.output_mode_combo.setVisible(visible)
+        self.output_mode_combo.blockSignals(True)
+        if self.output_mode in YOLO_MODES:
+            self.output_mode_combo.setCurrentText(self.output_mode)
+            self.output_mode_combo.setStyleSheet("")
+        else:
+            self.output_mode_combo.setCurrentIndex(-1)
+            self.output_mode_combo.setPlaceholderText("未选择")
+            self.output_mode_combo.setStyleSheet("color: #C62828;")
+        self.output_mode_combo.blockSignals(False)
 
     def _refresh_path_labels(self) -> None:
         return None
 
     def on_setting_changed(self, keys, value):
         if keys == ("paths", "images_dir"):
+            self.clear_annotation_history()
+            self._refresh_task_mode_from_paths(force=True)
             self.scan_images(select_first=True)
         elif keys == ("paths", "annotations_dir"):
+            self.clear_annotation_history()
             self.load_current()
             self.refresh_file_list()
         elif keys == ("paths", "labels_dir"):
+            self.clear_annotation_history()
+            self._refresh_task_mode_from_paths(force=True)
             self.load_current()
             self.refresh_file_list()
 
     def change_output_mode(self, text: str) -> None:
-        mode = text if text in {"detect", "obb", "seg"} else "detect"
+        mode = text if text in YOLO_MODES else None
+        if mode is None:
+            return
         self.output_mode = mode
         self.context.settings.task.mode = mode
+        self.context.settings.task.mode_selected = True
         self.save_settings()
-        if self.current_json_path is not None:
-            self.dirty = True
-            self.save_current()
+        if self.current_image_path is not None and self.canvas.annotations:
+            self.yolo_dirty = True
+            if self.yolo_auto_save_enabled():
+                self.save_current(save_json=False, save_yolo=True)
+        self._refresh_task_mode_controls()
+        self.refresh_annotation_list()
+        self._refresh_manual_action_buttons()
 
     def delete_selected(self) -> None:
         self.canvas.delete_selected()
@@ -180,6 +258,7 @@ class AnnotationPage(
         super().keyPressEvent(event)
 
     def on_show(self) -> None:
+        self._refresh_task_mode_from_paths()
         self.sam_assist.refresh_models()
         self.refresh_annotation_status_bar()
         self._refresh_path_labels()
@@ -223,7 +302,7 @@ class AnnotationPage(
         set_annotation_bottom_margin(self, 0 if status_visible else 12)
 
     def has_unsaved_annotations(self) -> bool:
-        return bool(self.dirty)
+        return bool(self._current_image_unsaved_text())
 
     def on_shutdown(self) -> None:
         self.sam_assist.shutdown(wait=True)

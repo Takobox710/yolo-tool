@@ -11,7 +11,8 @@
     "result_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\result"
   },
   "task": {
-    "mode": "detect"
+    "mode": "detect",
+    "mode_selected": false
   },
   "dataset": {
     "class_names": [],
@@ -84,6 +85,7 @@
     "auto_save": true,
     "auto_convert_yolo": false,
     "show_yolo_save_in_context_menu": false,
+    "load_yolo_when_labelme_missing": false,
     "show_annotation_names": false,
     "show_canvas_status": true,
     "continuous_draw": false,

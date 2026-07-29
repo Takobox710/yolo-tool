@@ -20,6 +20,7 @@ from src.ui.shared.workers import Worker
 ANNOTATION_CHECKED_ROLE = Qt.ItemDataRole.UserRole + 1
 ANNOTATION_UNSAVED_ROLE = Qt.ItemDataRole.UserRole + 2
 ANNOTATION_DISPLAY_TEXT_ROLE = Qt.ItemDataRole.UserRole + 3
+ANNOTATION_UNSAVED_TEXT_ROLE = Qt.ItemDataRole.UserRole + 4
 
 
 class AnnotationFileListItemWidget(QWidget):
@@ -51,7 +52,9 @@ class AnnotationFileListItemWidget(QWidget):
     def sync_from_item(self) -> None:
         self.name_label.setText(self.text())
         self.checkbox.setChecked(self.isChecked())
-        self.unsaved_label.setVisible(self.isUnsaved())
+        unsaved_text = self.unsavedText()
+        self.unsaved_label.setText(f"（{unsaved_text}）" if unsaved_text else "")
+        self.unsaved_label.setVisible(bool(unsaved_text))
 
     def text(self) -> str:
         value = self._item.data(ANNOTATION_DISPLAY_TEXT_ROLE)
@@ -71,19 +74,24 @@ class AnnotationFileListItemWidget(QWidget):
         self._item.setData(ANNOTATION_UNSAVED_ROLE, bool(unsaved))
         self.unsaved_label.setVisible(bool(unsaved))
 
+    def unsavedText(self) -> str:
+        value = self._item.data(ANNOTATION_UNSAVED_TEXT_ROLE)
+        return "" if value is None else str(value)
+
 
 class AnnotationFileBrowserMixin:
     def _file_list_item_size_hint(self):
         return self.file_list.sizeHintForRow(0) and self.file_list.item(0).sizeHint()
 
     def _create_file_list_item(
-        self, path: Path, *, checked: bool, unsaved: bool
+        self, path: Path, *, checked: bool, unsaved: str
     ) -> QListWidgetItem:
         item = self._list_widget_item_factory(path.name)
         item.setText("")
         item.setData(ANNOTATION_DISPLAY_TEXT_ROLE, path.name)
         item.setData(ANNOTATION_CHECKED_ROLE, bool(checked))
         item.setData(ANNOTATION_UNSAVED_ROLE, bool(unsaved))
+        item.setData(ANNOTATION_UNSAVED_TEXT_ROLE, unsaved)
         item.setSizeHint(self._standard_file_item_size_hint())
         return item
 
@@ -93,6 +101,7 @@ class AnnotationFileBrowserMixin:
             sample_item.setData(ANNOTATION_DISPLAY_TEXT_ROLE, "sample.jpg")
             sample_item.setData(ANNOTATION_CHECKED_ROLE, False)
             sample_item.setData(ANNOTATION_UNSAVED_ROLE, False)
+            sample_item.setData(ANNOTATION_UNSAVED_TEXT_ROLE, "")
             sample_widget = AnnotationFileListItemWidget(sample_item, parent=self.file_list)
             self._cached_file_item_size_hint = sample_widget.sizeHint()
             sample_widget.deleteLater()
@@ -133,6 +142,7 @@ class AnnotationFileBrowserMixin:
             self.file_list.setItemWidget(item, widget)
 
     def scan_images(self, *, select_first: bool) -> None:
+        self.clear_annotation_history()
         self._sync_project_labelme_class_names()
         image_dir = self.path_from_setting("images_dir")
         self.image_items = scan_annotation_image_items(image_dir)
@@ -245,8 +255,11 @@ class AnnotationFileBrowserMixin:
             item = self._create_file_list_item(
                 path,
                 checked=self._has_annotation_for_image(path),
-                unsaved=path == self.current_image_path
-                and self._current_image_has_unsaved_changes(),
+                unsaved=(
+                    self._current_image_unsaved_text()
+                    if path == self.current_image_path
+                    else ""
+                ),
             )
             self.file_list.addItem(item)
             self._file_list_rendered_count += 1
@@ -321,11 +334,22 @@ class AnnotationFileBrowserMixin:
         return bool(self.canvas.annotations)
 
     def _current_image_has_unsaved_changes(self) -> bool:
-        return (
-            self.current_image_path is not None
-            and not self.labelme_auto_save_enabled()
-            and self.dirty
-        )
+        return bool(self._current_image_unsaved_text())
+
+    def _current_image_unsaved_text(self) -> str:
+        if self.current_image_path is None:
+            return ""
+        labelme_dirty = bool(self.labelme_dirty)
+        yolo_dirty = bool(self.yolo_dirty and self.show_yolo_save_in_context_menu())
+        if not self.show_yolo_save_in_context_menu():
+            return "未保存" if labelme_dirty and not self.labelme_auto_save_enabled() else ""
+        if labelme_dirty and yolo_dirty:
+            return "两种格式标注均未保存"
+        if labelme_dirty:
+            return "Labelme标注未保存"
+        if yolo_dirty:
+            return "YOLO标注未保存"
+        return ""
 
     def _update_current_file_list_item(self) -> None:
         if not hasattr(self, "file_list"):
@@ -340,6 +364,7 @@ class AnnotationFileBrowserMixin:
         item.setData(
             ANNOTATION_UNSAVED_ROLE, self._current_image_has_unsaved_changes()
         )
+        item.setData(ANNOTATION_UNSAVED_TEXT_ROLE, self._current_image_unsaved_text())
         self._sync_visible_file_item_widget(self.current_index)
 
     def refresh_file_list(self) -> None:

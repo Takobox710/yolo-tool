@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer
 from src.services.annotation import EditableAnnotation, _detect_points_to_rect
+from src.services.annotation.history import snapshot_annotations
 from src.shared.qt import QSizePolicy, Qt, QWidget
 from src.ui.features.annotation.canvas.context_menu import AnnotationCanvasContextMenuMixin
 from src.ui.features.annotation.canvas.drawing import AnnotationCanvasDrawingMixin
@@ -16,6 +17,7 @@ from src.ui.features.annotation.canvas.geometry import (
     widget_to_image,
 )
 from src.ui.features.annotation.canvas.hit_test import AnnotationCanvasHitTestMixin
+from src.ui.features.annotation.canvas.history import AnnotationCanvasHistoryMixin
 from src.ui.features.annotation.canvas.interaction import AnnotationCanvasInteractionMixin
 from src.ui.features.annotation.canvas.render import AnnotationCanvasRenderMixin
 from src.ui.features.annotation.canvas.state import reset_transient_draw_state
@@ -26,6 +28,7 @@ SAM_SUPPORTED_SHAPES = {"rect", "obb_single", "obb_mirror", "polygon"}
 
 
 class AnnotationCanvas(
+    AnnotationCanvasHistoryMixin,
     AnnotationCanvasContextMenuMixin,
     AnnotationCanvasDrawingMixin,
     AnnotationCanvasHitTestMixin,
@@ -72,10 +75,14 @@ class AnnotationCanvas(
         self.save_labelme_callback = None
         self.save_yolo_callback = None
         self.undo_callback = None
+        self.redo_callback = None
+        self.history_callback = None
+        self.class_change_callback = None
         self.save_default_callback = None
         self.can_save_labelme = False
         self.can_save_yolo = False
         self.can_undo = False
+        self.can_redo = False
         self.can_save_default = False
         self.show_separate_yolo_save = False
         self.show_annotation_names = False
@@ -93,6 +100,8 @@ class AnnotationCanvas(
         self._flash_timer = QTimer(self)
         self._flash_timer.setSingleShot(True)
         self._flash_timer.timeout.connect(self._clear_flash)
+        self._mutation_before = None
+        self._mutation_focus_index = None
 
     def set_image(
         self,
@@ -109,6 +118,8 @@ class AnnotationCanvas(
         self.hovered_index = -1
         self.crosshair_position = None
         self.flash_index = -1
+        self._mutation_before = None
+        self._mutation_focus_index = None
         self.clear_sam_preview()
         self._flash_timer.stop()
         self._update_hover_cursor()
@@ -250,11 +261,13 @@ class AnnotationCanvas(
 
     def delete_selected(self) -> bool:
         if 0 <= self.selected_index < len(self.annotations):
+            before = snapshot_annotations(self.annotations)
+            focus_index = self.selected_index
             del self.annotations[self.selected_index]
             self.selected_index = -1
             self.hovered_index = -1
             self.hovered_handle = None
-            self._emit_changed()
+            self._emit_annotation_mutation(before, focus_index)
             self._emit_selection()
             self._update_hover_cursor()
             self.update()

@@ -10,7 +10,6 @@ from pathlib import Path
 from threading import Event
 from typing import Callable, Iterable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from src import APP_VERSION
@@ -26,6 +25,9 @@ from src.services.runtime.release_versions import (
     normalize_environment_version,
     normalize_release_version,
 )
+from src.services.runtime.release_download import (
+    download_release_asset as _download_release_asset,
+)
 
 
 GITHUB_REPOSITORY = "Takobox710/yolo-tool"
@@ -33,7 +35,6 @@ GITHUB_LATEST_RELEASE_URL = (
     f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 )
 _INSTALLER_NAME_PATTERN = re.compile(r"^YOLOTool_Setup_[0-9A-Za-z.-]+\.exe$", re.IGNORECASE)
-_DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 _DOWNLOADS_FOLDER_ID = (
     0x374DE290,
     0x123F,
@@ -261,50 +262,17 @@ def download_release_asset(
     progress: Callable[[int, int], None] | None = None,
     pause_event: Event | None = None,
 ) -> Path:
-    parsed = urlparse(str(asset_url or ""))
-    if parsed.scheme != "https" or not parsed.netloc:
-        raise ValueError("Release 资源下载地址无效。")
-    safe_name = Path(str(asset_name or "")).name
-    if safe_name != str(asset_name) or not (
-        _INSTALLER_NAME_PATTERN.fullmatch(safe_name)
-        or _is_environment_asset(safe_name)
-    ):
-        raise ValueError("Release 资源名称无效。")
-    target_dir = Path(download_dir) if download_dir is not None else downloads_directory()
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / safe_name
-    partial = target.with_name(f"{target.name}.part")
-    request = Request(
-        str(asset_url),
-        headers={
-            "Accept": "application/octet-stream",
-            "User-Agent": "YOLOTool-installer-download",
-        },
+    return _download_release_asset(
+        asset_url,
+        asset_name,
+        download_dir=download_dir,
+        timeout=timeout,
+        progress=progress,
+        pause_event=pause_event,
+        urlopen_fn=urlopen,
+        downloads_directory_fn=downloads_directory,
+        wait_if_paused_fn=_wait_if_paused,
     )
-    downloaded = 0
-    try:
-        with urlopen(request, timeout=timeout) as response, partial.open("wb") as stream:
-            headers = getattr(response, "headers", None)
-            total = int((headers.get("Content-Length") if headers else 0) or 0)
-            if progress:
-                progress(0, total)
-            while True:
-                _wait_if_paused(pause_event)
-                chunk = response.read(_DOWNLOAD_CHUNK_SIZE)
-                if not chunk:
-                    break
-                stream.write(chunk)
-                downloaded += len(chunk)
-                if progress:
-                    progress(downloaded, total)
-        os.replace(partial, target)
-    except Exception:
-        try:
-            partial.unlink()
-        except OSError:
-            pass
-        raise
-    return target
 
 
 def download_release_assets(

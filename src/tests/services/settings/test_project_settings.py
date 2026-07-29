@@ -32,6 +32,7 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings.features.show_help_icons is True
     assert settings.features.show_last_training_models is False
     assert settings.task.mode == "detect"
+    assert settings.task.mode_selected is False
     assert settings.dataset.class_names == []
     assert settings.dataset.split_ratios.train == 0.8
     assert settings.dataset.split_ratios.val == 0.2
@@ -42,6 +43,7 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings.training.patience == 100
     assert settings.annotation.auto_save is True
     assert settings.annotation.auto_convert_yolo is False
+    assert settings.annotation.load_yolo_when_labelme_missing is False
     assert settings.annotation.continuous_draw is False
     assert settings.annotation.quick_draw is False
     assert settings.annotation.sam_assist.model_path == ""

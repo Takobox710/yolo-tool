@@ -13,13 +13,16 @@ def confirm_close_if_needed(window) -> bool:
     if not warnings:
         return True
     details = "\n".join(f"- {item}" for item in warnings)
-    result = QMessageBox.question(
-        window,
+    message_box = QMessageBox(
+        QMessageBox.Icon.Question,
         "确认关闭程序",
         f"当前还有以下内容未处理：\n{details}\n\n确认继续关闭程序吗？",
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        QMessageBox.StandardButton.No,
+        window,
     )
+    message_box.button(QMessageBox.StandardButton.Yes).setText("是")
+    message_box.button(QMessageBox.StandardButton.No).setText("否")
+    result = message_box.exec()
     return result == QMessageBox.StandardButton.Yes
 
 

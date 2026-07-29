@@ -35,6 +35,7 @@ class PathSettings:
 @dataclass(slots=True)
 class TaskSettings:
     mode: str
+    mode_selected: bool
 
 
 @dataclass(slots=True)
@@ -159,6 +160,7 @@ class AnnotationSettings:
     auto_save: bool
     auto_convert_yolo: bool
     show_yolo_save_in_context_menu: bool
+    load_yolo_when_labelme_missing: bool
     show_annotation_names: bool
     show_canvas_status: bool
     continuous_draw: bool

@@ -110,6 +110,45 @@ def test_modules_and_service_exports_stay_within_size_limits():
     )
 
 
+def test_feature_modules_keep_explicit_top_level_class_boundaries():
+    expected = {
+        Path("src/ui/features/annotation/file_browser.py"): 2,
+        Path("src/ui/features/validation/helpers.py"): 2,
+        Path("src/ui/features/validation/video_player.py"): 2,
+    }
+    actual = {}
+    for path in Path("src/ui/features").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        class_count = sum(isinstance(node, ast.ClassDef) for node in tree.body)
+        if class_count > 1:
+            actual[path] = class_count
+    assert actual == expected, (
+        "Feature modules with multiple top-level classes must be explicitly "
+        f"partitioned or registered: {actual}"
+    )
+
+
+def test_large_feature_modules_stay_within_reviewed_safety_ceilings():
+    reviewed = {
+        Path("src/ui/features/annotation/ai/dialog.py"): 900,
+        Path("src/ui/features/settings/update_dialog.py"): 900,
+    }
+    offenders = []
+    unreviewed = []
+    for path in Path("src/ui/features").rglob("*.py"):
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        limit = reviewed.get(path)
+        if limit is None:
+            if lines > 600:
+                unreviewed.append(f"{path.as_posix()} ({lines} > 600 review trigger)")
+        elif lines > limit:
+            offenders.append(f"{path.as_posix()} ({lines} > {limit})")
+    assert unreviewed == [] and offenders == [], (
+        "Large feature modules need an explicit responsibility review or split: "
+        + ", ".join(unreviewed + offenders)
+    )
+
+
 def test_python_imports_and_qt_delayed_callbacks_use_safe_patterns():
     star_imports = []
     unsafe_timers = []

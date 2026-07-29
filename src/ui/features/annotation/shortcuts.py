@@ -6,6 +6,16 @@ from src.shared.qt import QShortcut, Qt
 
 
 def register_annotation_shortcuts(page) -> None:
+    undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, page)
+    undo_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+    undo_shortcut.activated.connect(page.undo_annotation_change)
+    page._undo_shortcut = undo_shortcut
+
+    redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), page)
+    redo_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+    redo_shortcut.activated.connect(page.redo_annotation_change)
+    page._redo_shortcut = redo_shortcut
+
     delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), page)
     delete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
     delete_shortcut.activated.connect(page.delete_selected)

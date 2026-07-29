@@ -39,7 +39,7 @@ def build_default_settings(project_root: Path = ROOT) -> AppSettings:
             models_dir=str(models_root),
             result_dir=str(project_root / "result"),
         ),
-        task=TaskSettings(mode="detect"),
+        task=TaskSettings(mode="detect", mode_selected=False),
         dataset=DatasetSettings(
             class_names=[],
             split_ratios=SplitRatios(train=0.8, val=0.2, test=0.0),
@@ -110,6 +110,7 @@ def build_default_settings(project_root: Path = ROOT) -> AppSettings:
             auto_save=True,
             auto_convert_yolo=False,
             show_yolo_save_in_context_menu=False,
+            load_yolo_when_labelme_missing=False,
             show_annotation_names=False,
             show_canvas_status=True,
             continuous_draw=False,

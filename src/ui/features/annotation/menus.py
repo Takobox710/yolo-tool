@@ -85,7 +85,10 @@ class AnnotationMenuMixin:
         if self.show_yolo_save_in_context_menu():
             if not self.labelme_auto_save_enabled():
                 save_labelme_action = self._add_menu_button_action(menu, "保存Labelme标注")
-            if not self.yolo_auto_save_enabled():
+            if (
+                not self.yolo_auto_save_enabled()
+                and self.output_mode in {"detect", "obb", "seg"}
+            ):
                 save_yolo_action = self._add_menu_button_action(menu, "保存YOLO标注")
         elif not self.labelme_auto_save_enabled():
             save_default_action = self._add_menu_button_action(menu, "保存")
@@ -124,7 +127,10 @@ class AnnotationMenuMixin:
     def set_selected_annotation_class(self, class_id: int) -> None:
         if not (0 <= self.canvas.selected_index < len(self.canvas.annotations)):
             return
-        self.canvas.annotations[self.canvas.selected_index].class_id = class_id
+        selected_index = self.canvas.selected_index
+        before = self._copy_annotations()
+        self.canvas.annotations[selected_index].class_id = class_id
+        self.record_annotation_history(before, self.canvas.annotations, selected_index)
         self.refresh_annotation_list()
         self._sync_target_type_to_selection()
         self.mark_dirty_and_save()

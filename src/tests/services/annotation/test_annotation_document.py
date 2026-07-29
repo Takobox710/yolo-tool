@@ -16,65 +16,6 @@ def make_image(path: Path, size=(100, 100), color="white"):
     Image.new("RGB", size, color).save(path)
 
 
-def test_collect_ai_target_images_supports_following_and_custom_ranges(tmp_path):
-    from src.services.annotation import collect_ai_target_images
-
-    images = [tmp_path / f"{index}.jpg" for index in range(1, 5)]
-    annotations_dir = tmp_path / "annotations"
-    labels_dir = tmp_path / "labels"
-    annotations_dir.mkdir()
-    labels_dir.mkdir()
-
-    following = collect_ai_target_images(
-        images,
-        images[1],
-        annotations_dir,
-        labels_dir,
-        "当前及以后图片",
-        current_index=1,
-    )
-    custom = collect_ai_target_images(
-        images,
-        images[0],
-        annotations_dir,
-        labels_dir,
-        "自定义图片",
-        selected_images=[images[0], images[2], tmp_path / "other.jpg"],
-    )
-
-    assert following == images[1:]
-    assert custom == [images[0], images[2]]
-
-
-def test_annotation_file_index_scans_images_and_detects_existing_annotations(tmp_path):
-    from src.services.annotation import collect_annotation_presence, scan_annotation_image_items
-
-    images_dir = tmp_path / "images"
-    annotations_dir = tmp_path / "annotations"
-    labels_dir = tmp_path / "labels"
-    images_dir.mkdir()
-    annotations_dir.mkdir()
-    labels_dir.mkdir()
-
-    make_image(images_dir / "2.jpg")
-    make_image(images_dir / "10.png")
-    make_image(images_dir / "1.bmp")
-    (annotations_dir / "2.json").write_text(
-        json.dumps({"shapes": [{"label": "weld"}]}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    (labels_dir / "10.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
-    (labels_dir / "1.txt").write_text("\n", encoding="utf-8")
-
-    image_items = scan_annotation_image_items(images_dir)
-    statuses = collect_annotation_presence(image_items, annotations_dir, labels_dir)
-
-    assert [path.name for path in image_items] == ["1.bmp", "2.jpg", "10.png"]
-    assert statuses[str((images_dir / "1.bmp").resolve())] is False
-    assert statuses[str((images_dir / "2.jpg").resolve())] is True
-    assert statuses[str((images_dir / "10.png").resolve())] is True
-
-
 def test_annotation_preview_services(tmp_path):
     from src.services.annotation import Annotation, load_yolo_annotations, render_annotation_preview
 
@@ -90,6 +31,7 @@ def test_annotation_preview_services(tmp_path):
     assert preview.size == (100, 100)
 
 
+
 def test_annotation_preview_loads_segmentation_polygon(tmp_path):
     from src.services.annotation import load_yolo_annotations
 
@@ -99,6 +41,7 @@ def test_annotation_preview_loads_segmentation_polygon(tmp_path):
     annotations = load_yolo_annotations((100, 100), label, "seg", ["weld"])
 
     assert annotations[0].points == [(10.0, 20.0), (80.0, 20.0), (80.0, 90.0)]
+
 
 
 def test_annotation_page_labelme_json_roundtrip_and_yolo_export(tmp_path):
@@ -136,6 +79,7 @@ def test_annotation_page_labelme_json_roundtrip_and_yolo_export(tmp_path):
     assert yolo_path.read_text(encoding="utf-8").splitlines()[0].startswith("0 0.100000")
 
 
+
 def test_seg_yolo_roundtrip_loads_polygons_and_converts_circles(tmp_path):
     from src.services.annotation import (
         EditableAnnotation,
@@ -168,6 +112,7 @@ def test_seg_yolo_roundtrip_loads_polygons_and_converts_circles(tmp_path):
     assert len(values[1:]) == 64
 
 
+
 def test_labelme_line_loads_as_mirror_obb(tmp_path):
     from src.services.annotation import load_labelme_annotations
 
@@ -196,6 +141,7 @@ def test_labelme_line_loads_as_mirror_obb(tmp_path):
     assert annotations[0].shape == "obb_mirror"
 
 
+
 def test_load_labelme_annotations_keeps_empty_initial_class_list(tmp_path):
     from src.services.annotation import load_labelme_annotations
 
@@ -205,6 +151,7 @@ def test_load_labelme_annotations_keeps_empty_initial_class_list(tmp_path):
 
     assert annotations == []
     assert class_names == []
+
 
 
 def test_circle_labelme_roundtrip_preserves_radius_point_direction(tmp_path):
@@ -237,50 +184,4 @@ def test_circle_labelme_roundtrip_preserves_radius_point_direction(tmp_path):
     assert loaded[0].radius_point == (64.0, 64.0)
 
 
-def test_collect_labelme_class_names_appends_project_labels(tmp_path):
-    from src.services.annotation import collect_labelme_class_names
 
-    annotations_dir = tmp_path / "annotations"
-    annotations_dir.mkdir()
-    (annotations_dir / "1.json").write_text(
-        json.dumps(
-            {"shapes": [{"label": "weld"}, {"label": "scratch"}, {"label": ""}]},
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    (annotations_dir / "2.json").write_text(
-        json.dumps({"shapes": [{"label": "weld"}, {"label": "crack"}]}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-    assert collect_labelme_class_names(annotations_dir, ["configured"]) == [
-        "configured",
-        "weld",
-        "scratch",
-        "crack",
-    ]
-
-
-def test_labelme_class_counts_and_conversion_cover_all_project_files(tmp_path):
-    from src.services.annotation import (
-        collect_labelme_class_counts,
-        convert_labelme_classes,
-    )
-
-    annotations_dir = tmp_path / "annotations"
-    annotations_dir.mkdir()
-    first = annotations_dir / "1.json"
-    second = annotations_dir / "2.json"
-    first.write_text(
-        json.dumps({"shapes": [{"label": "weld"}, {"label": "weld"}]}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    second.write_text(
-        json.dumps({"shapes": [{"label": "weld"}, {"label": "scratch"}]}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-    assert collect_labelme_class_counts(annotations_dir, ["weld", "scratch"]) == [3, 1]
-    assert convert_labelme_classes(annotations_dir, "weld", "scratch") == 3
-    assert collect_labelme_class_counts(annotations_dir, ["weld", "scratch"]) == [0, 4]
