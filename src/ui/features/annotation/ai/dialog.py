@@ -33,6 +33,7 @@ from src.shared.qt import (
     QVBoxLayout,
     QToolButton,
     Qt,
+    QWidget,
 )
 from src.ui.features.annotation.ai.image_selection_dialog import CustomAiImageSelectionDialog
 from src.ui.features.annotation.ai.mapping import (
@@ -116,7 +117,8 @@ class AiPrelabelDialog(QDialog):
         model_row.addWidget(browse_btn)
         model_layout.addLayout(model_row)
 
-        threshold_row = QHBoxLayout()
+        self.threshold_widget = QWidget()
+        threshold_row = QHBoxLayout(self.threshold_widget)
         threshold_row.setContentsMargins(0, 0, 0, 0)
         threshold_row.setSpacing(8)
         conf_label = QLabel("置信度:")
@@ -139,7 +141,14 @@ class AiPrelabelDialog(QDialog):
         self.iou_spin.setValue(self.saved_iou)
         threshold_row.addWidget(self.iou_spin)
         threshold_row.addStretch(1)
-        model_layout.addLayout(threshold_row)
+        model_layout.addWidget(self.threshold_widget)
+
+        self.sam3_advanced_toggle = QToolButton()
+        self.sam3_advanced_toggle.setText("高级参数")
+        self.sam3_advanced_toggle.setCheckable(True)
+        self.sam3_advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.sam3_advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.sam3_advanced_toggle.toggled.connect(self._toggle_sam3_advanced)
 
         shape_row = QHBoxLayout()
         shape_row.setContentsMargins(0, 0, 0, 0)
@@ -153,15 +162,9 @@ class AiPrelabelDialog(QDialog):
         self.shape_combo.addItem("多边形", "polygon")
         self.shape_combo.currentIndexChanged.connect(self._on_sam3_shape_changed)
         shape_row.addWidget(self.shape_combo, 1)
+        shape_row.addWidget(self.sam3_advanced_toggle)
         model_layout.addLayout(shape_row)
 
-        self.sam3_advanced_toggle = QToolButton()
-        self.sam3_advanced_toggle.setText("高级参数")
-        self.sam3_advanced_toggle.setCheckable(True)
-        self.sam3_advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.sam3_advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
-        self.sam3_advanced_toggle.toggled.connect(self._toggle_sam3_advanced)
-        model_layout.addWidget(self.sam3_advanced_toggle)
         self.sam3_advanced_frame = QFrame()
         advanced_layout = QHBoxLayout(self.sam3_advanced_frame)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
@@ -238,6 +241,7 @@ class AiPrelabelDialog(QDialog):
         process_row.addWidget(self.replace_radio)
         process_row.addStretch(1)
         options_layout.addLayout(process_row)
+        options_layout.addStretch(1)
         top_row.addWidget(options_card, 2)
         root.addLayout(top_row)
 
@@ -389,7 +393,10 @@ class AiPrelabelDialog(QDialog):
             "PyTorch 模型 (*.pt);;所有文件 (*)",
         )
         if path:
-            self.model_combo.setCurrentText(self.page.display_path(path))
+            display_name = (
+                Path(path).name if is_sam3_checkpoint(path) else self.page.display_path(path)
+            )
+            self.model_combo.setCurrentText(display_name)
 
     def refresh_model_choices(self, preferred_model: str = "") -> None:
         project_root = self.page.project_root()
@@ -415,7 +422,7 @@ class AiPrelabelDialog(QDialog):
             resolved_text = str(resolved_path)
             if resolved_text in seen:
                 continue
-            display_name = simplified_model_path(resolved_text, project_root)
+            display_name = resolved_path.name
             self._model_display_paths[display_name] = resolved_path
             display_names.append(display_name)
             seen.add(resolved_text)
@@ -594,6 +601,7 @@ class AiPrelabelDialog(QDialog):
             self.sam3_simplify_spin.setValue(self.saved_sam3_polygon_simplify_ratio * 100.0)
             self.conf_spin.setToolTip("SAM 3 概念分割置信度阈值")
             self.iou_spin.setToolTip("不同文本类别结果的 mask 去重阈值")
+            self.threshold_widget.setVisible(False)
             self.shape_label.setVisible(True)
             self.shape_combo.setVisible(True)
             self.sam3_advanced_toggle.setVisible(True)
@@ -603,6 +611,7 @@ class AiPrelabelDialog(QDialog):
             self.iou_spin.setValue(self.saved_iou)
             self.conf_spin.setToolTip("YOLO 置信度阈值")
             self.iou_spin.setToolTip("YOLO NMS IoU 阈值")
+            self.threshold_widget.setVisible(True)
             self.sam3_advanced_toggle.setVisible(False)
             self.sam3_advanced_frame.setVisible(False)
             self.shape_label.setVisible(False)

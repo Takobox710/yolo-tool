@@ -157,6 +157,9 @@ yolo_tool/
 - 若主窗口已在空闲阶段预热标注页，可提前准备首张图片与首批列表项，减少真正切入标注页时先见空画布的闪动；但后续批量渲染与后台标注状态扫描仍要继续补齐完整列表。
 - 标注页图片列表若改用 `setItemWidget(...)` 装配只读勾选框与文件名，底层 `QListWidgetItem` 本身应只保留数据角色，不再重复绘制同名文本，避免出现叠字；只读勾选框保持正常启用样式，不应做成禁用发灰控件。
 - AI 预标注结果优先写回页面内部标注对象并保存 Labelme；按设置决定是否同步导出 YOLO。
+- `AiPrelabelDialog` 顶部“范围与模式”卡片使用底部伸缩空间承接额外高度，标题、范围选择和处理模式保持紧凑排列，避免窗口变高时控件行间出现过大空隙。
+- `AiPrelabelDialog` 根据模型后端切换参数布局：YOLO 显示置信度与 NMS IoU，SAM 3 隐藏这组普通模型控件，并将高级参数开关放在标注形状选择右侧；SAM 3 的内部置信度与 mask 去重 IoU 仍由已保存值承接推理协议。
+- AI 预标注模型选择使用显示名到绝对路径的映射；SAM 3 的显示名固定为 checkpoint 文件名，避免将项目目录结构暴露在下拉框中。
 - `sam_assist.py` 是不依赖 Qt 的 SAM 模型目录与几何服务：按项目优先级解析 SAM 2/2.1 checkpoint 和 Hydra 配置，将最大外轮廓转换为简化多边形、轴对齐矩形及角点顺序稳定的普通 OBB。
 - `sam_runtime.py` 延迟导入 Torch、SAM2、OpenCV 与 Pillow，长期保留当前模型及图片 embedding；CUDA 使用 `torch.inference_mode()` 与 bfloat16 autocast，CPU 作为性能较低的兼容回退。模型切换和页面生命周期结束时清理 predictor/model、执行垃圾回收并释放 CUDA cache；关闭 SAM 开关只停止预览和推理，不终止页面运行时。
 

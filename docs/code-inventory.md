@@ -4,8 +4,8 @@
 
 ## 目录摘要
 
-- `src`: 264 个文件，34097 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
-- `docs`: 8 个文件，843 行文本；架构、规格、打包与代码清单文档。
+- `src`: 262 个文件，34023 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `docs`: 8 个文件，848 行文本；架构、规格、打包与代码清单文档。
 - `installer`: 15 个文件，2299 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
@@ -13,7 +13,7 @@
 | 路径 | 行数 | 说明 |
 | --- | ---: | --- |
 | `AGENTS.md` | 176 | 本仓库 AI 执行约束与开发规则。 |
-| `README.md` | 423 | 项目概览、命令入口与使用说明。 |
+| `README.md` | 425 | 项目概览、命令入口与使用说明。 |
 | `pixi.toml` | 71 | Pixi 环境、依赖与任务命令定义。 |
 | `src/__init__.py` | 1 | 仓库文件。 |
 | `src/app.py` | 8 | 仓库文件。 |
@@ -26,8 +26,6 @@
 | `src/bootstrap/app_factory.py` | 7 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/cli_dispatch.py` | 110 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/handlers.py` | 45 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
-| `src/data/runtime/app_state.json` | 3 | 仓库文件。 |
-| `src/data/runtime/settings.json` | 119 | 仓库文件。 |
 | `src/devtools/__init__.py` | 1 | 仓库文件。 |
 | `src/devtools/base_runtime_package.py` | 29 | 仓库文件。 |
 | `src/devtools/companion_catalog.py` | 94 | 仓库文件。 |
@@ -158,7 +156,7 @@
 | `src/tests/services/validation/test_prediction_services.py` | 265 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/annotation/test_annotation_page.py` | 1309 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/annotation/test_annotation_page.py` | 1348 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data_processing/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data_processing/test_model_export_tab.py` | 180 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data_processing/test_resize_tab.py` | 97 | pytest 测试、结构约束与回归用例。 |
@@ -181,7 +179,7 @@
 | `src/ui/features/annotation/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/actions.py` | 73 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/ai/__init__.py` | 1 | 按功能分包的页面真实实现。 |
-| `src/ui/features/annotation/ai/dialog.py` | 833 | 按功能分包的页面真实实现。 |
+| `src/ui/features/annotation/ai/dialog.py` | 842 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/ai/image_selection_dialog.py` | 285 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/ai/mapping.py` | 189 | 按功能分包的页面真实实现。 |
 | `src/ui/features/annotation/ai/preferences.py` | 112 | 按功能分包的页面真实实现。 |
@@ -279,9 +277,9 @@
 | `src/ui/shell/program_log.py` | 27 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/style.py` | 7 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/window.py` | 296 | 主窗口壳层、样式与页面协调。 |
-| `docs/architecture.md` | 250 | 项目架构、打包与维护文档。 |
+| `docs/architecture.md` | 253 | 项目架构、打包与维护文档。 |
 | `docs/packaging-windows.md` | 125 | 项目架构、打包与维护文档。 |
-| `docs/spec/annotation.md` | 148 | 页面与功能规格说明。 |
+| `docs/spec/annotation.md` | 150 | 页面与功能规格说明。 |
 | `docs/spec/data-processing.md` | 84 | 页面与功能规格说明。 |
 | `docs/spec/home.md` | 43 | 页面与功能规格说明。 |
 | `docs/spec/settings.md` | 49 | 页面与功能规格说明。 |

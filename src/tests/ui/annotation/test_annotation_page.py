@@ -1162,7 +1162,10 @@ def test_ai_prelabel_dialog_switches_to_sam3_text_prompts(tmp_path):
 
     page = _show_annotation_page(AnnotationPage(fake_app), app)
     dialog = AiPrelabelDialog(page)
-    dialog.model_combo.setCurrentText(str(model_path))
+    dialog.refresh_model_choices(str(model_path))
+    assert dialog.model_combo.currentText() == "sam3.pt"
+    assert dialog.model_combo.findText(str(model_path)) == -1
+    assert dialog.resolved_model_path() == str(model_path.resolve())
     dialog.reload_model_labels()
 
     assert dialog.active_backend == "sam3"
@@ -1175,6 +1178,42 @@ def test_ai_prelabel_dialog_switches_to_sam3_text_prompts(tmp_path):
     ]
     assert [edit.text() for edit in dialog.sam3_prompt_edits] == ["weld", "scratch"]
     assert all(check.isChecked() for check in dialog.sam3_checks)
+    dialog.show()
+    app.processEvents()
+    assert dialog.threshold_widget.isHidden() is True
+    assert dialog.sam3_advanced_toggle.isHidden() is False
+    assert dialog.sam3_advanced_toggle.geometry().top() == dialog.shape_combo.geometry().top()
+    dialog._set_backend_controls("yolo")
+    assert dialog.threshold_widget.isVisible() is True
+    dialog.close()
+
+
+def test_ai_prelabel_dialog_keeps_scope_controls_compact(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication, QLabel
+    from src.ui.features.annotation.page import AiPrelabelDialog, AnnotationPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+
+    page = AnnotationPage(fake_app)
+    dialog = AiPrelabelDialog(page)
+    dialog.reload_model_labels = lambda: None
+    dialog.resize(700, 620)
+    dialog.show()
+    app.processEvents()
+
+    options_title = next(
+        label for label in dialog.findChildren(QLabel) if label.text() == "范围与模式"
+    )
+    assert dialog.range_combo.geometry().top() - options_title.geometry().bottom() <= 16
+    assert dialog.append_radio.geometry().top() - dialog.range_combo.geometry().bottom() <= 16
     dialog.close()
 
 
