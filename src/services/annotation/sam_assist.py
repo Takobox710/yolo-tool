@@ -15,6 +15,11 @@ class SamModelSpec:
     display_name: str
     checkpoint_path: Path
     config_name: str
+    runtime_kind: str = "unknown"
+
+    @property
+    def supports_assist(self) -> bool:
+        return self.runtime_kind in {"sam2", "sam3"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,33 +50,79 @@ _ARCHITECTURES = (
     ("hiera_l", "l", "Large"),
 )
 
+_SAM1_ARCHITECTURES = (
+    ("sam_vit_h", "SAM ViT-H"),
+    ("sam_vit_l", "SAM ViT-L"),
+    ("sam_vit_b", "SAM ViT-B"),
+    ("sam_vit_t", "SAM ViT-T"),
+)
+
 
 def sam_model_spec_from_path(path: Path) -> SamModelSpec | None:
     checkpoint = Path(path)
     name = checkpoint.name.lower()
-    if checkpoint.suffix.lower() != ".pt" or not re.match(r"^sam2(?:[._-]?1)?", name):
+    if checkpoint.suffix.lower() != ".pt" or not name.startswith("sam"):
         return None
 
-    architecture = next(
+    normalized_stem = checkpoint.stem.lower()
+    if normalized_stem == "sam3":
+        return SamModelSpec(
+            key=checkpoint.name,
+            display_name="SAM 3",
+            checkpoint_path=checkpoint.resolve(),
+            config_name="",
+            runtime_kind="sam3",
+        )
+
+    sam2_match = re.match(r"^sam2(?:[._-]?1)?[_-]hiera[_-]", normalized_stem)
+    if sam2_match:
+        architecture = next(
+            (
+                (config_suffix, display_suffix)
+                for marker, config_suffix, display_suffix in _ARCHITECTURES
+                if normalized_stem.endswith(marker)
+                and len(normalized_stem) > len(marker)
+                and normalized_stem[-len(marker) - 1] in "_.-"
+            ),
+            None,
+        )
+        if architecture is not None:
+            config_suffix, display_suffix = architecture
+            is_sam21 = bool(re.match(r"^sam2[._-]?1[_-]", normalized_stem))
+            version = "sam2.1" if is_sam21 else "sam2"
+            config_name = f"configs/{version}/{version}_hiera_{config_suffix}.yaml"
+            display_version = "SAM 2.1" if is_sam21 else "SAM 2"
+            return SamModelSpec(
+                key=checkpoint.name,
+                display_name=f"{display_version} {display_suffix}",
+                checkpoint_path=checkpoint.resolve(),
+                config_name=config_name,
+                runtime_kind="sam2",
+            )
+
+    sam1_display_name = next(
         (
-            (config_suffix, display_suffix)
-            for marker, config_suffix, display_suffix in _ARCHITECTURES
-            if marker in name
+            display_name
+            for marker, display_name in _SAM1_ARCHITECTURES
+            if re.fullmatch(rf"{re.escape(marker)}(?:_[0-9a-f]{{6}})?", normalized_stem)
         ),
         None,
     )
-    if architecture is None:
-        return None
-    config_suffix, display_suffix = architecture
-    is_sam21 = name.startswith(("sam2.1", "sam2_1", "sam2-1"))
-    version = "sam2.1" if is_sam21 else "sam2"
-    config_name = f"configs/{version}/{version}_hiera_{config_suffix}.yaml"
-    display_version = "SAM 2.1" if is_sam21 else "SAM 2"
+    if sam1_display_name is not None:
+        return SamModelSpec(
+            key=checkpoint.name,
+            display_name=sam1_display_name,
+            checkpoint_path=checkpoint.resolve(),
+            config_name="",
+        )
+
+    # A user-renamed checkpoint is still useful to show, but its architecture
+    # cannot be inferred safely from the filename.
     return SamModelSpec(
         key=checkpoint.name,
-        display_name=f"{display_version} {display_suffix}",
+        display_name=checkpoint.name,
         checkpoint_path=checkpoint.resolve(),
-        config_name=config_name,
+        config_name="",
     )
 
 

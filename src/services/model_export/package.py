@@ -31,7 +31,6 @@ from src.services.model_export.archive_extract import (
     extract_zip,
 )
 from src.services.model_export.probe import probe_packages
-from src.services.model_export.verification import verify_installed_extension
 from src.services.runtime.install_instance import instance_extensions_root
 
 
@@ -239,7 +238,7 @@ def _install_archive_package(
         if progress is not None:
             progress("读取环境包清单", 5)
         try:
-            manifest, native_integrity = (
+            manifest = (
                 extract_7z(
                     archive_path,
                     staging,
@@ -253,28 +252,13 @@ def _install_archive_package(
                     ),
                 )
                 if archive_path.suffix.lower() == ".7z"
-                else (extract_zip(archive_path, staging, manifest), False)
+                else extract_zip(archive_path, staging, manifest)
             )
         except ArchiveExtractionError as exc:
             raise ExtensionPackageError(str(exc)) from exc
         if progress is not None:
             progress("解压附加环境", 95)
         installed = _installed_from_manifest(staging, manifest)
-        if native_integrity:
-            if progress is not None:
-                progress("原生 7-Zip 完整性校验通过", 97)
-        else:
-            verify_installed_extension(
-                installed,
-                progress=(
-                    None
-                    if progress is None
-                    else lambda message, value: progress(
-                        message, 95 + int((value - 65) * 2 / 20)
-                    )
-                ),
-                error_factory=ExtensionPackageError,
-            )
         if progress is not None:
             progress("探测 TensorRT 环境", 99)
         probe(installed.package_dir)

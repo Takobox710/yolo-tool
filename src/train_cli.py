@@ -751,6 +751,7 @@ def _run_sam_assist_runtime_cli_impl(argv: list[str]) -> int:
                         str(command.get("checkpoint_path") or ""),
                         str(command.get("config_name") or ""),
                         int(command.get("model_generation") or 0),
+                        str(command.get("runtime_kind") or "sam2"),
                     )
                     emit_response(request_id, result)
                     continue
@@ -768,6 +769,10 @@ def _run_sam_assist_runtime_cli_impl(argv: list[str]) -> int:
                         float(command.get("y") or 0.0),
                         int(command.get("image_generation") or 0),
                         int(command.get("model_generation") or 0),
+                        bool(command.get("multimask_output", False)),
+                        float(command.get("minimum_score") or 0.0),
+                        int(command.get("minimum_area") or 4),
+                        float(command.get("simplification_ratio") or 0.002),
                     )
                     result["x"] = float(command.get("x") or 0.0)
                     result["y"] = float(command.get("y") or 0.0)

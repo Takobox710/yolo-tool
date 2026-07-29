@@ -16,9 +16,9 @@
 - 测试代码放在 `src/tests/` 目录下。
 - UI 测试按 `src/tests/ui/<domain>/` 分目录维护；服务层测试按 `src/tests/services/<domain>/` 分目录维护；结构围栏测试放在 `src/tests/architecture/`。
 - 不要把 `.pixi/`、`dist/`、`build/`、缓存目录、模型训练产物加入 git。
-- 需要提交或推送改动时使用 `github-push-workflow` skill；完成所有任务后只做一次总提交，不要中途零散提交。
+- 需要提交或推送改动时使用 `github-push-workflow` skill；普通改动完成一批任务后只做一次总提交，不要中途零散提交；版本归档按 skill 明确的预提交例外执行。
 - 修改任何会影响行为、结构、入口、打包方式、设置字段、测试组织、页面布局或用户操作流程的代码后，必须同步检查并更新受影响文档；至少包括 `docs/spec/*.md`、`docs/architecture.md`、`docs/packaging-windows.md`、`README.md` 与 `docs/code-inventory.md` 中相关文件。禁止只改代码不更新文档。
-- 每次对话产生改动后都必须检查根目录 `CHANGELOG.md`；用户可见行为、维护结构、入口、打包、设置字段、测试组织或版本结果变化必须记录。记录格式和提交前归并规则统一由 `github-push-workflow` skill 执行。
+- 每次对话产生改动后都必须检查根目录 `CHANGELOG.md`；用户可见行为、维护结构、入口、打包、设置字段、测试组织或版本结果变化必须记录。`# [Unreleased] > ## 待提交改动` 的每条记录必须使用实际本地时间，严格采用 `- yyyy/MM/dd HH:mm：改动说明`，最新记录置顶；移入 `## 提交记录` 时删除时间前缀。
 - 如果编译或测试错误连续出现 5 次仍未解决，必须立即停止并向人类报告，严禁盲猜死循环。
 - 不改变公开入口：`pixi run app`、`pixi run test`、`pixi run check`、`python -m src.main`；`pixi run app-qt` 只是同一 GUI 入口的兼容别名。
 - 打包后训练/导出/验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val`，由 `src/bootstrap/cli_dispatch.py` 转发到 `src/train_cli.py`。
@@ -65,17 +65,20 @@ yolo_tool/
 ## GitHub 推送流程 Skill
 
 - 本项目使用 `github-push-workflow` skill 处理 Git 提交、GitHub 推送、CHANGELOG 归并、普通提交哈希回填和 `X.Y.Z` 版本归档；准备提交前必须先阅读根目录 `CHANGELOG.md`，再结合当前 `git diff` 汇总，不能只依赖对话记忆。
-- 完成一批任务后只创建一次总提交，只纳入当前任务相关文件；已有用户改动、无关文件、缓存、构建产物和训练产物不得擅自纳入。
+- 完成一批普通改动后只创建一次总提交，只纳入当前任务相关文件；已有用户改动、无关文件、缓存、构建产物和训练产物不得擅自纳入。版本归档需要预提交时，以 skill 的版本归档流程为例外。
 - 每次对话产生改动后都要检查 `CHANGELOG.md`。用户可见行为、维护结构、入口、打包、设置字段、测试组织或版本结果变化必须记录；只运行测试/检查、阅读分析、格式修正、空白或注释调整，以及不改变行为的内部整理通常不单独记录。
+- CHANGELOG 与提交说明只写具体的最终行为、修复、维护规则或发布结果；禁止单独写“同步更新架构、规格、README、代码清单”“补充回归测试”“测试通过”等泛化清单，除非该条目同时说明了具体且有维护价值的变化。
+- 普通 Git 提交的 body 必须逐字等于归并后 CHANGELOG 提交条目下的正文，包含相同的项目符号、顺序和具体内容；不得为了提交而额外压缩、改写或补充摘要。提交前后必须核对两者一致；不一致时必须停止提交并修正。
+- 普通提交默认推送当前分支的远程跟踪分支；用户明确禁止推送、远程分叉或无法确认改动归属时必须停止，不得强制推送、自动创建 tag/Release 或修改远程设置。
 - 用户明确调用该 skill 后，可以直接要求“提交改动”或“更新项目版本为 `X.Y.Z`”；不要求先执行初始化对话。第一次在项目中使用时，skill 负责补齐本节规则和 `CHANGELOG.md` 初始结构。
 - 普通提交的稳定哈希只允许直接回填到本地工作树，不为回填创建第二次提交或推送；版本归档提交自身不写入 `CHANGELOG.md`，也不回填该提交哈希。
-- 详细执行顺序、提交标题与正文格式、推送限制、版本归档和哈希处理规则只维护在 skill 中；本文件只保留本项目约束。
+- skill 保留完整执行顺序和命令细节；本文件必须保留时间格式、CHANGELOG 与 Git body 一致性、低价值总结过滤、普通提交推送安全边界和版本归档例外等关键项目约束。
 
 ## 版本发布适配
 
 - 用户要求“更新项目版本为 `X.Y.Z`”时，除更新 `CHANGELOG.md` 版本块外，必须同步更新程序版本源 `src/__init__.py` 的 `APP_VERSION` 与安装器版本源 `installer/yolo_tool.iss` 的 `MyAppVersion`。
 - 同步检查并更新受影响的版本断言、发布脚本、安装器配置和文档；`installer/package_windows.ps1` 会从 `APP_VERSION` 传递安装器版本，但 `yolo_tool.iss` 的默认兜底值仍必须保持一致。
-- 版本归档提交前必须执行完整正式打包：`powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Clean -BuildBaseRuntimeModels -BuildModelExportRuntime`。该命令生成程序安装器、基础环境包和附加环境包；打包失败时停止版本归档，不提交、不推送，并报告失败原因。
+- 版本归档提交前必须执行完整正式打包：`pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Clean -BuildBaseRuntimeModels -BuildModelExportRuntime`。该命令生成程序安装器、基础环境包和附加环境包；打包失败时停止版本归档，不提交、不推送，并报告失败原因。
 - 基础环境、运行时协议和附加环境包版本只有在对应内容或协议实际变化时才更新，不因程序版本变更机械递增。
 
 ## AI 修改流程
@@ -134,25 +137,25 @@ pixi run check
 构建程序更新用的冻结程序和 `Program` staging：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -PackageType Program -ProgramOnly -Clean
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -PackageType Program -ProgramOnly -Clean
 ```
 
 本地开发快包（输出到 `dist/YOLOTool-dev/`，不作为用户发布物）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
 普通程序更新（复用已有基础环境包）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1
 ```
 
 完整发布（程序安装器、基础环境包和附加环境包）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
 ```
 
 ## 测试重点

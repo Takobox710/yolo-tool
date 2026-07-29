@@ -38,19 +38,17 @@ def test_base_runtime_uses_parallel_python_source_copy_with_fallback():
     assert "for source in sorted(site_packages.rglob(\"*.py\"))" in source
 
 
-def test_component_page_uses_fast_candidate_checks_and_defers_hashing():
+def test_component_page_uses_environment_version_without_archive_hashing():
     source = INSTALLER.read_text(encoding="utf-8")
-    refresh = _section(source, "procedure RefreshComponentPage();", "procedure BrowseBaseClick")
     prepare = _section(source, "function PrepareToInstall", "procedure CurStepChanged")
 
-    assert "GetSHA256OfFile" not in refresh
-    assert "FileSize64(FileName, ActualSize)" in source
-    assert "BaseCompressedSize" in source
-    assert "ExtensionCompressedSize" in source
-    assert "VerifyArchiveHash(BaseArchivePath" in prepare
-    assert "VerifyArchiveHash(ExtensionArchivePath" in prepare
-    assert "BeginArchiveVerification('正在验证本体环境包，请稍候...');" in prepare
-    assert "ProgressGauge.Style := npbstMarquee" in source
+    assert "GetSHA256OfFile" not in source
+    assert "FileSize64(FileName, ActualSize)" not in source
+    assert "IsVersionedArchiveCandidate(BaseArchivePath" in source
+    assert "IsVersionedArchiveCandidate(ExtensionArchivePath" in source
+    assert "BaseCompressedSize" not in source
+    assert "ExtensionCompressedSize" not in source
+    assert "VerifyArchiveHash" not in prepare
 
 
 def test_installer_requires_base_for_first_install_and_cleans_up_on_finish():
@@ -96,15 +94,12 @@ def test_installer_has_nonblocking_directory_and_safe_cancel_contract():
     assert "TransactionAppDir" in source
 
 
-def test_installer_uses_named_uninstaller_and_visible_verification_page():
+def test_installer_uses_named_uninstaller_without_archive_verification_page():
     source = INSTALLER.read_text(encoding="utf-8")
 
     assert 'Type: files; Name: "{app}\\uninstall.exe"' in source
     assert 'Type: files; Name: "{app}\\uninstall.dat"' in source
-    assert "VerificationPage: TOutputProgressWizardPage" in source
-    assert "CreateOutputProgressPage('正在验证安装包'" in source
-    assert "VerificationPage.Show" in source
-    assert "VerificationPage.Hide" in source
+    assert "VerificationPage: TOutputProgressWizardPage" not in source
     assert "Uninstaller := ExpandConstant('{app}\\uninstall.exe')" in source
     assert "RenameUninstallerFiles()" in source
 
@@ -166,6 +161,21 @@ def test_program_update_build_uses_program_only_output_without_runtime_layer():
     assert 'Remove-Item -LiteralPath $AppDir -Recurse -Force' in build_script
     assert '仅程序输出异常包含 _internal' in build_script
     assert '"sam2.1_hiera_base_plus.pt"' in build_script
+
+
+def test_full_packaging_rebuilds_program_only_installer_after_base_runtime():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+
+    base_build = package_script.index("build_base_runtime_models.ps1")
+    program_only_rebuild = package_script.index(
+        "正在重新构建仅程序 EXE 和程序 staging"
+    )
+    assert program_only_rebuild > base_build
+    assert "-Clean -PackageType Program `" in package_script
+    assert "-ProgramOnly `" in package_script
+    assert "runtime-free program EXE" in package_script
+    assert 'Join-Path $ProgramStaging "_internal"' in package_script
+    assert "拒绝生成重复携带运行环境的安装器" in package_script
 
 
 def test_full_frozen_build_writes_standalone_runtime_manifests():

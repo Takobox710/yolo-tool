@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import zipfile
 from pathlib import Path
@@ -13,12 +12,16 @@ def _write_package(
     path: Path,
     *,
     version: str = "runtime-1",
-    digest: str | None = None,
     extra_name: str | None = None,
     protocol_version: int = 1,
+    legacy_hash_manifest: bool = False,
 ) -> Path:
     payload = b"runtime"
-    file_digest = digest or hashlib.sha256(payload).hexdigest()
+    files = (
+        {"packages/backend.py": "0" * 64}
+        if legacy_hash_manifest
+        else ["packages/backend.py"]
+    )
     manifest = {
         "schema_version": 1,
         "package_id": "yolo-tool-model-export-runtime",
@@ -29,7 +32,7 @@ def _write_package(
         "package_dir": "packages",
         "supported_formats": ["engine"],
         "dll_dirs": [],
-        "files": {"packages/backend.py": file_digest},
+        "files": files,
     }
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("extension-manifest.json", json.dumps(manifest))
@@ -129,25 +132,14 @@ def test_native_7z_reports_incremental_extraction_progress(tmp_path, monkeypatch
     assert "-bd" not in command
 
 
-def test_native_7z_install_uses_archive_crc_without_second_file_hash_pass(
-    tmp_path, monkeypatch
-):
-    from src.services.model_export import package as package_service
-    from src.services.model_export.native_archive import find_native_7z
+def test_7z_install_uses_archive_crc_without_file_hash_pass(tmp_path):
     from src.services.model_export import install_extension_package
 
-    if find_native_7z() is None:
-        pytest.skip("native 7-Zip is not available in this environment")
     package = _convert_to_7z(
         _write_package(tmp_path / "source.zip"),
         tmp_path / "runtime.7z",
         tmp_path,
     )
-
-    def fail_if_called(*_args, **_kwargs):
-        raise AssertionError("native 7-Zip should make a second SHA-256 pass unnecessary")
-
-    monkeypatch.setattr(package_service, "verify_installed_extension", fail_if_called)
     installed = install_extension_package(
         package,
         base_root=tmp_path / "extensions",
@@ -179,14 +171,25 @@ def test_extension_package_installs_and_switches_active_version(tmp_path):
     assert (base / "model-export-runtime" / "active.ini").is_file()
 
 
-def test_extension_package_rejects_hash_mismatch_and_unlisted_files(tmp_path):
+def test_legacy_hashed_manifest_is_read_without_hash_validation(tmp_path):
+    from src.services.model_export import install_extension_package
+
+    installed = install_extension_package(
+        _write_package(
+            tmp_path / "legacy.zip",
+            legacy_hash_manifest=True,
+        ),
+        base_root=tmp_path / "extensions",
+        probe=lambda _entry: {"protocol_version": 1, "ok": True},
+    )
+
+    assert installed.manifest["files"] == ["packages/backend.py"]
+
+
+def test_extension_package_rejects_unlisted_files(tmp_path):
     from src.services.model_export import ExtensionPackageError, install_extension_package
 
     probe = lambda _entry: {"protocol_version": 1, "ok": True}
-    bad_hash = _write_package(tmp_path / "bad-hash.zip", digest="0" * 64)
-    with pytest.raises(ExtensionPackageError, match="校验失败"):
-        install_extension_package(bad_hash, base_root=tmp_path / "hash-root", probe=probe)
-
     extra = _write_package(tmp_path / "extra.zip", extra_name="packages/unlisted.dll")
     with pytest.raises(ExtensionPackageError, match="未登记文件"):
         install_extension_package(extra, base_root=tmp_path / "extra-root", probe=probe)

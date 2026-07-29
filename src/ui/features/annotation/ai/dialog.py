@@ -695,6 +695,7 @@ class AiPrelabelDialog(QDialog):
             if not mapping:
                 QMessageBox.warning(self, "AI 预标注", "请至少匹配一个模型类别到标注类别。")
                 return
+        self.page.sam_assist.release_for_ai_prelabel()
         self._snapshot_targets(targets)
         self.original_class_names = list(self.page.class_names())
         self.progress_bar.setValue(0)

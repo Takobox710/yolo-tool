@@ -7,12 +7,6 @@
 #ifndef BasePackageName
 #define BasePackageName ""
 #endif
-#ifndef BasePackageHash
-#define BasePackageHash ""
-#endif
-#ifndef BaseCompressedSize
-#define BaseCompressedSize "0"
-#endif
 #ifndef BasePackageVersion
 #define BasePackageVersion ""
 #endif
@@ -24,12 +18,6 @@
 #endif
 #ifndef ExtensionPackageName
 #define ExtensionPackageName ""
-#endif
-#ifndef ExtensionPackageHash
-#define ExtensionPackageHash ""
-#endif
-#ifndef ExtensionCompressedSize
-#define ExtensionCompressedSize "0"
 #endif
 #ifndef ExtensionPackageVersion
 #define ExtensionPackageVersion ""
@@ -154,11 +142,8 @@ var
   RootModelTouched: Boolean;
   BaseArchiveChecked: Boolean;
   BaseArchiveValid: Boolean;
-  BaseArchiveHashVerified: Boolean;
   ExtensionArchiveChecked: Boolean;
   ExtensionArchiveValid: Boolean;
-  ExtensionArchiveHashVerified: Boolean;
-  VerificationPage: TOutputProgressWizardPage;
 
 function NormalizeInstallPath(const Value: String): String;
 begin
@@ -284,69 +269,22 @@ begin
     AddBackslash(Root) + 'model-export-runtime\active.ini');
 end;
 
-function IsArchiveCandidate(const FileName, ExpectedName,
-  ExpectedSize: String): Boolean;
-var
-  ActualSize: Int64;
+function IsVersionedArchiveCandidate(const FileName, ExpectedName: String): Boolean;
 begin
   Result := False;
   if (FileName = '') or (ExpectedName = '') or not FileExists(FileName) then
     exit;
   if CompareText(ExtractFileName(FileName), ExpectedName) <> 0 then
     exit;
-  if CompareText(ExtractFileExt(FileName), '.7z') <> 0 then
-    exit;
-  Result := FileSize64(FileName, ActualSize) and
-    (ActualSize = StrToInt64Def(ExpectedSize, -1));
-end;
-
-function VerifyArchiveHash(const FileName, ExpectedHash: String): Boolean;
-begin
-  Result := False;
-  if (FileName = '') or (ExpectedHash = '') or not FileExists(FileName) then
-    exit;
-  try
-    Result := CompareText(GetSHA256OfFile(FileName), ExpectedHash) = 0;
-  except
-    Result := False;
-  end;
-end;
-
-procedure BeginArchiveVerification(const Message: String);
-begin
-  if VerificationPage <> nil then
-  begin
-    VerificationPage.SetText(Message,
-      '正在读取压缩包 SHA-256 校验值，请稍候...');
-    VerificationPage.SetProgress(0, 1);
-    VerificationPage.Show;
-  end;
-  WizardForm.StatusLabel.Caption := Message;
-  WizardForm.FilenameLabel.Caption := '正在读取压缩包校验值，请稍候...';
-  WizardForm.ProgressGauge.Style := npbstMarquee;
-  WizardForm.ProgressGauge.Visible := True;
-  WizardForm.Update;
-end;
-
-procedure EndArchiveVerification();
-begin
-  if VerificationPage <> nil then
-  begin
-    VerificationPage.SetProgress(1, 1);
-    VerificationPage.Hide;
-  end;
-  WizardForm.ProgressGauge.Style := npbstNormal;
-  WizardForm.ProgressGauge.Position := 0;
-  WizardForm.FilenameLabel.Caption := '';
-  WizardForm.Update;
+  Result := CompareText(ExtractFileExt(FileName), '.7z') = 0;
 end;
 
 function IsValidBaseArchive(): Boolean;
 begin
   if not BaseArchiveChecked then
   begin
-    BaseArchiveValid := IsArchiveCandidate(BaseArchivePath,
-      '{#BasePackageName}', '{#BaseCompressedSize}');
+    BaseArchiveValid := IsVersionedArchiveCandidate(BaseArchivePath,
+      '{#BasePackageName}');
     BaseArchiveChecked := True;
   end;
   Result := BaseArchiveValid;
@@ -356,8 +294,8 @@ function IsValidExtensionArchive(): Boolean;
 begin
   if not ExtensionArchiveChecked then
   begin
-    ExtensionArchiveValid := IsArchiveCandidate(ExtensionArchivePath,
-      '{#ExtensionPackageName}', '{#ExtensionCompressedSize}');
+    ExtensionArchiveValid := IsVersionedArchiveCandidate(ExtensionArchivePath,
+      '{#ExtensionPackageName}');
     ExtensionArchiveChecked := True;
   end;
   Result := ExtensionArchiveValid;
@@ -452,10 +390,10 @@ begin
   begin
     BaseStatus.Font.Color := clGreen;
     if BaseIsRequired then
-      BaseStatus.Caption := '已找到必需基础包 {#BasePackageVersion}，安装时将进行完整校验。'
+    BaseStatus.Caption := '已找到必需基础包 {#BasePackageVersion}，安装时将按版本安装。'
     else
       BaseStatus.Caption := '当前环境 ' + ExistingRuntimeVersion +
-        ' 可继续使用；已找到基础包，安装时将进行完整校验。';
+        ' 可继续使用；已找到基础包，安装时将按版本安装。';
   end
   else
   begin
@@ -477,9 +415,9 @@ begin
     ExtensionStatus.Font.Color := clGreen;
     if ExistingExtensionVersion <> '' then
       ExtensionStatus.Caption := '已安装 ' + ExistingExtensionVersion +
-        '；可选替换为 {#ExtensionPackageVersion}，安装时将进行完整校验。'
+        '；可选替换为 {#ExtensionPackageVersion}，安装时将按版本替换。'
     else
-      ExtensionStatus.Caption := '检测到可选附加包 {#ExtensionPackageVersion}，安装时将进行完整校验。';
+      ExtensionStatus.Caption := '检测到可选附加包 {#ExtensionPackageVersion}，安装时将按版本安装。';
   end
   else
   begin
@@ -502,7 +440,6 @@ begin
   begin
     BaseArchivePath := Selected;
     BaseArchiveChecked := False;
-    BaseArchiveHashVerified := False;
     RefreshComponentPage();
   end;
 end;
@@ -517,7 +454,6 @@ begin
   begin
     ExtensionArchivePath := Selected;
     ExtensionArchiveChecked := False;
-    ExtensionArchiveHashVerified := False;
     RefreshComponentPage();
   end;
 end;
@@ -612,8 +548,6 @@ begin
   ExtensionStatus.AutoSize := False;
   ExtensionStatus.WordWrap := True;
   ExtensionStatus.Height := 34;
-  VerificationPage := CreateOutputProgressPage('正在验证安装包',
-    '安装程序即将验证本地环境包，请稍候...');
   WizardInitialized := True;
 end;
 
@@ -1265,19 +1199,7 @@ begin
   begin
     if not IsValidBaseArchive() then
     begin
-      Result := '本体环境和模型包缺失、名称不匹配或文件大小不正确。';
-      exit;
-    end;
-    if not BaseArchiveHashVerified then
-    begin
-      BeginArchiveVerification('正在验证本体环境包，请稍候...');
-      BaseArchiveHashVerified := VerifyArchiveHash(BaseArchivePath,
-        '{#BasePackageHash}');
-      EndArchiveVerification();
-    end;
-    if not BaseArchiveHashVerified then
-    begin
-      Result := '本体环境和模型包 SHA-256 校验失败。';
+      Result := '本体环境和模型包缺失、版本名称不匹配或文件不可用。';
       exit;
     end;
     RequiredBytes := StrToInt64Def('{#BaseUnpackedSize}', 0) + 536870912;
@@ -1293,18 +1215,9 @@ begin
   begin
     if not IsValidExtensionArchive() then
     begin
-      Result := '模型转换附加包缺失、名称不匹配或文件大小不正确。';
+      Result := '模型转换附加包缺失、版本名称不匹配或文件不可用。';
       exit;
     end;
-    if not ExtensionArchiveHashVerified then
-    begin
-      BeginArchiveVerification('正在验证模型转换附加包，请稍候...');
-      ExtensionArchiveHashVerified := VerifyArchiveHash(ExtensionArchivePath,
-        '{#ExtensionPackageHash}');
-      EndArchiveVerification();
-    end;
-    if not ExtensionArchiveHashVerified then
-      Result := '模型转换附加包 SHA-256 校验失败。';
   end;
 end;
 

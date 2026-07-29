@@ -62,15 +62,14 @@ def validate_extension_manifest(manifest: dict) -> dict:
             raise ExtensionPackageError(f"环境包清单缺少字段：{key}")
     safe_relative_path(str(manifest["package_dir"]))
     files = manifest.get("files")
-    if not isinstance(files, dict) or not files:
-        raise ExtensionPackageError("环境包清单没有文件哈希。")
-    for relative, digest in files.items():
+    if isinstance(files, dict):
+        manifest = dict(manifest)
+        manifest["files"] = list(files)
+        files = manifest["files"]
+    if not isinstance(files, list) or not files:
+        raise ExtensionPackageError("环境包清单没有文件列表。")
+    for relative in files:
         safe_relative_path(str(relative))
-        digest_text = str(digest)
-        if len(digest_text) != 64 or any(
-            character not in "0123456789abcdefABCDEF" for character in digest_text
-        ):
-            raise ExtensionPackageError(f"环境包文件哈希无效：{relative}")
     dll_dirs = manifest.get("dll_dirs", ())
     if not isinstance(dll_dirs, list):
         raise ExtensionPackageError("环境包 DLL 目录清单无效。")

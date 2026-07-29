@@ -38,10 +38,10 @@ def extract_7z(
     manifest: dict,
     *,
     progress: Callable[[int], None] | None = None,
-) -> tuple[dict, bool]:
+) -> dict:
     try:
         extract_archive(archive_path, destination, progress=progress)
-        return manifest, True
+        return manifest
     except NativeArchiveError:
         pass
     targets = ["extension-manifest.json", *manifest["files"]]
@@ -50,4 +50,4 @@ def extract_7z(
             archive.extract(path=destination, targets=targets)
     except (OSError, py7zr.Bad7zFile) as exc:
         raise ArchiveExtractionError("无法解压 7z 模型转换环境包。") from exc
-    return manifest, False
+    return manifest

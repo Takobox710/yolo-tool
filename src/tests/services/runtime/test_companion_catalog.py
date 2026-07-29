@@ -29,9 +29,8 @@ def _build_base_archive(tmp_path):
     return archive_path
 
 
-def test_companion_catalog_records_base_identity_hash_and_size(tmp_path):
+def test_companion_catalog_records_base_version_without_archive_identity(tmp_path):
     from src.devtools.companion_catalog import build_companion_catalog
-    from src.services.runtime import sha256_file
 
     archive_path = _build_base_archive(tmp_path)
 
@@ -45,8 +44,6 @@ def test_companion_catalog_records_base_identity_hash_and_size(tmp_path):
             "manifest_schema": 1,
             "platform": "win-64",
             "architecture": "x86_64",
-            "sha256": sha256_file(archive_path),
-            "compressed_size": archive_path.stat().st_size,
             "version": "base-runtime-models-1",
             "runtime_version": "runtime-1",
             "uncompressed_size": 1234,

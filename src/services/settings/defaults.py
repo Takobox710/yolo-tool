@@ -132,7 +132,13 @@ def build_default_settings(project_root: Path = ROOT) -> AppSettings:
                 process_mode="追加",
                 custom_selected_images=[],
             ),
-            sam_assist=SamAssistSettings(model_path=""),
+            sam_assist=SamAssistSettings(
+                model_path="",
+                multimask_output=False,
+                minimum_score=0.0,
+                minimum_area=4,
+                polygon_simplification_ratio=0.002,
+            ),
         ),
         rename=RenameSettings(
             prefix="A",

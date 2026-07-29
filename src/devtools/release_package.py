@@ -14,7 +14,7 @@ from pathlib import Path
 from src.services.runtime.release_manifest import (
     MANIFEST_SCHEMA_VERSION,
     ReleaseManifestError,
-    file_hashes,
+    sha256_file,
 )
 
 
@@ -106,6 +106,15 @@ def _copy_tree(source: Path, destination: Path) -> None:
 
 def _app_files(app_root: Path, exe_name: str) -> list[str]:
     return [exe_name]
+
+
+def _relative_files(root: Path) -> list[str]:
+    base = Path(root).resolve()
+    return sorted(
+        path.relative_to(base).as_posix()
+        for path in base.rglob("*")
+        if path.is_file()
+    )
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -229,7 +238,10 @@ def build_program_package(
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "app_version": app_version,
         "required_runtime_version": required_runtime_version,
-        "app_files": file_hashes(app_root, _app_files(app_root, exe_name)),
+        "app_files": {
+            relative: sha256_file(app_root / Path(relative))
+            for relative in _app_files(app_root, exe_name)
+        },
     }
     _write_json(output_root / "release-manifest.json", release_manifest)
     (output_root / "app-version.txt").write_text(app_version + "\n", encoding="utf-8")
@@ -292,39 +304,30 @@ def build_base_runtime_layer(
     _print_elapsed("[Base] 基础模型复制完成", step_started)
 
     step_started = time.perf_counter()
-    print("[Base] 正在计算文件哈希并生成清单...", flush=True)
-    runtime_hashes = file_hashes(staging_root / "_internal")
+    print("[Base] 正在生成文件清单...", flush=True)
+    runtime_files = _relative_files(staging_root / "_internal")
     runtime_manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "runtime_version": runtime_version,
-        "files": runtime_hashes,
     }
     _write_json(staging_root / "runtime-manifest.json", runtime_manifest)
 
     models_root = staging_root / "data" / "models"
-    model_hashes = file_hashes(models_root) if models_root.is_dir() else {}
+    model_files = _relative_files(models_root) if models_root.is_dir() else []
     managed_models = {
         "schema_version": 1,
-        "files": model_hashes,
+        "files": model_files,
     }
     _write_json(staging_root / MANAGED_MODELS_NAME, managed_models)
 
-    payload_hashes = {
-        f"_internal/{relative}": digest
-        for relative, digest in runtime_hashes.items()
-    }
-    payload_hashes.update(
-        {
-            f"data/models/{relative}": digest
-            for relative, digest in model_hashes.items()
-        }
-    )
-    payload_hashes.update(
-        file_hashes(staging_root, ["runtime-manifest.json", MANAGED_MODELS_NAME])
-    )
-    payload_hashes = dict(sorted(payload_hashes.items()))
+    payload_files = [
+        *(f"_internal/{relative}" for relative in runtime_files),
+        *(f"data/models/{relative}" for relative in model_files),
+        "runtime-manifest.json",
+        MANAGED_MODELS_NAME,
+    ]
     unpacked_size = sum(
-        (staging_root / Path(relative)).stat().st_size for relative in payload_hashes
+        (staging_root / Path(relative)).stat().st_size for relative in payload_files
     )
     manifest = {
         "schema_version": BASE_PACKAGE_SCHEMA_VERSION,
@@ -334,11 +337,11 @@ def build_base_runtime_layer(
         "platform": "win-64",
         "architecture": "x86_64",
         "uncompressed_size": unpacked_size,
-        "files": payload_hashes,
+        "files": payload_files,
     }
     manifest_path = staging_root / BASE_MANIFEST_NAME
     _write_json(manifest_path, manifest)
-    _print_elapsed("[Base] 文件哈希和清单生成完成", step_started)
+    _print_elapsed("[Base] 文件清单生成完成", step_started)
     _print_elapsed("[Base] staging 构建完成", staging_started)
     return manifest_path
 

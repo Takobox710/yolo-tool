@@ -24,7 +24,7 @@ def test_remove_managed_models_preserves_user_models(tmp_path):
     user_model = models / "custom.pt"
     managed.write_bytes(b"official")
     user_model.write_bytes(b"user")
-    _write_manifest(tmp_path, {"official/yolo.pt": "ignored-hash"})
+    _write_manifest(tmp_path, ["official/yolo.pt"])
 
     removed = remove_managed_models(tmp_path)
 
@@ -38,7 +38,7 @@ def test_remove_managed_models_preserves_user_models(tmp_path):
 def test_remove_managed_models_rejects_unsafe_paths(tmp_path, relative):
     from src.services.runtime import ReleaseManifestError, remove_managed_models
 
-    _write_manifest(tmp_path, {relative: "hash"})
+    _write_manifest(tmp_path, [relative])
 
     with pytest.raises(ReleaseManifestError):
         remove_managed_models(tmp_path)

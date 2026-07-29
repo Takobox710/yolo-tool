@@ -55,6 +55,7 @@ def test_extension_manifest_supports_optional_openvino_and_ncnn_formats():
     collector = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
 
     assert '"supported_formats": ["openvino", "engine", "ncnn"]' in collector
+    assert "file_hashes" not in collector
 
 
 def test_base_runtime_bundles_native_7zip_for_fast_extension_install():

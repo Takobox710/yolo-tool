@@ -530,9 +530,11 @@ def test_annotation_page_w_shortcut_opens_draw_shape_dialog(tmp_path, monkeypatc
                 "sam_models": page.sam_assist.models,
                 "selected_sam_model": "sam2.1_hiera_base_plus.pt",
                 "sam_enabled": False,
-                "sam_toggle_callback": page.sam_assist.set_enabled,
-                "sam_model_callback": page.sam_assist.select_model,
-            },
+                    "sam_toggle_callback": page.sam_assist.set_enabled,
+                    "sam_model_callback": page.sam_assist.select_model,
+                    "sam_settings": page.sam_assist.parameters(),
+                    "sam_settings_callback": page.sam_assist.apply_parameters,
+                },
         )
     ]
 
@@ -567,6 +569,27 @@ def test_draw_shape_dialog_disables_unsupported_shapes_when_sam_enabled(tmp_path
     )
 
 
+def test_draw_shape_dialog_lists_sam3_and_preserves_custom_model_name(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation.sam_assist import sam_model_spec_from_path
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.dialogs import DrawShapeDialog
+
+    app = QApplication.instance() or QApplication([])
+    sam3 = sam_model_spec_from_path(tmp_path / "sam3.pt")
+    custom = sam_model_spec_from_path(tmp_path / "SAM_weld_custom.pt")
+    dialog = DrawShapeDialog(False, sam_models=[sam3, custom])
+
+    assert [dialog.sam_model_combo.itemText(i) for i in range(dialog.sam_model_combo.count())] == [
+        "SAM 3",
+        "SAM_weld_custom.pt",
+    ]
+    dialog.sam_model_combo.setCurrentIndex(1)
+    assert dialog.sam_switch.isEnabled() is False
+    assert dialog.sam_advanced_button.isEnabled() is False
+
+
 def test_draw_shape_dialog_applies_sam_switch_and_model_immediately(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -594,6 +617,127 @@ def test_draw_shape_dialog_applies_sam_switch_and_model_immediately(tmp_path):
     assert models == [second.key]
     assert dialog.sam_enabled is True
     assert dialog._shape_buttons["circle"].isEnabled() is False
+
+
+def test_sam_advanced_settings_dialog_restores_values_and_defaults():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.sam.settings_dialog import SamAdvancedSettingsDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = SamAdvancedSettingsDialog(
+        {
+            "multimask_output": True,
+            "minimum_score": 0.65,
+            "minimum_area": 120,
+            "polygon_simplification_ratio": 0.015,
+        },
+        "SAM 3",
+    )
+
+    assert dialog.model_value.text() == "SAM 3"
+    assert dialog.values() == {
+        "multimask_output": True,
+        "minimum_score": 0.65,
+        "minimum_area": 120,
+        "polygon_simplification_ratio": 0.015,
+    }
+
+    dialog.reset_button.click()
+
+    assert dialog.values() == {
+        "multimask_output": False,
+        "minimum_score": 0.0,
+        "minimum_area": 4,
+        "polygon_simplification_ratio": 0.002,
+    }
+
+
+def test_draw_shape_dialog_applies_advanced_sam_settings(tmp_path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation.sam_assist import sam_model_spec_from_path
+    from src.shared.qt import QApplication, QDialog
+    from src.ui.features.annotation import dialogs as annotation_dialogs
+    from src.ui.features.annotation.dialogs import DrawShapeDialog
+
+    app = QApplication.instance() or QApplication([])
+    spec = sam_model_spec_from_path(tmp_path / "sam3.pt")
+    applied = []
+
+    class FakeAdvancedDialog:
+        def __init__(self, values, model_name, parent):
+            assert values["minimum_area"] == 4
+            assert model_name == "SAM 3"
+            assert parent is dialog
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def values(self):
+            return {
+                "multimask_output": True,
+                "minimum_score": 0.6,
+                "minimum_area": 20,
+                "polygon_simplification_ratio": 0.01,
+            }
+
+    monkeypatch.setattr(annotation_dialogs, "SamAdvancedSettingsDialog", FakeAdvancedDialog)
+    dialog = DrawShapeDialog(
+        False,
+        sam_models=[spec],
+        sam_settings={"minimum_area": 4},
+        sam_settings_callback=lambda values: applied.append(values) or values,
+    )
+
+    dialog.sam_advanced_button.click()
+
+    assert applied == [dialog.sam_settings]
+    assert dialog.sam_settings["multimask_output"] is True
+
+
+def test_sam_controller_applies_parameters_without_reloading_model(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.annotation import EditableAnnotation
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.page import AnnotationPage
+
+    app = QApplication.instance() or QApplication([])
+    saves = []
+    fake_app = SimpleNamespace(
+        settings=build_default_settings(tmp_path),
+        settings_service=SimpleNamespace(save=lambda data: saves.append(data)),
+    )
+    page = AnnotationPage(fake_app)
+    controller = page.sam_assist
+    worker = object()
+    controller._worker = worker
+    controller._model_loaded = True
+    controller._image_ready = True
+    page.canvas.sam_preview_annotation = EditableAnnotation(
+        0,
+        "rect",
+        [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)],
+    )
+
+    result = controller.apply_parameters(
+        {
+            "multimask_output": True,
+            "minimum_score": 0.7,
+            "minimum_area": 30,
+            "polygon_simplification_ratio": 0.01,
+        }
+    )
+
+    assert result["minimum_score"] == 0.7
+    assert controller._worker is worker
+    assert controller._model_loaded is True
+    assert controller._image_ready is True
+    assert page.canvas.sam_preview_annotation is None
+    assert saves
 
 
 def test_sam_assist_icon_loads_from_qt_resource():
@@ -789,6 +933,10 @@ def test_sam_controller_adapts_movement_without_waiting_for_mouse_stop(tmp_path)
     controller.request_hover((30.5, 31.0), "rect")
 
     assert [(item["x"], item["y"]) for item in sent] == [(10.0, 11.0)]
+    assert sent[0]["multimask_output"] is False
+    assert sent[0]["minimum_score"] == 0.0
+    assert sent[0]["minimum_area"] == 4
+    assert sent[0]["simplification_ratio"] == 0.002
     assert controller._hover_inflight is True
     assert controller._hover_timer.isActive() is False
     assert controller._hover_payload["x"] == 30.0
@@ -1175,6 +1323,49 @@ def test_ai_prelabel_dialog_switches_to_sam3_text_prompts(tmp_path):
     ]
     assert [edit.text() for edit in dialog.sam3_prompt_edits] == ["weld", "scratch"]
     assert all(check.isChecked() for check in dialog.sam3_checks)
+    dialog.close()
+
+
+def test_ai_prelabel_releases_canvas_sam_before_starting_worker(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PIL import Image
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.page import AiPrelabelDialog, AnnotationPage
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    image_path = images_dir / "1.jpg"
+    Image.new("RGB", (32, 32), "white").save(image_path)
+    model_path = tmp_path / "data" / "models" / "model.pt"
+    model_path.parent.mkdir(parents=True)
+    model_path.write_bytes(b"model")
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    settings.dataset.class_names = ["weld"]
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+    page = _show_annotation_page(AnnotationPage(fake_app), app)
+    dialog = AiPrelabelDialog(page)
+    events = []
+    dialog.resolved_model_path = lambda: str(model_path)
+    dialog.resolved_target_images = lambda: [image_path]
+    dialog.current_range_mode = lambda: "当前图片"
+    dialog.collect_mapping = lambda: {"0": "weld"}
+    dialog._snapshot_targets = lambda _targets: None
+    dialog._ensure_runtime_worker_started = lambda: None
+    dialog.runtime_worker.start_ai_labeling = lambda _kwargs: events.append("worker")
+    page.sam_assist.release_for_ai_prelabel = lambda: events.append("release")
+
+    dialog.start_ai_labeling()
+
+    assert events == ["release", "worker"]
+    page.context.tasks.finish(dialog._ai_lease)
+    dialog._ai_lease = None
     dialog.close()
 
 

@@ -1,4 +1,3 @@
-import hashlib
 import json
 import sys
 
@@ -22,11 +21,7 @@ def test_installed_extension_adds_package_directory_to_sys_path(tmp_path):
         "package_dir": "packages",
         "supported_formats": ["openvino"],
         "dll_dirs": [],
-        "files": {
-            "packages/optional_backend.py": hashlib.sha256(
-                module.read_bytes()
-            ).hexdigest()
-        },
+        "files": ["packages/optional_backend.py"],
     }
     (version_root / "extension-manifest.json").write_text(
         json.dumps(manifest), encoding="utf-8"

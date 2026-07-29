@@ -31,7 +31,7 @@ class AnnotationCanvasContextMenuMixin:
         sam_widget.setToolTip(
             f"当前模型：{self.sam_model_name}"
             if has_sam_model
-            else "未找到兼容的 SAM 2/2.1 模型"
+            else "当前 SAM 模型不可用于画布辅助标注"
         )
         sam_layout.addWidget(sam_switch)
         sam_widget_action.setDefaultWidget(sam_widget)

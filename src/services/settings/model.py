@@ -148,6 +148,10 @@ class AiPrelabelSettings:
 @dataclass(slots=True)
 class SamAssistSettings:
     model_path: str
+    multimask_output: bool
+    minimum_score: float
+    minimum_area: int
+    polygon_simplification_ratio: float
 
 
 @dataclass(slots=True)

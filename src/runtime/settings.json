@@ -107,7 +107,11 @@
       "custom_selected_images": []
     },
     "sam_assist": {
-      "model_path": ""
+      "model_path": "",
+      "multimask_output": false,
+      "minimum_score": 0.0,
+      "minimum_area": 4,
+      "polygon_simplification_ratio": 0.002
     }
   },
   "rename": {

@@ -122,7 +122,7 @@ yolo_tool/
 - `commands.py` 构建统一的 `YOLOTool.exe --yolo-export` 命令；训练服务保留 `build_export_command` 转发以兼容旧导入。
 - `execute.py` 在输出目录的临时工作区导出，成功后替换最终产物；失败或停止时清理临时文件并保留旧结果。
 - `runtime.py` 区分内置 ONNX/TorchScript、开发态 Pixi 后端和冻结态增量扩展；冻结态 OpenVINO、TensorRT、NCNN 都通过增量扩展提供，并单独判断 TensorRT 的 NVIDIA GPU 能力。
-- `package.py` 导入纯 `.7z` 或兼容 `.zip` 附加包，校验扩展 schema、协议、平台、安全相对路径、符号链接和文件清单，管理候选安装、原子活动指针、失败回滚和“当前 + 上一版本”保留策略；`manifest.py` 集中维护清单协议、校验、指纹和 7z 清单读取，避免 `package.py` 与 `inspection.py` 循环依赖。`.7z` 优先调用基础环境随附的原生 `7z.exe`，利用解压过程的 CRC 校验避免解压后再次逐文件读取 1.7 GB 内容，没有原生工具时才回退到 `py7zr + SHA-256`。原生 7-Zip 的百分比输出会通过进度回调映射到附加包安装的解压区间，`inspection.py` 的快速入口只读取清单并按压缩包指纹缓存，安装阶段再报告检查、解压、校验、探测和切换。
+- `package.py` 导入纯 `.7z` 或兼容 `.zip` 附加包，校验扩展 schema、协议、平台、安全相对路径、符号链接、文件清单和解压结果，管理候选安装、原子活动指针、失败回滚和“当前 + 上一版本”保留策略；`manifest.py` 集中维护清单协议、路径校验、指纹和 7z 清单读取，避免 `package.py` 与 `inspection.py` 循环依赖。`.7z` 优先调用基础环境随附的原生 `7z.exe`，利用解压过程的 CRC 校验发现归档损坏，没有原生工具时回退到 `py7zr` 解压并检查文件集合。原生 7-Zip 的百分比输出会通过进度回调映射到附加包安装的解压区间，`inspection.py` 的快速入口只读取清单并按压缩包指纹缓存，安装阶段再报告检查、解压、探测和切换。
 - `activation.py` 在隐藏导出子进程启动早期追加活动扩展的 `packages/` 到 `sys.path`，并通过清单注册 DLL 目录；主程序本体与扩展共用同一个 Python、Torch、CUDA、Ultralytics、ONNX 和 ONNX Runtime，不复制这些基础库。
 - `src/devtools/model_export_package.py` 依据 `importlib.metadata` 的 distribution 文件清单收集 OpenVINO、NCNN、PNNX 和 TensorRT 发行包，不使用 PyInstaller `collect_all(...)` 或复制完整运行环境；tqdm 和 portalocker 随基础环境发布。基础环境同时携带 SAM 2.1 Base+ 代码、配置、checkpoint 和针对 Python 3.12/PyTorch 2.13/CUDA 13.0 构建的多架构 CUDA 后处理扩展，用户安装时不编译。附加产物使用原生 7-Zip 的多线程非固实 LZMA2 极限压缩生成纯 `.7z`，不包含安装程序。基础包构建复制第三方纯 Python 源码时，Windows 优先使用 `robocopy /S /MT:16`，并排除测试、示例和开发工具；其他平台或缺少命令时保留逐文件回退。
 
@@ -157,8 +157,8 @@ yolo_tool/
 - 若主窗口已在空闲阶段预热标注页，可提前准备首张图片与首批列表项，减少真正切入标注页时先见空画布的闪动；但后续批量渲染与后台标注状态扫描仍要继续补齐完整列表。
 - 标注页图片列表若改用 `setItemWidget(...)` 装配只读勾选框与文件名，底层 `QListWidgetItem` 本身应只保留数据角色，不再重复绘制同名文本，避免出现叠字；只读勾选框保持正常启用样式，不应做成禁用发灰控件。
 - AI 预标注结果优先写回页面内部标注对象并保存 Labelme；按设置决定是否同步导出 YOLO。
-- `sam_assist.py` 是不依赖 Qt 的 SAM 模型目录与几何服务：按项目优先级解析 SAM 2/2.1 checkpoint 和 Hydra 配置，将最大外轮廓转换为简化多边形、轴对齐矩形及角点顺序稳定的普通 OBB。
-- `sam_runtime.py` 延迟导入 Torch、SAM2、OpenCV 与 Pillow，长期保留当前模型及图片 embedding；CUDA 使用 `torch.inference_mode()` 与 bfloat16 autocast，CPU 作为性能较低的兼容回退。模型切换和页面生命周期结束时清理 predictor/model、执行垃圾回收并释放 CUDA cache；关闭 SAM 开关只停止预览和推理，不终止页面运行时。
+- `sam_assist.py` 是不依赖 Qt 的 SAM 模型目录与几何服务：按项目优先级扫描所有 `sam` 前缀 checkpoint，识别 SAM 1 ViT、SAM 2/2.1 各架构和官方 SAM 3，生成简化显示名称及运行后端标识；未知自定义名称保留原文件名并不猜测配置，将最大外轮廓转换为简化多边形、轴对齐矩形及角点顺序稳定的普通 OBB。
+- `sam_runtime.py` 延迟导入 Torch、SAM2、SAM3、OpenCV 与 Pillow，长期保留当前模型及图片 embedding；SAM 2/2.1 使用点提示 predictor，SAM 3 使用启用实例交互的 `predict_inst`，CUDA 使用 `torch.inference_mode()` 与 bfloat16 autocast，SAM 2/2.1 可回退 CPU。点预测统一按项目参数决定单结果/三候选，选择最高质量候选后执行最低质量、最小面积和轮廓简化过滤。模型切换和页面生命周期结束时清理 predictor/model、执行垃圾回收并释放 CUDA cache；关闭 SAM 开关只停止预览和推理，不终止页面运行时。
 
 ### `src/services/conversion/`
 
@@ -197,9 +197,9 @@ yolo_tool/
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
 - 通用短任务 worker 实现放在 `src/ui/shared/workers/`；需要维护交互式子进程协议的功能专属 worker 可留在对应 feature 包，例如 `annotation/sam/runtime.py`。页面持有 QThread 时必须在原生 `finished` 信号后再清理对象。
 - `src/ui/features/annotation/page.py` 与 `src/ui/features/annotation/canvas/widget.py` 都只保留页面 / 画布装配；交互、保存、菜单、快捷键、AI 与编辑细节继续拆在 feature 子模块。
-- `src/ui/features/annotation/sam/controller.py` 负责模型发现、项目级模型选择、首帧立即提交与 `50~120 ms` 自适应移动调度（同一形状下小于 `2 px` 的微小移动过滤）、模型/图片编码状态及页面生命周期；移动期间保留最近完成的预览帧，并使用失效代次隔离离开、命中标注、确认、切图和切模式前的结果。`sam/runtime.py` 通过隐藏子进程维持一个在途预测，只保留一个最新待发送坐标。
+- `src/ui/features/annotation/sam/controller.py` 负责模型发现、项目级模型与高级参数保存、首帧立即提交与 `50~120 ms` 自适应移动调度（同一形状下小于 `2 px` 的微小移动过滤）、模型/图片编码状态及页面生命周期；参数保存只使旧悬停请求失效，不重载模型或图片 embedding。移动期间保留最近完成的预览帧，并使用失效代次隔离离开、命中标注、确认、切图和切模式前的结果。`sam/runtime.py` 通过隐藏子进程维持一个在途预测，只保留一个最新待发送坐标。
 - 标注画布只持有 SAM 启用状态、预览几何和输入回调，不导入 Torch、SAM2、OpenCV 或子进程实现。SAM 预览为独立绿色图层，复刻 LabelPaw 的纯绿色不透明边缘与低透明度填充，边框使用较粗、较长且 `cosmetic` 的固定像素虚线，确认时创建正式 `EditableAnnotation` 并复用 `_finish_annotation()`；命中已有标注的悬停不发起请求。
-- `DrawShapeDialog` 与画布右键菜单共用 `AnimatedToggleSwitch`；SAM 图标只保留在“画标注框”窗口，右键菜单的 SAM 行置于菜单底部、与标注形状之间使用分隔线并使用普通自定义菜单行间距，后者只负责同步开关；SAM 开启时只允许矩形、普通有向矩形、镜像有向矩形、多边形和编辑模式。
+- `DrawShapeDialog` 与画布右键菜单共用 `AnimatedToggleSwitch`；约 `340 px` 宽的窗口在模型框右侧提供`高级`按钮，由 `sam/settings_dialog.py` 承载独立参数窗口。SAM 图标只保留在“画标注框”窗口，右键菜单的 SAM 行置于菜单底部、与标注形状之间使用分隔线并使用普通自定义菜单行间距，后者只负责同步开关；SAM 开启时只允许矩形、普通有向矩形、镜像有向矩形、多边形和编辑模式。
 - 标注页快捷键由 `src/ui/features/annotation/shortcuts.py` 集中注册；`W` 与左侧 `画标注框(W)` 按钮共用 `enable_draw_mode()`，`V/R/O/M/P/C/L` 持续切换对应画布模式，`L` 仅在直线扩展启用时生效。
 - `DrawShapeDialog` 的“编辑”选项与下方形状列表共用一个连续外框，中间使用固定 `2 px` 高的较粗分隔线，不额外保留垂直布局间距。
 - 标注画布右键菜单的“取消当前绘制”仅由未完成的临时绘制状态（起点、旋转矩形步骤或多边形顶点）触发；单纯切换到绘制形状不会显示该菜单项。
@@ -219,7 +219,7 @@ yolo_tool/
 - 项目切换、恢复默认设置和关闭程序遇到写入/推理任务时，统一由任务协调器执行确认、停止和回收；过期结果按任务 token 与项目 generation 丢弃。
 - 模型验证、AI 预标注和 Torch/CUDA 摘要读取都优先走短生命周期隐藏子进程，避免主 GUI 长驻推理运行时。
 - `--yolo-ai-runtime` 按 payload 的 `backend` 延迟加载 YOLO 或 SAM3；相同模型会话复用实例，切换模型或关闭时释放旧模型与 CUDA cache。SAM3 payload 额外携带提示词映射、启用类别、输出形状、置信度、去重 IoU、最小面积和轮廓简化参数；旧 YOLO payload 保持兼容。
-- SAM 辅助标注使用长期但按页面会话限定的隐藏 `--sam-assist-runtime`：协议包含 `load_model`、`set_image`、`predict_point` 和 `shutdown`，响应只传请求元数据与几何结果，不通过 JSON 传输完整 mask。悬停调度由页面控制器完成，首个点立即提交，最多一个推理在途并保留一个最新坐标，后续间隔根据最近推理耗时在 `50~120 ms` 内自适应；响应必须通过请求、模型、图片和形状代次过滤。关闭开关时仅异步取消预览与待处理请求并保留运行时，页面导航、项目重载和主窗口退出时才异步结束子进程；清理钩子保持幂等并等待残留 QThread。
+- SAM 辅助标注使用长期但按页面会话限定的隐藏 `--sam-assist-runtime`：协议包含 `load_model`、`set_image`、`predict_point` 和 `shutdown`，`load_model` 携带 `runtime_kind`，点预测携带四项高级参数，响应只传请求元数据与几何结果，不通过 JSON 传输完整 mask。悬停调度由页面控制器完成，首个点立即提交，最多一个推理在途并保留一个最新坐标，后续间隔根据最近推理耗时在 `50~120 ms` 内自适应；响应必须通过请求、模型、图片和形状代次过滤。关闭开关时仅异步取消预览与待处理请求并保留运行时，页面导航、项目重载和主窗口退出时才异步结束子进程；AI 预标注开始前则同步关闭该运行时释放显存，任务结束不自动重启。清理钩子保持幂等并等待残留 QThread。
 - 每次启动后首次进入系统设置页时，GitHub Release 检查通过 `WorkbenchWindow.run_background()` 非阻塞执行；检查标志由 `WorkbenchContext` 持有，后续切换页面不重复检查，设置页顶部通知不使用模态对话框。
 - 系统设置程序版本号或升级图标点击后打开 `ReleaseUpdateDialog`；该对话框展示版本、发布说明、资源勾选项、环境包更新信息模块、进度条下方的选择规则提示和汇总进度，环境更新信息和基础包默认勾选只在 Release 包版本高于本机版本时生效，首次安装缺少本机版本时视为需要环境包；冻结版优先读取安装清单/包信息，源码版使用当前环境包版本文本文件；同版本环境包仍可手动下载但不作为更新提示，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时使用红字提醒将执行一次重装；基础包被单独留下时显示红色不可安装提示；附加包可单独下载，并在仅勾选附加包、同时勾选程序包或三项全部勾选时根据是否已有附加包分别显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换；按钮显示“下载并安装所选资源”并在程序包未选中时热安装；勾选安装器时下载完成后启动，启动失败会转为可见错误状态；下载按钮支持通过事件暂停/继续下载或通过进程挂起/恢复暂停/继续安装器；已有安装但未提供新基础包时程序-only 下载保留旧环境并警告版本不匹配或环境不完整，首次安装缺少基础包时安装器阻止提交；下载期间拦截更新窗口关闭请求。
 - 安装器在进入文件事务前通过 Inno Setup 的 Windows Restart Manager 注册安装目录中的目标 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不使用 PowerShell 或 WMI；自动关闭不负责恢复程序中的未保存状态。
@@ -231,13 +231,15 @@ yolo_tool/
 
 ## 打包链路
 
+- 完整发布先用完整冻结目录构建基础运行环境，再清理并重建 program-only 程序 staging；Inno Setup 的程序层只允许使用后一次 staging，避免完整冻结 EXE 将 `_internal` 运行库重复带入安装器。
+
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
 - 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；应用图标和 `sam_assist.svg` 由 PyInstaller/Qt 资源模块随程序本体提供。
 - 基础包模型来源固定为 `data/models/yolo11s.pt`、`data/models/yolo26n.pt`、`data/models/yolov8n.pt` 和 `data/models/sam2.1_hiera_base_plus.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集用户 checkpoint。SAM3 代码与推理依赖随基础包 v3 提供，但官方 `sam3.pt` 不进入源码、基础包或程序包，用户需自行接受条款并放入项目或程序根目录 `data/models/`。
-- `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容和 SHA-256，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型。
-- `src/devtools/release_package.py` 分别生成 `Program` staging 和 `BaseRuntimeModels` staging/`.7z`；基础包清单复用 `_internal` 与模型的首次文件哈希，避免为 payload 清单再次读取大型运行时；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、压缩大小、哈希和解压体积。
+- `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型路径。
+- `src/devtools/release_package.py` 分别生成 `Program` staging 和 `BaseRuntimeModels` staging/`.7z`；基础包清单登记 `_internal` 与模型文件路径及解压体积，不读取大型运行时文件内容；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、运行时协议和解压体积，不把一次性压缩产物哈希作为版本身份。
 - 基础包和模型转换附加包都不生成或读取 `.cache.json`，完整发布时每次重新构建 staging 和归档。基础包和附加包都通过原生 7-Zip `-mmt=on` 压缩；`-Clean` 仍可清理并强制重建输出。
-- `installer/yolo_tool.iss` 生成统一的小型 `YOLOTool_Setup_<版本>.exe`。组件页只做名称和大小候选检查，SHA-256 延后到正式安装；程序与必选基础环境在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。
+- `installer/yolo_tool.iss` 生成统一的小型 `YOLOTool_Setup_<版本>.exe`。组件页只按版本化文件名和 `.7z` 扩展名识别候选包，不绑定压缩大小或归档哈希；程序与必选基础环境在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。
 - 每个实例的 `install-instance.ini` 与其他安装清单存放在 `_internal/yolotool_metadata/`；基础包维护规范模型 `data/models/yolo26n.pt` 和受管的根目录兼容副本。
 - 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/train_cli.py` 与 `src/bootstrap/cli_dispatch.py`。
 

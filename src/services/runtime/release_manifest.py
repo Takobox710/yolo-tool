@@ -5,7 +5,6 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from src.services.runtime.metadata import resolve_metadata_path
 from src.shared.paths import ROOT
@@ -122,29 +121,3 @@ def validate_relative_path(value: str) -> str:
     if any(part in {"", ".", ".."} for part in parts):
         raise ReleaseManifestError(f"清单路径无效: {value}")
     return normalized
-
-
-def file_hashes(root: Path, relative_paths: Iterable[str] | None = None) -> dict[str, str]:
-    base = Path(root).resolve()
-    if relative_paths is None:
-        paths = [path for path in base.rglob("*") if path.is_file()]
-        relative_paths = (path.relative_to(base).as_posix() for path in paths)
-
-    result: dict[str, str] = {}
-    for relative in relative_paths:
-        normalized = validate_relative_path(relative)
-        path = base / Path(normalized)
-        if not path.is_file():
-            raise ReleaseManifestError(f"清单文件不存在: {normalized}")
-        result[normalized] = sha256_file(path)
-    return dict(sorted(result.items()))
-
-
-def verify_file_hashes(root: Path, expected: dict[str, str]) -> tuple[str, ...]:
-    failures: list[str] = []
-    for relative, expected_hash in expected.items():
-        normalized = validate_relative_path(relative)
-        path = Path(root) / Path(normalized)
-        if not path.is_file() or sha256_file(path) != expected_hash:
-            failures.append(normalized)
-    return tuple(sorted(failures))

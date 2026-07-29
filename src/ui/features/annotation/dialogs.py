@@ -6,6 +6,7 @@ from src.services.data_ops import display_project_path, resolve_project_path
 from src.ui.shared.forms import FormPageMixin
 from src.ui.shared.assets import load_sam_assist_icon
 from src.ui.shared.widgets.toggle_switch import AnimatedToggleSwitch
+from src.ui.features.annotation.sam.settings_dialog import SamAdvancedSettingsDialog
 from src.shared.qt import (
     QCheckBox,
     QComboBox,
@@ -214,15 +215,19 @@ class DrawShapeDialog(QDialog):
         sam_enabled: bool = False,
         sam_toggle_callback=None,
         sam_model_callback=None,
+        sam_settings=None,
+        sam_settings_callback=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("选择标注类型")
-        self.resize(240, 424 if line_expand_enabled else 380)
+        self.resize(340, 424 if line_expand_enabled else 380)
         self.selected_shape = "rect"
         self.sam_models = list(sam_models or [])
         self.sam_enabled = bool(sam_enabled)
         self.sam_toggle_callback = sam_toggle_callback
         self.sam_model_callback = sam_model_callback
+        self.sam_settings = dict(sam_settings or {})
+        self.sam_settings_callback = sam_settings_callback
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(0)
@@ -243,6 +248,9 @@ class DrawShapeDialog(QDialog):
         self.sam_switch.setToolTip("开启或关闭 SAM 智能标注")
         sam_header.addWidget(self.sam_switch)
         sam_layout.addLayout(sam_header)
+        model_row = QHBoxLayout()
+        model_row.setContentsMargins(0, 0, 0, 0)
+        model_row.setSpacing(8)
         self.sam_model_combo = QComboBox()
         if self.sam_models:
             for model in self.sam_models:
@@ -250,14 +258,30 @@ class DrawShapeDialog(QDialog):
             selected_index = self.sam_model_combo.findData(selected_sam_model)
             self.sam_model_combo.setCurrentIndex(max(0, selected_index))
         else:
-            self.sam_model_combo.addItem("未找到兼容的 SAM 2/2.1 模型")
+            self.sam_model_combo.addItem("未找到可用的 SAM 模型")
             self.sam_model_combo.setEnabled(False)
             self.sam_switch.setEnabled(False)
             self.sam_enabled = False
         self.sam_switch.setChecked(self.sam_enabled)
         self.sam_switch.toggled.connect(self._set_sam_enabled)
         self.sam_model_combo.currentIndexChanged.connect(self._select_sam_model)
-        sam_layout.addWidget(self.sam_model_combo)
+        model_row.addWidget(self.sam_model_combo, 1)
+        self.sam_advanced_button = QPushButton("高级")
+        self.sam_advanced_button.setObjectName("samAdvancedButton")
+        self.sam_advanced_button.setFixedSize(76, 36)
+        self.sam_advanced_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sam_advanced_button.setToolTip("打开 SAM 高级参数设置")
+        selected_model_supported = self._selected_sam_supports_assist()
+        self.sam_advanced_button.setEnabled(selected_model_supported)
+        self.sam_switch.setEnabled(selected_model_supported)
+        if not selected_model_supported and self.sam_enabled:
+            self.sam_enabled = False
+            self.sam_switch.blockSignals(True)
+            self.sam_switch.setChecked(False)
+            self.sam_switch.blockSignals(False)
+        self.sam_advanced_button.clicked.connect(self._open_sam_advanced_settings)
+        model_row.addWidget(self.sam_advanced_button)
+        sam_layout.addLayout(model_row)
         layout.addWidget(sam_widget)
 
         list_frame = QFrame()
@@ -369,6 +393,22 @@ class DrawShapeDialog(QDialog):
                 background: #F3F5F7;
                 color: #9AA7B4;
             }
+            QPushButton#samAdvancedButton {
+                background: #FFFFFF;
+                color: #24364B;
+                border: 1px solid #CFD9E3;
+                border-radius: 6px;
+                font-size: 14px;
+            }
+            QPushButton#samAdvancedButton:hover {
+                background: #F4F8FB;
+                border-color: #AEBECD;
+            }
+            QPushButton#samAdvancedButton:disabled {
+                background: #F3F5F7;
+                color: #9AA7B4;
+                border-color: #DDE4EA;
+            }
             """
         )
         self._refresh_sam_shape_availability()
@@ -389,8 +429,36 @@ class DrawShapeDialog(QDialog):
         self._refresh_sam_shape_availability()
 
     def _select_sam_model(self, _index: int) -> None:
+        supported = self._selected_sam_supports_assist()
+        if not supported and self.sam_enabled:
+            self._set_sam_enabled(False)
         if self.sam_model_callback is not None and self.selected_sam_model:
             self.sam_model_callback(self.selected_sam_model)
+        self.sam_switch.setEnabled(supported)
+        self.sam_advanced_button.setEnabled(supported)
+
+    def _selected_sam_supports_assist(self) -> bool:
+        selected_key = self.selected_sam_model
+        selected = next(
+            (model for model in self.sam_models if model.key == selected_key),
+            None,
+        )
+        return bool(selected is not None and selected.supports_assist)
+
+    def _open_sam_advanced_settings(self) -> None:
+        dialog = SamAdvancedSettingsDialog(
+            self.sam_settings,
+            self.sam_model_combo.currentText(),
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        values = dialog.values()
+        if self.sam_settings_callback is not None:
+            applied = self.sam_settings_callback(values)
+            if isinstance(applied, dict):
+                values = applied
+        self.sam_settings = dict(values)
 
     def _refresh_sam_shape_availability(self) -> None:
         supported = {"rect", "obb_single", "obb_mirror", "polygon"}

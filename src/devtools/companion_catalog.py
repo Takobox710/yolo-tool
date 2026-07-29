@@ -13,7 +13,6 @@ from src.devtools.release_package import (
     BASE_PACKAGE_SCHEMA_VERSION,
 )
 from src.services.model_export import inspect_extension_package
-from src.services.runtime.release_manifest import sha256_file
 
 
 def archive_uncompressed_size(path: Path) -> int:
@@ -45,8 +44,6 @@ def inspect_base_archive(path: Path) -> dict:
         "manifest_schema": int(manifest["schema_version"]),
         "platform": str(manifest["platform"]),
         "architecture": str(manifest["architecture"]),
-        "sha256": sha256_file(path),
-        "compressed_size": path.stat().st_size,
         "version": str(manifest["version"]),
         "runtime_version": str(manifest["runtime_version"]),
         "uncompressed_size": int(manifest["uncompressed_size"]),
@@ -67,8 +64,6 @@ def build_companion_catalog(
             "manifest_schema": int(manifest["schema_version"]),
             "platform": str(manifest["platform"]),
             "architecture": str(manifest["architecture"]),
-            "sha256": sha256_file(extension_archive),
-            "compressed_size": extension_archive.stat().st_size,
             "version": str(manifest["version"]),
             "protocol_version": int(manifest["protocol_version"]),
             "uncompressed_size": archive_uncompressed_size(extension_archive),

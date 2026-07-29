@@ -13,7 +13,6 @@ from src.services.model_export import (
     EXTENSION_PACKAGE_ID,
     EXTENSION_SCHEMA_VERSION,
 )
-from src.services.runtime.release_manifest import file_hashes
 
 
 OPTIONAL_DISTRIBUTIONS = (
@@ -26,6 +25,17 @@ OPTIONAL_DISTRIBUTIONS = (
     "tensorrt-cu13-libs",
     "tensorrt-cu13-bindings",
 )
+
+
+def _relative_files(root: Path) -> list[str]:
+    base = Path(root).resolve()
+    return sorted(
+        path.relative_to(base).as_posix()
+        for path in base.rglob("*")
+        if path.is_file()
+    )
+
+
 def _format_elapsed(seconds: float) -> str:
     if seconds >= 60:
         minutes, remainder = divmod(seconds, 60)
@@ -116,15 +126,12 @@ def build_model_export_layer(staging_root: Path, *, version: str) -> Path:
     versions = collect_optional_distributions(package_root)
     _print_elapsed("[Extra] 运行库文件复制完成", step_started)
     step_started = time.perf_counter()
-    hashes = {
-        f"packages/{relative}": digest
-        for relative, digest in file_hashes(package_root).items()
-    }
-    _print_elapsed("[Extra] 文件哈希计算完成", step_started)
+    files = [f"packages/{relative}" for relative in _relative_files(package_root)]
+    _print_elapsed("[Extra] 文件清单生成完成", step_started)
     dll_dirs = sorted(
         {
             str(Path(relative).parent).replace("\\", "/")
-            for relative in hashes
+            for relative in files
             if Path(relative).suffix.lower() in {".dll", ".pyd"}
         }
     )
@@ -139,7 +146,7 @@ def build_model_export_layer(staging_root: Path, *, version: str) -> Path:
         "supported_formats": ["openvino", "engine", "ncnn"],
         "dependencies": versions,
         "dll_dirs": dll_dirs,
-        "files": hashes,
+        "files": files,
     }
     manifest_path = staging_root / "extension-manifest.json"
     manifest_path.write_text(

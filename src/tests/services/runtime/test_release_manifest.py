@@ -24,7 +24,7 @@ def test_runtime_compatibility_requires_matching_manifests(tmp_path):
         encoding="utf-8",
     )
     (metadata / "runtime-manifest.json").write_text(
-        json.dumps({"schema_version": 1, "runtime_version": "runtime-1", "files": {}}),
+        json.dumps({"schema_version": 1, "runtime_version": "runtime-1"}),
         encoding="utf-8",
     )
 
@@ -129,19 +129,13 @@ def test_base_runtime_layer_contains_environment_and_managed_models(tmp_path):
     assert manifest["runtime_version"] == "runtime-1"
     assert "_internal/torch.dll" in manifest["files"]
     assert "data/models/yolo26n.pt" in manifest["files"]
-    expected_model_hash = __import__("hashlib").sha256(b"model").hexdigest()
-    assert managed["files"] == {
-        name: expected_model_hash
-        for name in (
-            "yolo11s.pt",
-            "yolo26n.pt",
-            "yolov8n.pt",
-            "sam2.1_hiera_base_plus.pt",
-        )
-    }
-    assert runtime["files"] == {
-        "torch.dll": __import__("hashlib").sha256(b"torch").hexdigest()
-    }
+    assert managed["files"] == [
+        "sam2.1_hiera_base_plus.pt",
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+    ]
+    assert "files" not in runtime
     assert not (layer / "YOLOTool.exe").exists()
 
 

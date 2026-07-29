@@ -33,12 +33,10 @@ from src.services.runtime.release_manifest import (
     ReleaseManifestError,
     RuntimeCompatibility,
     check_runtime_compatibility,
-    file_hashes,
     installed_runtime_version,
     load_release_manifest,
     load_runtime_manifest,
     sha256_file,
-    verify_file_hashes,
 )
 from src.services.runtime.windows_spawn import hidden_subprocess_kwargs
 
@@ -59,7 +57,6 @@ __all__ = [
     "ReleaseManifestError",
     "RuntimeCompatibility",
     "check_runtime_compatibility",
-    "file_hashes",
     "installed_runtime_version",
     "load_release_manifest",
     "load_runtime_manifest",
@@ -75,6 +72,5 @@ __all__ = [
     "stop_process",
     "system_status",
     "torch_cuda_summary",
-    "verify_file_hashes",
     "write_install_instance",
 ]

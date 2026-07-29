@@ -28,6 +28,8 @@ class AnnotationPageSettingsMixin:
             sam_enabled=self.sam_assist.enabled,
             sam_toggle_callback=self.sam_assist.set_enabled,
             sam_model_callback=self.sam_assist.select_model,
+            sam_settings=self.sam_assist.parameters(),
+            sam_settings_callback=self.sam_assist.apply_parameters,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return

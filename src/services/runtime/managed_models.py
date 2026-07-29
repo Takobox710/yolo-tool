@@ -24,11 +24,13 @@ def remove_managed_models(install_root: str | Path) -> list[Path]:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ReleaseManifestError(f"无法读取受管模型清单: {exc}") from exc
-    if payload.get("schema_version") != 1 or not isinstance(payload.get("files"), dict):
+    files = payload.get("files")
+    if payload.get("schema_version") != 1 or not isinstance(files, (dict, list)):
         raise ReleaseManifestError("受管模型清单格式不受支持。")
 
     targets: list[Path] = []
-    for value in payload["files"]:
+    relative_files = files.keys() if isinstance(files, dict) else files
+    for value in relative_files:
         relative = validate_relative_path(str(value))
         target = (models_root / Path(relative)).resolve()
         if not target.is_relative_to(models_root):

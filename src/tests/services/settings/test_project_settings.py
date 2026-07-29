@@ -45,6 +45,10 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings.annotation.continuous_draw is False
     assert settings.annotation.quick_draw is False
     assert settings.annotation.sam_assist.model_path == ""
+    assert settings.annotation.sam_assist.multimask_output is False
+    assert settings.annotation.sam_assist.minimum_score == 0.0
+    assert settings.annotation.sam_assist.minimum_area == 4
+    assert settings.annotation.sam_assist.polygon_simplification_ratio == 0.002
 
 
 def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(tmp_path):
@@ -69,6 +73,41 @@ def test_settings_service_keeps_selected_project_root_when_file_has_stale_root(t
 
     assert settings.project.root == str(project_root)
     assert settings.training.epochs == 33
+
+
+def test_settings_service_recovers_invalid_sam_assist_parameters(tmp_path):
+    from src.services.settings import SettingsService
+
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "annotation": {
+                    "sam_assist": {
+                        "multimask_output": "yes",
+                        "minimum_score": "high",
+                        "minimum_area": 2.5,
+                        "polygon_simplification_ratio": [],
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
+
+    assert result.settings.annotation.sam_assist.multimask_output is False
+    assert result.settings.annotation.sam_assist.minimum_score == 0.0
+    assert result.settings.annotation.sam_assist.minimum_area == 4
+    assert result.settings.annotation.sam_assist.polygon_simplification_ratio == 0.002
+    assert {issue.path for issue in result.issues} >= {
+        "annotation.sam_assist.multimask_output",
+        "annotation.sam_assist.minimum_score",
+        "annotation.sam_assist.minimum_area",
+        "annotation.sam_assist.polygon_simplification_ratio",
+    }
 
 
 def test_settings_service_can_reset_current_project_to_defaults(tmp_path):
