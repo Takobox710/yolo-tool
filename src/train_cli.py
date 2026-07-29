@@ -5,7 +5,11 @@ import os
 from typing import Any
 
 from src.services.runtime import STRUCTURED_OUTPUT_PREFIX
-from src.services.training import infer_task_mode_from_config, select_training_model
+from src.services.training import (
+    infer_task_mode_from_config,
+    infer_task_mode_from_model,
+    select_training_model,
+)
 
 
 def _parse_value(raw: str) -> Any:
@@ -69,8 +73,10 @@ def _load_json_payload(argv: list[str], usage: str) -> dict[str, Any]:
 
 def _run_train_cli_impl(argv: list[str]) -> int:
     if len(argv) < 2:
-        raise SystemExit("Usage: --yolo-train <detect|obb> train key=value ...")
+        raise SystemExit("Usage: --yolo-train <detect|obb|seg> train key=value ...")
     task_mode, command, *items = argv
+    if task_mode not in {"detect", "obb", "seg"}:
+        raise SystemExit("训练任务类型必须是 detect、obb 或 seg")
     if command != "train":
         raise SystemExit(f"Unsupported training command: {command}")
 
@@ -84,10 +90,11 @@ def _run_train_cli_impl(argv: list[str]) -> int:
     if not model_path:
         raise SystemExit("Missing model=... for training")
     options.pop("model", None)
-    if task_mode != "obb" and infer_task_mode_from_config(
+    inferred_mode = infer_task_mode_from_config(
         {"model": model_path, "pretrained": options.get("pretrained")}
-    ) == "obb":
-        task_mode = "obb"
+    )
+    if task_mode == "detect" and inferred_mode in {"obb", "seg"}:
+        task_mode = inferred_mode
     model = YOLO(str(model_path))
     model.train(task=task_mode, **options)
     return 0
@@ -227,8 +234,10 @@ def _run_remove_managed_models_cli_impl(argv: list[str]) -> int:
 
 def _run_val_cli_impl(argv: list[str]) -> int:
     if len(argv) < 2:
-        raise SystemExit("Usage: --yolo-val <detect|obb> val key=value ...")
+        raise SystemExit("Usage: --yolo-val <detect|obb|seg> val key=value ...")
     task_mode, command, *items = argv
+    if task_mode not in {"detect", "obb", "seg"}:
+        raise SystemExit("验证任务类型必须是 detect、obb 或 seg")
     if command != "val":
         raise SystemExit(f"Unsupported validation command: {command}")
 
@@ -244,8 +253,9 @@ def _run_val_cli_impl(argv: list[str]) -> int:
     data_path = options.get("data")
     if not data_path:
         raise SystemExit("Missing data=... for validation")
-    if task_mode != "obb" and infer_task_mode_from_config({"model": model_path}) == "obb":
-        task_mode = "obb"
+    inferred_mode = infer_task_mode_from_config({"model": model_path})
+    if task_mode == "detect" and inferred_mode in {"obb", "seg"}:
+        task_mode = inferred_mode
     model = YOLO(str(model_path))
     model.val(task=task_mode, **options)
     return 0
@@ -323,6 +333,7 @@ def _run_predict_cli_impl(argv: list[str]) -> int:
                 "height": item.height,
                 "angle": item.angle,
                 "points": item.points,
+                "class_id": item.class_id,
             }
             for item in items
         ]
@@ -354,6 +365,7 @@ def _run_predict_cli_impl(argv: list[str]) -> int:
             items,
             image_size[0],
             image_size[1],
+            infer_task_mode_from_model(model_path),
         )
         emit_result(
             source_name=image_path.name,

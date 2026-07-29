@@ -57,6 +57,7 @@ class DetectionWorker(QThread):
                     height=float(item.get("height", 0.0)),
                     angle=float(item.get("angle", 0.0)),
                     points=points,
+                    class_id=int(item.get("class_id", 0)),
                 )
             )
         result["items"] = items

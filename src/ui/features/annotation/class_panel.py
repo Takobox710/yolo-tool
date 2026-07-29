@@ -68,7 +68,7 @@ class AnnotationClassPanelMixin:
                 else str(annotation.class_id)
             )
             shape_text = _SHAPE_LABELS.get(annotation.shape, annotation.shape)
-            format_text = (
+            format_text = self.output_mode if self.output_mode in {"detect", "obb", "seg"} else (
                 "obb"
                 if annotation.shape in {"obb", "obb_mirror", "obb_single", "line_expand"}
                 else "detect"

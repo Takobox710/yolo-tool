@@ -80,6 +80,44 @@ def test_dataset_split_tab_reads_annotation_managed_categories(tmp_path):
     page = ConvertTab(fake_app)
 
     assert page.config().class_names == ["weld", "scratch"]
+    assert [page.task_combo.itemText(index) for index in range(page.task_combo.count())] == [
+        "detect",
+        "obb",
+        "seg",
+    ]
+    assert [page.mode_combo.itemText(index) for index in range(page.mode_combo.count())] == [
+        "Labelme 转 YOLO 并划分数据集",
+        "YOLO 原生数据集划分",
+    ]
+    assert not hasattr(page, "line_edit")
+    assert not hasattr(page, "seed_edit")
+    assert page.config().random_seed == settings.dataset.random_seed
+    assert not page.class_mapping_btn.isHidden()
+    assert page.task_box.isEnabled()
+    assert page.task_combo.isEnabled()
+
+    page.mode_combo.setCurrentText("YOLO 原生数据集划分")
+    config = page.config()
+    assert config.source_format == "yolo"
+    assert config.annotations_dir == Path(settings.paths.labels_dir)
+    assert settings.conversion.use_labelme is False
+    assert page.class_mapping_btn.isHidden()
+    assert page.backup_yolo_check.isEnabled()
+    assert not page.task_box.isEnabled()
+    assert not page.task_combo.isEnabled()
+
+    native_settings = build_default_settings(tmp_path / "native")
+    native_settings.conversion.use_labelme = False
+    native_page = ConvertTab(
+        SimpleNamespace(
+            settings=native_settings,
+            settings_service=SimpleNamespace(save=lambda _data: None),
+        )
+    )
+    assert native_page.mode_combo.currentText() == "YOLO 原生数据集划分"
+    assert native_page.class_mapping_btn.isHidden()
+    assert native_page.backup_yolo_check.isEnabled()
+    assert not native_page.task_box.isEnabled()
 
 
 def test_class_mapping_rows_use_zero_based_left_indices(tmp_path):

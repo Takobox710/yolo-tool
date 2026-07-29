@@ -51,7 +51,9 @@ class AnnotationPersistenceMixin:
                 self.save_settings()
                 self._refresh_class_state()
         else:
-            annotations = load_editable_annotations(image_size, yolo_path)
+            annotations = load_editable_annotations(
+                image_size, yolo_path, task_mode=self.output_mode
+            )
         self.current_json_path = json_path
         self.current_yolo_path = yolo_path
         self.current_image_path = image_path

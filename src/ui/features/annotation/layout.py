@@ -54,9 +54,11 @@ def build_right_panel(page) -> QFrame:
     mode_label.setObjectName("annotationPathLabel")
     layout.addWidget(mode_label)
     page.output_mode_combo = QComboBox()
-    page.output_mode_combo.addItems(["detect", "obb"])
+    page.output_mode_combo.addItems(["detect", "obb", "seg"])
     page.output_mode_combo.setCurrentText(
-        page.output_mode if page.output_mode in {"detect", "obb"} else "detect"
+        page.output_mode
+        if page.output_mode in {"detect", "obb", "seg"}
+        else "detect"
     )
     page.output_mode_combo.currentTextChanged.connect(page.change_output_mode)
     layout.addWidget(page.output_mode_combo)

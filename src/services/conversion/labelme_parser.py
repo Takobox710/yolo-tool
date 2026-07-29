@@ -7,6 +7,7 @@ from typing import Iterable
 
 from src.services.conversion.class_mapping import normalize_class_name_mapping
 from src.services.conversion.types import ConversionConfig
+from src.services.annotation.circle_geometry import circle_polygon
 
 
 def convert_label_file(
@@ -29,6 +30,17 @@ def convert_label_file(
             missing_labels[raw_label or "unknown"].append(Path(json_path).name)
             continue
         class_id = config.class_names.index(mapped_name)
+        if config.task_mode == "seg":
+            points = shape_to_seg_points(shape, config)
+            if points is None:
+                missing_labels[f"{raw_label}(unsupported)"].append(Path(json_path).name)
+                continue
+            coords = normalize_points(points, width, height)
+            lines.append(
+                f"{class_id} "
+                + " ".join(f"{value:.6f}" for pair in coords for value in pair)
+            )
+            continue
         if config.task_mode == "obb":
             points = shape_to_obb_points(shape, config)
             if points is None:
@@ -51,6 +63,33 @@ def convert_label_file(
             f"{box_width / width:.6f} {box_height / height:.6f}"
         )
     return lines
+
+
+def shape_to_seg_points(
+    shape: dict, config: ConversionConfig
+) -> list[tuple[float, float]] | None:
+    points = shape.get("points", [])
+    shape_type = str(shape.get("shape_type") or "").strip()
+    try:
+        if shape_type == "polygon" and len(points) >= 3:
+            return [(float(x), float(y)) for x, y in points]
+        if shape_type == "rectangle" and len(points) == 2:
+            (x1, y1), (x2, y2) = points
+            return [
+                (float(x1), float(y1)),
+                (float(x2), float(y1)),
+                (float(x2), float(y2)),
+                (float(x1), float(y2)),
+            ]
+        if shape_type == "oriented_rectangle" and len(points) >= 4:
+            return [(float(x), float(y)) for x, y in points[:4]]
+        if shape_type == "circle" and len(points) >= 2:
+            return circle_polygon([(float(x), float(y)) for x, y in points[:2]])
+        if shape_type == "line" and len(points) == 2 and config.line_to_obb:
+            return shape_to_obb_points(shape, config)
+    except (TypeError, ValueError):
+        return None
+    return None
 
 
 def shape_to_obb_points(

@@ -14,13 +14,17 @@ from src.ui.shared.page_base import BasePage, Card
 from src.shared.qt import (
     QGridLayout,
     QHBoxLayout,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
+
+_LABELME_MODE = "Labelme 转 YOLO 并划分数据集"
+_YOLO_MODE = "YOLO 原生数据集划分"
+
 
 class ConvertTab(BasePage):
     def __init__(self, context):
@@ -71,14 +75,6 @@ class ConvertTab(BasePage):
         controls_row = QHBoxLayout()
         controls_row.setContentsMargins(0, 0, 0, 0)
         controls_row.setSpacing(12)
-        labelme_box, self.labelme_check = self.checkbox_with_help(
-            "Labelme 转 YOLO",
-            context.settings.conversion.use_labelme,
-            help_text="开启时自动识别 Labelme 类别并转换为 YOLO；关闭时只对已有 YOLO txt 标注重新分组。",
-        )
-        self.labelme_check.stateChanged.connect(self.refresh_mode_state)
-        controls_row.addWidget(labelme_box)
-        controls_row.addStretch(1)
         backup_box, self.backup_yolo_check = self.checkbox_with_help(
             "备份标注文件",
             context.settings.conversion.backup_yolo_files,
@@ -97,11 +93,18 @@ class ConvertTab(BasePage):
         param_grid = QGridLayout()
         param_grid.setHorizontalSpacing(12)
         param_grid.setVerticalSpacing(10)
+        mode = _LABELME_MODE if context.settings.conversion.use_labelme else _YOLO_MODE
+        self.mode_box, self.mode_combo = self.hint_combo_field(
+            "模式选择",
+            mode,
+            [_LABELME_MODE, _YOLO_MODE],
+            "选择 Labelme 转换后划分数据集，或直接对已有 YOLO 标注进行数据集划分。",
+        )
         self.task_box, self.task_combo = self.hint_combo_field(
             "任务类型",
             context.settings.task.mode,
-            ["detect", "obb"],
-            "OBB 输出旋转框标签；detect 输出普通矩形框标签。",
+            ["detect", "obb", "seg"],
+            "OBB 输出旋转框标签；seg 输出多边形标签；detect 输出普通矩形框标签。",
         )
         ratios = dataset.split_ratios
         self.train_ratio_box, self.train_ratio_edit = self.hint_field(
@@ -122,31 +125,11 @@ class ConvertTab(BasePage):
             "测试集比例，用于最终检测泛化效果。",
             placeholder="0.0 - 1.0",
         )
-        self.seed_box, self.seed_edit = self.hint_field(
-            "随机种子",
-            str(dataset.random_seed),
-            "控制随机划分的可复现性；同一数据和种子会得到相同划分。",
-            placeholder="例如 42",
-        )
-        line_box = QWidget()
-        line_layout = QVBoxLayout(line_box)
-        line_layout.setContentsMargins(0, 0, 0, 0)
-        line_layout.setSpacing(4)
-        self.line_caption, self.line_label, _line_icon = self._caption_widget(
-            "直线拓展宽度",
-            help_text="仅在 OBB + Labelme line 标注时生效，按该半宽把直线扩展成旋转矩形。",
-            object_name="fieldLabel",
-        )
-        self.line_edit = QLineEdit(str(dataset.line_to_obb.half_width))
-        self.line_edit.setPlaceholderText("仅 OBB + Labelme line")
-        line_layout.addWidget(self.line_caption)
-        line_layout.addWidget(self.line_edit)
-        param_grid.addWidget(self.task_box, 0, 0)
-        param_grid.addWidget(self.train_ratio_box, 0, 1)
-        param_grid.addWidget(self.val_ratio_box, 1, 0)
-        param_grid.addWidget(self.test_ratio_box, 1, 1)
-        param_grid.addWidget(self.seed_box, 2, 0)
-        param_grid.addWidget(line_box, 2, 1)
+        param_grid.addWidget(self.mode_box, 0, 0, 1, 2)
+        param_grid.addWidget(self.task_box, 1, 0)
+        param_grid.addWidget(self.train_ratio_box, 1, 1)
+        param_grid.addWidget(self.val_ratio_box, 2, 0)
+        param_grid.addWidget(self.test_ratio_box, 2, 1)
         right_card.layout.addLayout(param_grid)
 
         top_row.addWidget(left_card, 3)
@@ -170,6 +153,7 @@ class ConvertTab(BasePage):
         layout.addWidget(self.log, 1)
         self._connect_persistence()
         self.task_combo.currentTextChanged.connect(self.refresh_mode_state)
+        self.refresh_mode_state()
 
     def on_setting_changed(self, keys, value):
         fields = {
@@ -204,12 +188,12 @@ class ConvertTab(BasePage):
         return self.combo_field(label, value, values, help_text=tooltip)
 
     def refresh_mode_state(self):
-        labelme_enabled = self.labelme_check.isChecked()
-        enabled = labelme_enabled and self.task_combo.currentText() == "obb"
-        for widget in (self.line_caption, self.line_edit):
-            widget.setEnabled(enabled)
-        self.class_mapping_btn.setEnabled(labelme_enabled)
-        self.backup_yolo_check.setEnabled(labelme_enabled)
+        labelme_enabled = self.is_labelme_mode()
+        self.class_mapping_btn.setVisible(labelme_enabled)
+        self.task_box.setEnabled(labelme_enabled)
+
+    def is_labelme_mode(self) -> bool:
+        return self.mode_combo.currentText() == _LABELME_MODE
 
     def _connect_persistence(self):
         self.images_edit.textChanged.connect(
@@ -236,11 +220,12 @@ class ConvertTab(BasePage):
                 "paths", "dataset_dir", value=self.resolve_path_text(self.output_edit)
             )
         )
-        self.labelme_check.toggled.connect(
-            lambda checked: self.update_setting(
-                "conversion", "use_labelme", value=bool(checked)
+        self.mode_combo.currentTextChanged.connect(
+            lambda value: self.update_setting(
+                "conversion", "use_labelme", value=value == _LABELME_MODE
             )
         )
+        self.mode_combo.currentTextChanged.connect(self.refresh_mode_state)
         self.backup_yolo_check.toggled.connect(
             lambda checked: self.update_setting(
                 "conversion", "backup_yolo_files", value=bool(checked)
@@ -258,8 +243,6 @@ class ConvertTab(BasePage):
         self.test_ratio_edit.textChanged.connect(
             lambda text: self._persist_ratio("test", text)
         )
-        self.seed_edit.textChanged.connect(self._persist_seed)
-        self.line_edit.textChanged.connect(self._persist_line_width)
 
     def _persist_ratio(self, key: str, text: str):
         try:
@@ -267,22 +250,6 @@ class ConvertTab(BasePage):
         except ValueError:
             return
         setattr(self.context.settings.dataset.split_ratios, key, value)
-        self.save_settings()
-
-    def _persist_seed(self, text: str):
-        try:
-            value = int(text)
-        except ValueError:
-            return
-        self.context.settings.dataset.random_seed = value
-        self.save_settings()
-
-    def _persist_line_width(self, text: str):
-        try:
-            value = float(text)
-        except ValueError:
-            return
-        self.context.settings.dataset.line_to_obb.half_width = value
         self.save_settings()
 
     def ratios(self) -> tuple[float, float, float]:
@@ -306,20 +273,20 @@ class ConvertTab(BasePage):
             images_dir=self.path_from_edit(self.images_edit),
             annotations_dir=self.path_from_edit(
                 self.annotations_edit
-                if self.labelme_check.isChecked()
+                if self.is_labelme_mode()
                 else self.yolo_labels_edit
             ),
             output_dir=self.path_from_edit(self.output_edit),
             labels_dir=Path(self.context.settings.paths.labels_dir),
             class_names=self.managed_class_names(),
-            source_format="labelme" if self.labelme_check.isChecked() else "yolo",
+            source_format="labelme" if self.is_labelme_mode() else "yolo",
             train_ratio=train,
             val_ratio=val,
             test_ratio=test,
-            random_seed=int(self.seed_edit.text()),
-            line_to_obb=self.labelme_check.isChecked()
-            and self.task_combo.currentText() == "obb",
-            line_half_width=float(self.line_edit.text()),
+            random_seed=int(self.context.settings.dataset.random_seed),
+            line_to_obb=self.is_labelme_mode()
+            and self.task_combo.currentText() in {"obb", "seg"},
+            line_half_width=float(self.context.settings.dataset.line_to_obb.half_width),
             backup_yolo_files=self.backup_yolo_check.isChecked(),
             class_name_mapping=dict(
                 self.context.settings.conversion.class_name_mappings

@@ -16,10 +16,14 @@ class DetectionItem:
     height: float
     angle: float
     points: list[tuple[float, float]]
+    class_id: int = 0
 
 
 def normalize_detection_item(
-    label: str, confidence: float, points: list[tuple[float, float]]
+    label: str,
+    confidence: float,
+    points: list[tuple[float, float]],
+    class_id: int = 0,
 ) -> DetectionItem:
     center_x = sum(point[0] for point in points) / len(points)
     center_y = sum(point[1] for point in points) / len(points)
@@ -35,12 +39,37 @@ def normalize_detection_item(
         else 0.0
     )
     return DetectionItem(
-        label, confidence, center_x, center_y, width, height, angle, points
+        label, confidence, center_x, center_y, width, height, angle, points, class_id
     )
 
 
 def extract_detection_items(result: Any) -> list[DetectionItem]:
     names = getattr(result, "names", {})
+    masks = getattr(result, "masks", None)
+    mask_points = getattr(masks, "xy", None) if masks is not None else None
+    if mask_points is not None:
+        boxes = getattr(result, "boxes", None)
+        confidences = (
+            boxes.conf.cpu().tolist()
+            if boxes is not None and getattr(boxes, "conf", None) is not None
+            else [0.0] * len(mask_points)
+        )
+        classes = (
+            boxes.cls.cpu().tolist()
+            if boxes is not None and getattr(boxes, "cls", None) is not None
+            else [0] * len(mask_points)
+        )
+        return [
+            normalize_detection_item(
+                names.get(int(class_id), str(int(class_id))),
+                float(confidence),
+                [(float(x), float(y)) for x, y in points],
+                int(class_id),
+            )
+            for points, confidence, class_id in zip(
+                mask_points, confidences, classes
+            )
+        ]
     obb = getattr(result, "obb", None)
     if obb is not None and getattr(obb, "xyxyxyxy", None) is not None:
         points_list = obb.xyxyxyxy.cpu().tolist()
@@ -59,6 +88,7 @@ def extract_detection_items(result: Any) -> list[DetectionItem]:
                 names.get(int(class_id), str(int(class_id))),
                 float(confidence),
                 [(float(x), float(y)) for x, y in points],
+                int(class_id),
             )
             for points, confidence, class_id in zip(
                 points_list, confidences, classes
@@ -88,6 +118,7 @@ def extract_detection_items(result: Any) -> list[DetectionItem]:
                 names.get(int(class_id), str(int(class_id))),
                 float(confidence),
                 points,
+                int(class_id),
             )
         )
     return items
@@ -108,19 +139,29 @@ def save_detection_label_file(
     items: list[DetectionItem],
     image_width: int,
     image_height: int,
+    task_mode: str | None = None,
 ) -> None:
     lines: list[str] = []
     for item in items:
+        if task_mode == "seg":
+            if len(item.points) < 3:
+                continue
+            coords: list[str] = []
+            for x, y in item.points:
+                coords.append(f"{_normalize_point(x, image_width):.6f}")
+                coords.append(f"{_normalize_point(y, image_height):.6f}")
+            lines.append(f"{item.class_id} " + " ".join(coords))
+            continue
         is_obb = len(item.points) >= 4 and abs(item.angle) > 1e-6
         if is_obb:
             coords: list[str] = []
             for x, y in item.points[:4]:
                 coords.append(f"{_normalize_point(x, image_width):.6f}")
                 coords.append(f"{_normalize_point(y, image_height):.6f}")
-            lines.append("0 " + " ".join(coords))
+            lines.append(f"{item.class_id} " + " ".join(coords))
             continue
         lines.append(
-            "0 "
+            f"{item.class_id} "
             + " ".join(
                 [
                     f"{_normalize_point(item.center_x, image_width):.6f}",

@@ -27,8 +27,8 @@ class ConversionConfig:
     class_name_mapping: dict[str, str] | None = None
 
     def validate(self) -> "ConversionConfig":
-        if self.task_mode not in {"obb", "detect"}:
-            raise ValueError("task_mode 必须是 obb 或 detect")
+        if self.task_mode not in {"obb", "detect", "seg"}:
+            raise ValueError("task_mode 必须是 obb、detect 或 seg")
         if self.source_format not in {"labelme", "yolo"}:
             raise ValueError("source_format 必须是 labelme 或 yolo")
         ratio_sum = self.train_ratio + self.val_ratio + self.test_ratio

@@ -90,6 +90,17 @@ def test_annotation_preview_services(tmp_path):
     assert preview.size == (100, 100)
 
 
+def test_annotation_preview_loads_segmentation_polygon(tmp_path):
+    from src.services.annotation import load_yolo_annotations
+
+    label = tmp_path / "seg.txt"
+    label.write_text("0 0.1 0.2 0.8 0.2 0.8 0.9\n", encoding="utf-8")
+
+    annotations = load_yolo_annotations((100, 100), label, "seg", ["weld"])
+
+    assert annotations[0].points == [(10.0, 20.0), (80.0, 20.0), (80.0, 90.0)]
+
+
 def test_annotation_page_labelme_json_roundtrip_and_yolo_export(tmp_path):
     from src.ui.features.annotation.page import (
         EditableAnnotation,
@@ -123,6 +134,38 @@ def test_annotation_page_labelme_json_roundtrip_and_yolo_export(tmp_path):
     assert loaded[0].shape == "rect"
     assert loaded[1].shape == "obb_mirror"
     assert yolo_path.read_text(encoding="utf-8").splitlines()[0].startswith("0 0.100000")
+
+
+def test_seg_yolo_roundtrip_loads_polygons_and_converts_circles(tmp_path):
+    from src.services.annotation import (
+        EditableAnnotation,
+        load_editable_annotations,
+        save_editable_annotations,
+    )
+
+    label_path = tmp_path / "seg.txt"
+    label_path.write_text(
+        "2 0.100000 0.200000 0.800000 0.200000 0.800000 0.900000\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_editable_annotations((100, 100), label_path, task_mode="seg")
+
+    assert loaded[0].shape == "polygon"
+    assert loaded[0].class_id == 2
+    assert loaded[0].points == [(10.0, 20.0), (80.0, 20.0), (80.0, 90.0)]
+
+    circle = EditableAnnotation(
+        1,
+        "circle",
+        [(25.0, 25.0), (75.0, 25.0), (75.0, 75.0), (25.0, 75.0)],
+        radius_point=(75.0, 50.0),
+    )
+    save_editable_annotations((100, 100), label_path, [circle], "seg")
+    values = label_path.read_text(encoding="utf-8").strip().split()
+
+    assert values[0] == "1"
+    assert len(values[1:]) == 64
 
 
 def test_labelme_line_loads_as_mirror_obb(tmp_path):

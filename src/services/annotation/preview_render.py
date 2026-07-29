@@ -34,8 +34,10 @@ def load_yolo_annotations(image_size: tuple[int, int], label_path: Path, task_mo
         class_id = int(float(parts[0]))
         label = class_names[class_id] if 0 <= class_id < len(class_names) else str(class_id)
         values = [float(item) for item in parts[1:]]
-        active_mode = _infer_annotation_mode(values, task_mode)
-        if active_mode == "obb" and len(values) >= 8:
+        active_mode = task_mode if task_mode in {"detect", "obb", "seg"} else _infer_annotation_mode(values, task_mode)
+        if active_mode == "seg" and len(values) >= 6 and len(values) % 2 == 0:
+            points = [(values[i] * width, values[i + 1] * height) for i in range(0, len(values), 2)]
+        elif active_mode == "obb" and len(values) >= 8:
             points = [(values[i] * width, values[i + 1] * height) for i in range(0, 8, 2)]
         elif active_mode == "detect" and len(values) >= 4:
             cx, cy, bw, bh = values[:4]

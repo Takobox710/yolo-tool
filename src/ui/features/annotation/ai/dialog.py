@@ -343,6 +343,8 @@ class AiPrelabelDialog(QDialog):
         if not self.saved_sam3_prompts and not self.saved_sam3_enabled_classes:
             if str(self.page.output_mode).strip() == "obb":
                 self.saved_sam3_output_shape = "obb"
+            elif str(self.page.output_mode).strip() == "seg":
+                self.saved_sam3_output_shape = "polygon"
         self.saved_sam3_min_area = int(preferences["sam3_min_area"])
         self.saved_sam3_polygon_simplify_ratio = float(
             preferences["sam3_polygon_simplify_ratio"]

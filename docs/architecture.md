@@ -6,7 +6,7 @@
 
 定位是“通用 YOLO 优先，同时兼容焊缝 OBB 项目”：
 
-- 支持 YOLO `detect` 与 `obb` 两类任务。
+- 支持 YOLO `detect`、`obb` 与 `seg` 三类任务。
 - 兼容焊缝识别习惯配置，例如类别 `weld`、Labelme 转 YOLO-OBB、直线标注扩展为旋转矩形；新项目不预置具体类别名称。
 - 使用本项目本地 `pixi` 环境管理依赖，不依赖外部 conda 环境。
 
@@ -150,7 +150,7 @@ yolo_tool/
 ### `src/services/annotation/`
 
 - 负责 Labelme/YOLO 标注读写、可编辑标注模型、预览渲染和 AI 预标注业务逻辑。
-- `editable_document.py` 将镜像有向矩形和直线扩展统一保存为内部 `obb_mirror`；Labelme 仍写标准 `oriented_rectangle`，通过 shape 级 `flags.yolo_tool_shape` 恢复内部形状，旧的无 flags 文件继续按普通 `obb` 兼容读取。
+- `editable_document.py` 将镜像有向矩形和直线扩展统一保存为内部 `obb_mirror`；Labelme 仍写标准 `oriented_rectangle`，通过 shape 级 `flags.yolo_tool_shape` 恢复内部形状，旧的无 flags 文件继续按普通 `obb` 兼容读取。Seg 标签显式按任务类型读取为 polygon，矩形、OBB、圆形和 line 在导出时转换为多边形。
 - `sam3_text.py` 提供官方 `sam3.pt` 识别、项目优先模型发现、文本提示词规范化、mask IoU 去重和三种 mask 几何转换；SAM3 运行时不依赖 Qt，仅在 CUDA 上加载官方图片模型。`ai_labeling.py` 复用一次图片编码、多提示词推理、面积过滤、稳定去重和 Labelme/YOLO 写入。
 - 标注页图片列表的大目录扫描、标注存在性判断与首屏批量渲染应尽量拆成“首批同步 + 后台分批补齐”，避免首次进入标注页时阻塞主线程；对大量不可见行不要同步创建整套行内 `QCheckBox`/`QWidget`。
 - 标注页首次进入时，应避免在 `AnnotationPage` 构造阶段直接触发整套图片扫描；首轮图片扫描应延后到页面首次显示后启动，先让导航切页完成，再逐步进入标注工作状态。
@@ -168,10 +168,11 @@ yolo_tool/
 
 - `types.py` 定义转换配置与结果模型。
 - `class_mapping.py` 负责类别识别、类别映射和映射表解析。
-- `labelme_parser.py` 负责 Labelme 形状解析与 Labelme -> YOLO 行转换。
+- `labelme_parser.py` 负责 Labelme 形状解析与 Labelme -> YOLO detect/OBB/Seg 行转换。
 - `dataset_split.py` 负责输入收集、数据集划分和统计汇总。
 - `dataset_yaml.py` 负责 `data.yaml` 输出，并只写入本次实际产出的 split 条目。
 - 数据处理页的数据集划分配置直接读取当前项目 `dataset.class_names`；该字段由数据标注页“管理类别”维护，自定义类别映射窗口也使用这组类别作为来源。
+- 数据集划分页的“模式选择”用 `conversion.use_labelme` 兼容保存 Labelme 转换模式或 YOLO 原生划分模式；模式选择独占转换参数区首行，线标注转换宽度继续读取 `dataset.line_to_obb.half_width`。
 - `backup.py` 负责旧产物清理与备份；未启用备份时不主动创建 `old/` 目录。
 - `formatting.py` 负责转换结果说明文本。
 - `execute.py` 保留为转换总流程装配入口。

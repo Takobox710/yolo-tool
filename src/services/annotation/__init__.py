@@ -17,6 +17,7 @@ from src.services.annotation.ai_labeling import (
 from src.services.annotation.editable_document import (
     EditableAnnotation,
     _detect_points_to_rect,
+    annotation_to_seg_points,
     load_editable_annotations,
     load_labelme_annotations,
     save_editable_annotations,
@@ -55,6 +56,7 @@ __all__ = [
     "collect_labelme_class_names",
     "convert_labelme_classes",
     "_detect_points_to_rect",
+    "annotation_to_seg_points",
     "annotation_exists",
     "apply_ai_labeling",
     "available_ai_models",

@@ -65,6 +65,9 @@ def run_prediction(
         progress(f"正在打开摄像头 {config.get('camera_index', 0)}。")
     progress(f"正在加载模型：{Path(model_path).name}")
     model = YOLO(model_path)
+    from src.services.training import infer_task_mode_from_model
+
+    task_mode = infer_task_mode_from_model(model_path)
     save_dir = build_save_dir(Path(config.get("save_dir", "result/gui_predict")))
     progress(f"检测结果将保存到：{save_dir}")
 
@@ -89,6 +92,7 @@ def run_prediction(
             items,
             original.width,
             original.height,
+            task_mode,
         )
         callback(
             {

@@ -9,6 +9,8 @@ from src.shared.paths import ROOT
 
 def infer_task_mode_from_model(model_name: str | Path | None) -> str:
     name = Path(str(model_name or "")).name.lower()
+    if "seg" in name:
+        return "seg"
     return "obb" if "obb" in name else "detect"
 
 
@@ -128,6 +130,7 @@ def select_training_model(config: dict) -> str:
 
 def infer_task_mode_from_config(config: dict) -> str:
     for key in ("model_yaml", "base_model", "model", "pretrained"):
-        if infer_task_mode_from_model(config.get(key)) == "obb":
-            return "obb"
+        mode = infer_task_mode_from_model(config.get(key))
+        if mode in {"seg", "obb"}:
+            return mode
     return "detect"

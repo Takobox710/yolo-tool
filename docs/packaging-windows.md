@@ -12,6 +12,8 @@ Windows 冻结程序使用 PyInstaller `onedir`，正式发布拆成三个独立
 
 上一版 v1 归档的实测大小为：基础包约 `1.86 GB`、附加包约 `1.72 GB`；本次 v2 精简后已验证 staging 未压缩大小约 `3.69 GB`，同一 staging 使用 `mx=5` 的基础包约 `2.10 GB`。内容包含 SAM2 checkpoint、约 `562 KB` 的多架构 CUDA 扩展及新增 OpenVINO/NCNN 运行库；Torch/CUDA、OpenCV、ONNX、PySide6、多媒体和 SAM2 运行组件保留。Program Setup 目标仍小于 `100 MB`，程序-only EXE 约 `2.76 MB`。
 
+冻结程序的训练与验证入口支持 `detect`、`obb`、`seg` 三种任务；Seg 数据集使用与其他任务相同的 `train/val/test/images` 和 `labels` 目录结构，任务类型由模型名称和 CLI 参数传递。
+
 ## Pixi 环境
 
 完整发布的冻结顺序是：先生成完整 `dist/YOLOTool` 供基础环境包提取 `_internal`，基础包归档完成后再强制清理并生成 `-ProgramOnly` 的 `dist/packages/Program/YOLOTool.exe`。Inno Setup 只读取后者，因此程序安装器不会重复携带 Python、Torch、CUDA 或其他基础运行库。

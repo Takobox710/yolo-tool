@@ -156,7 +156,7 @@ class AnnotationPage(
             self.refresh_file_list()
 
     def change_output_mode(self, text: str) -> None:
-        mode = text if text in {"detect", "obb"} else "detect"
+        mode = text if text in {"detect", "obb", "seg"} else "detect"
         self.output_mode = mode
         self.context.settings.task.mode = mode
         self.save_settings()

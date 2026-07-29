@@ -104,6 +104,55 @@ def test_run_conversion_writes_obb_and_detect_formats(tmp_path):
     ).read_text(encoding="utf-8")
 
 
+def test_run_conversion_writes_seg_polygons_for_labelme_shapes(tmp_path):
+    from src.services.conversion import ConversionConfig, run_conversion
+
+    images = tmp_path / "images"
+    images.mkdir()
+    make_image(images / "shapes.jpg")
+    (images / "shapes.json").write_text(
+        json.dumps(
+            {
+                "imageWidth": 100,
+                "imageHeight": 100,
+                "shapes": [
+                    {
+                        "label": "weld",
+                        "shape_type": "polygon",
+                        "points": [[10, 20], [80, 20], [80, 90]],
+                    },
+                    {
+                        "label": "weld",
+                        "shape_type": "rectangle",
+                        "points": [[10, 10], [30, 40]],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    run_conversion(
+        ConversionConfig(
+            task_mode="seg",
+            images_dir=images,
+            annotations_dir=images,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels",
+            class_names=["weld"],
+            train_ratio=1.0,
+            val_ratio=0.0,
+            test_ratio=0.0,
+        )
+    )
+
+    lines = (tmp_path / "data" / "train" / "labels" / "shapes.txt").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert lines[0] == "0 0.100000 0.200000 0.800000 0.200000 0.800000 0.900000"
+    assert lines[1] == "0 0.100000 0.100000 0.300000 0.100000 0.300000 0.400000 0.100000 0.400000"
+
+
 def test_line_conversion_expands_to_obb(tmp_path):
     from src.services.conversion import ConversionConfig, run_conversion
 

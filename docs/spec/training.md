@@ -30,6 +30,7 @@
 任务类型不再提供手动选项，应根据模型名称自动推断：
 
 - 模型名称包含 `obb` 时使用 `obb`。
+- 模型名称包含 `seg` 时使用 `seg`。
 - 其他模型默认使用 `detect`。
 
 不要恢复"任务类型"和"导出格式"这两个训练页选项。
@@ -39,7 +40,7 @@
 训练命令由 `src.services.training.build_train_command()` 生成，格式类似：
 
 ```powershell
-python -m src.main --yolo-train obb train model=... data=... epochs=... imgsz=... batch=... optimizer=...
+python -m src.main --yolo-train seg train model=... data=... epochs=... imgsz=... batch=... optimizer=...
 ```
 
 打包后训练/导出命令通过 `YOLOTool.exe --yolo-train ...` 或 `YOLOTool.exe --yolo-export ...` 进入 `src/bootstrap/cli_dispatch.py`，再转发到 `src/train_cli.py`；目标机器不需要安装 Python、pixi 或 Ultralytics CLI。不要把训练命令恢复为依赖 `pixi run yolo ...` 的形式。

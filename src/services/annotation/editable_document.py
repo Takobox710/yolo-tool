@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.services.annotation.circle_geometry import circle_bounds
+from src.services.annotation.circle_geometry import circle_bounds, circle_polygon
 
 
 @dataclass
@@ -33,7 +33,9 @@ def _points_to_min_area_obb(points: list[tuple[float, float]]) -> list[tuple[flo
 
 
 def load_editable_annotations(
-    image_size: tuple[int, int], label_path: Path
+    image_size: tuple[int, int],
+    label_path: Path,
+    task_mode: str | None = None,
 ) -> list[EditableAnnotation]:
     width, height = image_size
     annotations: list[EditableAnnotation] = []
@@ -48,7 +50,15 @@ def load_editable_annotations(
             values = [float(item) for item in parts[1:]]
         except ValueError:
             continue
-        if len(values) >= 8:
+        if task_mode == "seg":
+            if len(values) < 6 or len(values) % 2:
+                continue
+            points = [
+                (values[index] * width, values[index + 1] * height)
+                for index in range(0, len(values), 2)
+            ]
+            annotations.append(EditableAnnotation(class_id, "polygon", points))
+        elif len(values) >= 8:
             points = [
                 (values[index] * width, values[index + 1] * height)
                 for index in range(0, 8, 2)
@@ -68,6 +78,18 @@ def load_editable_annotations(
             ]
             annotations.append(EditableAnnotation(class_id, "rect", points))
     return annotations
+
+
+def annotation_to_seg_points(
+    annotation: EditableAnnotation,
+) -> list[tuple[float, float]]:
+    if annotation.shape == "circle":
+        x1, y1, x2, y2 = circle_bounds(annotation.points)
+        center = ((x1 + x2) / 2, (y1 + y2) / 2)
+        radius = max(abs(x2 - x1), abs(y2 - y1)) / 2
+        edge = annotation.radius_point or (center[0] + radius, center[1])
+        return circle_polygon([center, edge])
+    return list(annotation.points)
 
 
 def _labelme_class_id(label: str, class_names: list[str]) -> int:
@@ -259,7 +281,23 @@ def save_editable_annotations(
     label_path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for annotation in annotations:
-        if output_mode == "obb":
+        if output_mode == "seg":
+            points = annotation_to_seg_points(annotation)
+            if len(points) < 3:
+                continue
+            values: list[float] = []
+            for x_pos, y_pos in points:
+                values.extend(
+                    [
+                        max(0.0, min(1.0, x_pos / width)),
+                        max(0.0, min(1.0, y_pos / height)),
+                    ]
+                )
+            lines.append(
+                f"{annotation.class_id} "
+                + " ".join(f"{value:.6f}" for value in values)
+            )
+        elif output_mode == "obb":
             values: list[float] = []
             points = annotation.points[:4]
             if annotation.shape == "polygon" or len(annotation.points) != 4:
@@ -302,6 +340,7 @@ def save_editable_annotations(
 
 __all__ = [
     "EditableAnnotation",
+    "annotation_to_seg_points",
     "_detect_points_to_rect",
     "_points_to_min_area_obb",
     "load_editable_annotations",

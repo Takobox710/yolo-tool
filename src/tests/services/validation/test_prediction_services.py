@@ -251,6 +251,40 @@ def test_save_detection_label_file_writes_detect_and_obb_formats(tmp_path):
     )
 
 
+def test_seg_prediction_extracts_masks_and_writes_class_id(tmp_path):
+    from types import SimpleNamespace
+
+    from src.services.validation import (
+        extract_detection_items,
+        save_detection_label_file,
+    )
+
+    class Tensor:
+        def __init__(self, value):
+            self.value = value
+
+        def cpu(self):
+            return self
+
+        def tolist(self):
+            return self.value
+
+    result = SimpleNamespace(
+        names={3: "weld"},
+        masks=SimpleNamespace(xy=[[(10, 20), (80, 20), (80, 90)]]),
+        boxes=SimpleNamespace(conf=Tensor([0.9]), cls=Tensor([3])),
+    )
+    items = extract_detection_items(result)
+    label_path = tmp_path / "seg.txt"
+
+    save_detection_label_file(label_path, items, 100, 100, "seg")
+
+    assert items[0].class_id == 3
+    assert label_path.read_text(encoding="utf-8").strip() == (
+        "3 0.100000 0.200000 0.800000 0.200000 0.800000 0.900000"
+    )
+
+
 def test_ultralytics_compat_patches_missing_cv2_highgui_symbols(monkeypatch):
     from src.services.ultralytics_compat import ensure_cv2_highgui_compat
 

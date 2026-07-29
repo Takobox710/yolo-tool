@@ -1601,3 +1601,28 @@ def test_class_manager_conversion_button_opens_independent_dialog(tmp_path, monk
     manager.convert_button.click()
 
     assert calls == [(["weld", "scratch"], [2, 0], manager)]
+
+
+def test_annotation_page_exposes_seg_task_type(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.annotation.page import AnnotationPage
+
+    app = QApplication.instance() or QApplication([])
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda _data: None),
+    )
+    page = AnnotationPage(fake_app)
+
+    assert [
+        page.output_mode_combo.itemText(index)
+        for index in range(page.output_mode_combo.count())
+    ] == ["detect", "obb", "seg"]
+
+    page.output_mode_combo.setCurrentText("seg")
+    assert page.output_mode == "seg"
+    assert settings.task.mode == "seg"

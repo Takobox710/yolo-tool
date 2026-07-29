@@ -31,7 +31,13 @@ def test_training_command_and_detection_helpers(tmp_path):
     assert "model=data/yolov8m-obb.yaml" in command
     assert "lr0=0.001" in command
     assert infer_task_mode_from_model("yolo11n-obb.pt") == "obb"
+    assert infer_task_mode_from_model("yolo11n-seg.pt") == "seg"
     assert infer_task_mode_from_model("yolo11n.pt") == "detect"
+
+    seg_command = build_train_command(
+        {"model_yaml": "data/yolo11n-seg.yaml", "data": "data.yaml"}
+    )
+    assert "seg" in seg_command
 
     train1 = tmp_path / "train"
     train2 = tmp_path / "train-2"
