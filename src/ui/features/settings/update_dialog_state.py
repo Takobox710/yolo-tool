@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
+
 from src.services.runtime.release_updates import ReleaseCheckResult
+from src.services.runtime.variant import CPU_VARIANT, normalize_variant, variant_asset_prefix
 from src.shared.qt import QFrame, QLabel, QVBoxLayout
 
 
@@ -13,6 +16,12 @@ def release_check_is_active(parent) -> bool:
 
 def apply_release_check_result(dialog, result: ReleaseCheckResult) -> None:
     dialog.result = result
+    dialog.extra_environment_checkbox.setVisible(
+        normalize_variant(result.variant) != CPU_VARIANT
+    )
+    dialog.base_environment_checkbox.setVisible(
+        normalize_variant(result.variant) != CPU_VARIANT
+    )
     dialog.current_version_label.setText(f"当前版本 {result.current_version}")
     if dialog.latest_version_label is not None:
         dialog.latest_version_label.setText(result.latest_version or "-")
@@ -25,11 +34,13 @@ def apply_release_check_result(dialog, result: ReleaseCheckResult) -> None:
     dialog.program_checkbox.setEnabled(bool(result.installer_asset_url))
     dialog.program_checkbox.setChecked(bool(result.installer_asset_url))
     dialog.base_environment_checkbox.setEnabled(
-        bool(result.installer_asset_url)
+        normalize_variant(result.variant) != CPU_VARIANT
+        and bool(result.installer_asset_url)
         and has_environment_asset(result, "baseenv")
     )
     dialog.base_environment_checkbox.setChecked(
-        bool(result.installer_asset_url)
+        normalize_variant(result.variant) != CPU_VARIANT
+        and bool(result.installer_asset_url)
         and has_environment_update(result, "baseenv")
     )
     dialog.extra_environment_checkbox.setEnabled(
@@ -183,14 +194,44 @@ def sync_environment_notice(dialog) -> None:
     dialog._main_layout.insertWidget(progress_index, dialog.environment_notice)
 
 
+def find_environment_assets(
+    result: ReleaseCheckResult,
+    prefix: str,
+) -> tuple[tuple[str, str], ...]:
+    marker = variant_asset_prefix(result.variant).casefold()
+    candidates = [
+        (name, url)
+        for name, url in zip(result.environment_asset_names, result.environment_asset_urls)
+        if name.casefold().startswith(f"{marker}_{prefix.casefold()}_") and url
+    ]
+    if prefix.casefold() != "baseenv":
+        return tuple(candidates[:1])
+
+    volume_pattern = re.compile(
+        rf"^(?P<stem>{re.escape(marker)}_BaseEnv_[0-9A-Za-z.-]+\.7z)\.(?P<part>[0-9]{{3}})$",
+        re.IGNORECASE,
+    )
+    volumes = []
+    for name, url in candidates:
+        match = volume_pattern.fullmatch(name)
+        if match is not None:
+            volumes.append((int(match.group("part")), match.group("stem"), name, url))
+    if volumes:
+        stem = volumes[0][1]
+        grouped = sorted((item for item in volumes if item[1] == stem), key=lambda item: item[0])
+        expected = list(range(1, grouped[-1][0] + 1))
+        if [item[0] for item in grouped] == expected and len(grouped) >= 1:
+            return tuple((item[2], item[3]) for item in grouped)
+        return ()
+    return tuple(candidates[:1])
+
+
 def find_environment_asset(
     result: ReleaseCheckResult,
     prefix: str,
 ) -> tuple[str, str] | None:
-    for name, url in zip(result.environment_asset_names, result.environment_asset_urls):
-        if name.casefold().startswith(f"yolotool_{prefix}_") and url:
-            return name, url
-    return None
+    assets = find_environment_assets(result, prefix)
+    return assets[0] if assets else None
 
 
 def has_environment_asset(result: ReleaseCheckResult, prefix: str) -> bool:
@@ -231,6 +272,7 @@ __all__ = [
     "download_weights",
     "build_environment_notice",
     "find_environment_asset",
+    "find_environment_assets",
     "has_any_environment_update",
     "has_environment_asset",
     "has_environment_update",

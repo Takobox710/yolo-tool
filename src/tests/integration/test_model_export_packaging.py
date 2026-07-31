@@ -4,6 +4,9 @@ from pathlib import Path
 def test_model_export_dependencies_are_split_between_pixi_environments():
     manifest = Path("pixi.toml").read_text(encoding="utf-8")
     base_block = manifest.split("[feature.release-base.pypi-dependencies]", 1)[1].split(
+        "[feature.release-cpu.pypi-dependencies]", 1
+    )[0]
+    cpu_block = manifest.split("[feature.release-cpu.pypi-dependencies]", 1)[1].split(
         "[feature.export-full.pypi-dependencies]", 1
     )[0]
     export_block = manifest.split("[feature.export-full.pypi-dependencies]", 1)[1]
@@ -12,13 +15,19 @@ def test_model_export_dependencies_are_split_between_pixi_environments():
     assert "onnxruntime =" in manifest
     assert "[feature.export-full.pypi-dependencies]" in manifest
     assert "onnxruntime-gpu =" in manifest
+    assert "[feature.cpu.pypi-dependencies]" in manifest
+    assert 'torch = { version = "*", index = "https://download.pytorch.org/whl/cpu" }' in manifest
+    assert "[feature.release-cpu.pypi-dependencies]" in manifest
     assert 'sam2 = { path = "installer/vendor/sam2-1.1.0-cp312-cp312-win_amd64.whl" }' in manifest
+    assert 'onnxscript = ">=0.7.1, <0.8"' in manifest
     for package in ("openvino", "openvino-telemetry", "ncnn", "pnnx"):
         assert f"{package} =" not in base_block
+        assert f"{package} =" in cpu_block
         assert f"{package} =" in export_block
     assert "tensorrt-cu13-libs" in manifest
     assert 'py7zr = ' in manifest
-    assert 'default = ["export-full"]' in manifest
+    assert 'default = ["gpu", "export-full"]' in manifest
+    assert 'release-cpu = ["cpu", "release-cpu"]' in manifest
 
 
 def test_model_export_runtime_build_contract_is_present():
@@ -39,7 +48,7 @@ def test_model_export_runtime_build_contract_is_present():
         assert f'"{package}"' in optional_block
     for package in ("tqdm", "portalocker"):
         assert f'"{package}"' not in optional_block
-    for package in ("torch", "ultralytics", "onnx", "onnxruntime-gpu"):
+    for package in ("torch", "ultralytics", "onnx", "onnxscript", "onnx_ir", "onnxruntime-gpu"):
         assert f'    "{package}",' not in optional_block
     assert "pyinstaller" not in build_script.lower()
     assert "iscc" not in build_script.lower()

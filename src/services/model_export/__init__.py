@@ -14,7 +14,9 @@ from src.services.model_export.formats import (
     export_display_names,
     export_model_display_path,
     find_export_model_paths,
+    model_export_source_error,
     resolve_export_format,
+    validate_model_export_source,
 )
 from src.services.model_export.package import (
     EXPORT_PROTOCOL_VERSION,
@@ -59,6 +61,7 @@ __all__ = [
     "export_model_display_path",
     "export_model_to_directory",
     "find_export_model_paths",
+    "model_export_source_error",
     "inspect_extension_package",
     "inspect_extension_package_fast",
     "install_extension_package",
@@ -66,5 +69,6 @@ __all__ = [
     "load_extension_at",
     "load_installed_extension",
     "resolve_export_format",
+    "validate_model_export_source",
     "validate_extension_manifest",
 ]

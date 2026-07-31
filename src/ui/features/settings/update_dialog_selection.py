@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from src.services.model_export import load_installed_extension
+from src.services.runtime.variant import CPU_VARIANT, normalize_variant
 from src.shared.qt import QMessageBox
 from src.ui.features.settings.update_dialog_state import (
     find_environment_asset as _find_environment_asset,
+    find_environment_assets as _find_environment_assets,
     has_any_environment_update as _has_any_environment_update,
     has_environment_asset as _has_environment_asset,
     has_environment_update as _has_environment_update,
@@ -25,9 +27,7 @@ class ReleaseUpdateSelectionMixin:
             (self.extra_environment_checkbox, "extraenv"),
         ):
             if checkbox.isChecked():
-                asset = _find_environment_asset(self.result, prefix)
-                if asset:
-                    assets.append(asset)
+                assets.extend(_find_environment_assets(self.result, prefix))
         return tuple(assets)
 
 
@@ -229,6 +229,7 @@ class ReleaseUpdateSelectionMixin:
         )
         self.base_environment_checkbox.setEnabled(
             enabled
+            and normalize_variant(self.result.variant) != CPU_VARIANT
             and bool(self.result.installer_asset_url)
             and _has_environment_asset(self.result, "baseenv")
         )

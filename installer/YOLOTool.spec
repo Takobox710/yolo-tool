@@ -50,11 +50,14 @@ BASE_EXCLUDES = [
     "torch._numpy.testing",
     # TensorRT remains in the additive LZMA2 archive.
     "tensorrt",
+    "onnxruntime-gpu",
 ]
 
 mode = os.environ.get("YOLO_TOOL_BUILD_MODE", "release").strip().lower()
 is_dev = mode == "dev"
 is_program_only = os.environ.get("YOLO_TOOL_PROGRAM_ONLY", "0") == "1"
+build_variant = os.environ.get("YOLO_TOOL_BUILD_VARIANT", "gpu").strip().lower()
+is_cpu_variant = build_variant == "cpu"
 name = "YOLOTool-dev" if is_dev else "YOLOTool"
 
 PY7ZR_PACKAGES = (
@@ -93,6 +96,8 @@ if is_program_only:
         "ultralytics",
         "onnx",
         "onnxslim",
+        "onnxscript",
+        "onnx_ir",
         "onnxruntime",
         "openvino",
         "ncnn",
@@ -120,8 +125,7 @@ else:
         native_7z_dll = str(Path(native_7z).with_name("7z.dll"))
         if Path(native_7z_dll).is_file():
             datas += [(native_7z_dll, ".")]
-    binaries = []
-    for package in (
+    runtime_packages = [
         "torch",
         "cv2",
         "onnx",
@@ -129,31 +133,53 @@ else:
         *SAM2_PACKAGES,
         *SAM3_PACKAGES,
         *PY7ZR_PACKAGES,
-    ):
+    ]
+    if is_cpu_variant:
+        runtime_packages += ["openvino", "ncnn", "pnnx"]
+
+    binaries = []
+    for package in runtime_packages:
+        if is_cpu_variant and package in SAM2_PACKAGES:
+            # The vendored SAM2 wheel only ships a CUDA `_C.pyd`; SAM2's
+            # Python inference path remains usable with CPU Torch without it.
+            continue
         binaries += collect_dynamic_libs(package)
 
     hiddenimports = collect_submodules("ultralytics", on_error="ignore")
     hiddenimports += ["src.assets_rc"]
-    for package in (
+    import_packages = [
         "onnx",
         "onnxslim",
+        "onnxscript",
+        "onnx_ir",
         "onnxruntime",
         *SAM2_PACKAGES,
         *SAM3_PACKAGES,
         *PY7ZR_PACKAGES,
-    ):
+    ]
+    if is_cpu_variant:
+        import_packages += ["openvino", "ncnn", "pnnx"]
+    for package in import_packages:
         hiddenimports += collect_submodules(package, on_error="ignore")
         datas += collect_data_files(package, excludes=RUNTIME_DATA_EXCLUDES)
+    if is_cpu_variant:
+        # The vendored SAM2 wheel exposes a CUDA-only extension as a hidden
+        # module even though the CPU inference path does not need it.
+        hiddenimports = [item for item in hiddenimports if item != "sam2._C"]
+        excludes.append("sam2._C")
 
     # Keep the small dist-info directories used by importlib.metadata in frozen builds.
-    for distribution in (
+    distributions = [
         "onnx",
         "onnxruntime",
         "opencv-python",
         "Pillow",
         "psutil",
         "ultralytics",
-    ):
+    ]
+    if is_cpu_variant:
+        distributions += ["openvino", "openvino-telemetry", "ncnn", "pnnx"]
+    for distribution in distributions:
         datas += copy_metadata(distribution)
     if not is_dev:
         datas += collect_data_files(

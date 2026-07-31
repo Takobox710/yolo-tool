@@ -11,6 +11,7 @@ from src.shared.qt import (
     QSizePolicy,
     QVBoxLayout,
 )
+from src.services.runtime.variant import CPU_VARIANT, normalize_variant
 from src.ui.features.settings.update_dialog_state import (
     has_environment_asset as _has_environment_asset,
     has_environment_update as _has_environment_update,
@@ -103,14 +104,22 @@ def build_release_update_layout(dialog) -> None:
     options.addWidget(dialog.program_checkbox)
     dialog.base_environment_checkbox = QCheckBox("基础环境包")
     dialog.base_environment_checkbox.setObjectName("releaseBaseEnvironmentCheckbox")
+    dialog.base_environment_checkbox.setVisible(
+        normalize_variant(dialog.result.variant) != CPU_VARIANT
+    )
     dialog.extra_environment_checkbox = QCheckBox("附加环境包")
     dialog.extra_environment_checkbox.setObjectName("releaseExtraEnvironmentCheckbox")
+    dialog.extra_environment_checkbox.setVisible(
+        normalize_variant(dialog.result.variant) != CPU_VARIANT
+    )
     for checkbox, enabled, checked in (
         (
             dialog.base_environment_checkbox,
-            bool(dialog.result.installer_asset_url)
+            normalize_variant(dialog.result.variant) != CPU_VARIANT
+            and bool(dialog.result.installer_asset_url)
             and _has_environment_asset(dialog.result, "baseenv"),
-            bool(dialog.result.installer_asset_url)
+            normalize_variant(dialog.result.variant) != CPU_VARIANT
+            and bool(dialog.result.installer_asset_url)
             and _has_environment_update(dialog.result, "baseenv"),
         ),
         (

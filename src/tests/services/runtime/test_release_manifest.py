@@ -164,11 +164,40 @@ def test_base_runtime_archive_excludes_program_and_uses_expected_name(tmp_path):
     )
 
     assert archive_path.name == "YOLOTool_BaseEnv_v1.7z"
+    assert (tmp_path / "output" / "YOLOTool_BaseEnv_v1.7z").exists()
     with py7zr.SevenZipFile(archive_path, "r") as archive:
         names = set(archive.getnames())
     assert "_internal/runtime.dll" in names
     assert "data/models/yolo26n.pt" in names
     assert "YOLOTool.exe" not in names
+
+
+def test_base_runtime_archive_can_use_split_volumes_when_requested(tmp_path):
+    from src.devtools.release_package import build_base_runtime_archive
+
+    app_root = tmp_path / "app"
+    (app_root / "_internal").mkdir(parents=True)
+    (app_root / "data" / "models").mkdir(parents=True)
+    (app_root / "_internal" / "runtime.dll").write_bytes(b"runtime")
+    for name in (
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_base_plus.pt",
+    ):
+        (app_root / "data" / "models" / name).write_bytes(b"model")
+
+    archive_path = build_base_runtime_archive(
+        app_root,
+        tmp_path / "staging",
+        tmp_path / "output",
+        package_version="v1",
+        runtime_version="runtime-1",
+        split=True,
+    )
+
+    assert archive_path.name == "YOLOTool_BaseEnv_v1.7z.001"
+    assert archive_path.is_file()
 
 
 def test_base_runtime_archive_always_rebuilds_without_cache(tmp_path):

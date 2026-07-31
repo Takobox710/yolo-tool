@@ -13,10 +13,12 @@ def test_model_export_tab_scans_models_and_exposes_all_formats(tmp_path):
 
     app = QApplication.instance() or QApplication([])
     model = tmp_path / "data" / "models" / "base.pt"
+    sam = tmp_path / "data" / "models" / "sam2.1_hiera_base_plus.pt"
     best = tmp_path / "result" / "train-3" / "weights" / "best.pt"
     model.parent.mkdir(parents=True)
     best.parent.mkdir(parents=True)
     model.write_bytes(b"model")
+    sam.write_bytes(b"sam")
     best.write_bytes(b"best")
     fake_app = SimpleNamespace(
         settings=build_default_settings(tmp_path),
@@ -31,6 +33,7 @@ def test_model_export_tab_scans_models_and_exposes_all_formats(tmp_path):
         page.model_combo.itemText(i) for i in range(page.model_combo.count())
     ]
     assert "data\\models\\base.pt" not in model_choices
+    assert "data\\models\\sam2.1_hiera_base_plus.pt" in model_choices
     assert "train-3\\best.pt" in model_choices
     assert page._model_display_path(best) == "train-3\\best.pt"
     assert page.model_path_from_text("train-3\\best.pt") == str(best.resolve())
@@ -40,6 +43,7 @@ def test_model_export_tab_scans_models_and_exposes_all_formats(tmp_path):
         "OpenVINO",
         "TensorRT",
         "NCNN",
+        "SAM2 ONNX",
     ]
     assert page.start_btn.text() == "开始转换"
     assert page.install_btn.text() == "安装/替换附加包"

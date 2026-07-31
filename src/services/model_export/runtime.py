@@ -10,6 +10,7 @@ from src.services.model_export.formats import resolve_export_format
 from src.services.model_export.package import load_installed_extension
 from src.services.model_export.types import ExportCapability
 from src.services.runtime.windows_spawn import hidden_subprocess_kwargs
+from src.services.runtime.variant import CPU_VARIANT, installed_variant
 
 
 def _modules_available(modules: tuple[str, ...]) -> bool:
@@ -41,6 +42,22 @@ def export_capability(
 ) -> ExportCapability:
     spec = resolve_export_format(export_format)
     is_frozen = getattr(sys, "frozen", False) if frozen is None else frozen
+    variant = installed_variant()
+    if variant == CPU_VARIANT:
+        if spec.argument == "engine":
+            return ExportCapability(
+                False,
+                "CPU 内置运行环境",
+                "CPU 版不包含 TensorRT。",
+            )
+        if spec.argument in {"openvino", "ncnn"} and _modules_available(spec.required_modules):
+            return ExportCapability(True, "CPU 内置运行环境", "运行环境可用")
+        if spec.argument in {"openvino", "ncnn"}:
+            return ExportCapability(
+                False,
+                "CPU 内置运行环境",
+                "CPU 版内置转换依赖缺失。",
+            )
     if spec.built_in:
         if _modules_available(spec.required_modules):
             return ExportCapability(True, "内置运行环境", "运行环境可用")

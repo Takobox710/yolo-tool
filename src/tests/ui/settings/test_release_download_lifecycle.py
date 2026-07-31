@@ -23,6 +23,74 @@ def test_release_download_progress_uses_requested_weights():
     assert _aggregate_download_percent(2, 3, 100, 100, weights=(10, 45, 45)) == 100
 
 
+def test_release_dialog_selects_all_base_environment_volumes():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(
+            current_version="1.3.3",
+            latest_version="1.4.0",
+            installer_asset_name="YOLOTool_Setup_1.4.0.exe",
+            installer_asset_url="https://github.com/example/setup.exe",
+            environment_asset_names=(
+                "YOLOTool_BaseEnv_v3.7z.001",
+                "YOLOTool_BaseEnv_v3.7z.002",
+            ),
+            environment_asset_urls=(
+                "https://github.com/example/base.001",
+                "https://github.com/example/base.002",
+            ),
+            base_environment_update_available=True,
+            update_available=True,
+        ),
+    )
+    dialog.base_environment_checkbox.setChecked(True)
+
+    assert dialog._selected_assets() == (
+        ("YOLOTool_Setup_1.4.0.exe", "https://github.com/example/setup.exe"),
+        ("YOLOTool_BaseEnv_v3.7z.001", "https://github.com/example/base.001"),
+        ("YOLOTool_BaseEnv_v3.7z.002", "https://github.com/example/base.002"),
+    )
+    dialog.close()
+
+
+def test_cpu_release_dialog_only_offers_cpu_setup():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.runtime.release_updates import ReleaseCheckResult
+    from src.shared.qt import QApplication
+    from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    dialog = ReleaseUpdateDialog(
+        None,
+        ReleaseCheckResult(
+            current_version="1.3.3",
+            variant="cpu",
+            latest_version="1.4.0",
+            installer_asset_name="YOLOTool_CPU_Setup_1.4.0.exe",
+            installer_asset_url="https://github.com/example/cpu.exe",
+            environment_asset_names=("YOLOTool_CPU_BaseEnv_v3.7z",),
+            environment_asset_urls=("https://github.com/example/cpu-base.7z",),
+            update_available=True,
+        ),
+    )
+
+    assert dialog.program_checkbox.isChecked() is True
+    assert dialog.base_environment_checkbox.isVisible() is False
+    assert dialog.extra_environment_checkbox.isVisible() is False
+    assert dialog._selected_assets() == (
+        ("YOLOTool_CPU_Setup_1.4.0.exe", "https://github.com/example/cpu.exe"),
+    )
+    dialog.close()
+
+
 def test_release_dialog_hot_installs_extra_environment_when_selected_alone(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

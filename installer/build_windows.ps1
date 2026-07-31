@@ -3,6 +3,8 @@
     [string]$Mode = "release",
     [switch]$Clean,
     [switch]$ProgramOnly,
+    [ValidateSet("GPU", "CPU")]
+    [string]$Variant = "GPU",
     [ValidateSet("Program", "Full", "AppUpdate", "RuntimeFull")]
     [string]$PackageType = "Program",
     [string]$RuntimeVersion = "",
@@ -22,18 +24,31 @@ $PreviousBuildMode = $env:YOLO_TOOL_BUILD_MODE
 $env:YOLO_TOOL_BUILD_MODE = $Mode
 $PreviousProgramOnly = $env:YOLO_TOOL_PROGRAM_ONLY
 $env:YOLO_TOOL_PROGRAM_ONLY = if ($ProgramOnly) { "1" } else { "0" }
+$PreviousBuildVariant = $env:YOLO_TOOL_BUILD_VARIANT
+$env:YOLO_TOOL_BUILD_VARIANT = $Variant.ToLowerInvariant()
+
+$RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-base" }
 
 $AppName = if ($Mode -eq "dev") {
     "YOLOTool-dev"
 } else {
     "YOLOTool"
 }
-$BuildName = if ($ProgramOnly) { "$AppName-Program" } else { $AppName }
+$VariantRoot = if ($Variant -eq "CPU") {
+    Join-Path $Root "dist\CPU"
+} else {
+    Join-Path $Root "dist"
+}
+$BuildName = if ($ProgramOnly) {
+    if ($Variant -eq "CPU") { "$AppName-CPU-Program" } else { "$AppName-Program" }
+} else {
+    if ($Variant -eq "CPU") { "$AppName-CPU" } else { $AppName }
+}
 $BuildPath = Join-Path $Root "build\$BuildName"
-$FullAppDir = Join-Path $Root "dist\$AppName"
-$ProgramAppDir = Join-Path $Root "dist\$BuildName"
+$FullAppDir = Join-Path $VariantRoot $AppName
+$ProgramAppDir = Join-Path $VariantRoot "$AppName-Program"
 $OutputAppDir = if ($ProgramOnly) { $ProgramAppDir } else { $FullAppDir }
-$OneFileOutput = if ($ProgramOnly) { Join-Path $Root "dist\$AppName.exe" } else { "" }
+$OneFileOutput = if ($ProgramOnly) { Join-Path $VariantRoot "$AppName.exe" } else { "" }
 
 if ($Clean) {
     Remove-Item -LiteralPath $BuildPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -50,9 +65,9 @@ try {
     } else {
         Write-Host "[程序构建] 正在使用 PyInstaller 构建完整冻结程序..." -ForegroundColor Cyan
     }
-    pixi run -e release-base pyinstaller --noconfirm --log-level=WARN `
+    pixi run -e $RuntimeEnvironment pyinstaller --noconfirm --log-level=WARN `
         --workpath "build\$BuildName" `
-        --distpath "dist" `
+        --distpath $VariantRoot `
         "installer/YOLOTool.spec"
 
     if ($LASTEXITCODE -ne 0) {
@@ -66,6 +81,7 @@ finally {
     $env:PYTHONWARNINGS = $PreviousPythonWarnings
     $env:YOLO_TOOL_BUILD_MODE = $PreviousBuildMode
     $env:YOLO_TOOL_PROGRAM_ONLY = $PreviousProgramOnly
+    $env:YOLO_TOOL_BUILD_VARIANT = $PreviousBuildVariant
 }
 
 if ($ProgramOnly) {
@@ -143,7 +159,7 @@ settings_path.write_text(
     encoding="utf-8",
 )
 save_last_project_root(app_dir, app_dir / "data" / "runtime" / "app_state.json")
-"@ | pixi run -e release-base python - $AppDir
+"@ | pixi run -e $RuntimeEnvironment python - $AppDir
 
 if ($LASTEXITCODE -ne 0) {
     throw "生成打包后的运行时设置文件失败。"
@@ -168,7 +184,19 @@ if (-not (Test-Path -LiteralPath $RuntimeAppStatePath)) {
     }
 }
 
-$AppVersion = (& pixi run -e release-base python -c "from src import APP_VERSION; print(APP_VERSION)" | Out-String).Trim()
+if ($Variant -eq "CPU") {
+    $GuardArgs = @("-m", "src.devtools.cpu_package_guard")
+    if (-not $ProgramOnly) {
+        $GuardArgs += "--runtime-root"
+        $GuardArgs += Join-Path $AppDir "_internal"
+    }
+    & pixi run -e $RuntimeEnvironment python @GuardArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "CPU 打包安全检查失败，已拒绝继续生成 CPU 产物。"
+    }
+}
+
+$AppVersion = (& pixi run -e $RuntimeEnvironment python -c "from src import APP_VERSION; print(APP_VERSION)" | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($AppVersion)) {
     throw "读取应用版本失败。"
 }
@@ -187,6 +215,7 @@ if (-not $ProgramOnly) {
         schema_version = 2
         app_version = $AppVersion
         required_runtime_version = $RequiredRuntimeVersion
+        variant = $Variant.ToLowerInvariant()
         app_files = @{
             $ExeName = (Get-FileHash -LiteralPath (Join-Path $AppDir $ExeName) -Algorithm SHA256).Hash.ToLowerInvariant()
         }
@@ -194,6 +223,7 @@ if (-not $ProgramOnly) {
     $StandaloneRuntimeManifest = @{
         schema_version = 2
         runtime_version = $RuntimeVersion
+        variant = $Variant.ToLowerInvariant()
         files = @{}
     } | ConvertTo-Json -Depth 4
     $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
@@ -218,10 +248,11 @@ $PackageArgs = @(
     "--exe-name", $ExeName,
     "--app-version", $AppVersion,
     "--runtime-version", $RuntimeVersion,
-    "--required-runtime-version", $RequiredRuntimeVersion
+    "--required-runtime-version", $RequiredRuntimeVersion,
+    "--variant", $Variant.ToLowerInvariant()
 )
 $StagingTimer = [System.Diagnostics.Stopwatch]::StartNew()
-& pixi run -e release-base python @PackageArgs
+& pixi run -e $RuntimeEnvironment python @PackageArgs
 if ($LASTEXITCODE -ne 0) {
     throw "生成 $PackageType 包 staging 失败。"
 }
@@ -233,6 +264,7 @@ Write-Host "Built: $AppDir"
 Write-Host "Package type: $PackageType"
 Write-Host "Package staging: $StagingRoot"
 Write-Host "Application version: $AppVersion"
+Write-Host "Build variant: $Variant"
 Write-Host "Runtime version: $RuntimeVersion"
 Write-Host "Packaged runtime settings: $RuntimeSettingsPath"
 Write-Host "Packaged app state: $RuntimeAppStatePath"

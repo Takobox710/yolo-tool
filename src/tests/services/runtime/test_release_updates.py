@@ -62,6 +62,141 @@ def test_latest_release_detects_a_new_version(monkeypatch):
     assert captured["timeout"] == 8.0
 
 
+def test_latest_release_detects_complete_split_base_environment(monkeypatch):
+    from src.services.runtime import release_updates
+
+    monkeypatch.setattr(
+        release_updates,
+        "load_install_instance",
+        lambda: {"base_package_version": "v2", "variant": "gpu"},
+    )
+    monkeypatch.setattr(
+        release_updates,
+        "urlopen",
+        lambda *_args, **_kwargs: _Response(
+            {
+                "tag_name": "v1.4.0",
+                "assets": [
+                    {
+                        "name": "YOLOTool_Setup_1.4.0.exe",
+                        "browser_download_url": "https://github.com/example/setup.exe",
+                    },
+                    {
+                        "name": "YOLOTool_BaseEnv_v3.7z.001",
+                        "browser_download_url": "https://github.com/example/base.001",
+                    },
+                    {
+                        "name": "YOLOTool_BaseEnv_v3.7z.002",
+                        "browser_download_url": "https://github.com/example/base.002",
+                    },
+                ],
+            }
+        ),
+    )
+
+    result = release_updates.check_latest_release("1.3.3")
+
+    assert result.environment_asset_names == (
+        "YOLOTool_BaseEnv_v3.7z.001",
+        "YOLOTool_BaseEnv_v3.7z.002",
+    )
+    assert result.base_environment_version == "3.0.0"
+    assert result.base_environment_update_available is True
+
+
+def test_latest_release_filters_assets_by_cpu_variant(monkeypatch):
+    from src.services.runtime import release_updates
+
+    monkeypatch.setattr(
+        release_updates,
+        "load_install_instance",
+        lambda: {"variant": "cpu", "base_package_version": "v1"},
+    )
+    monkeypatch.setattr(
+        release_updates,
+        "urlopen",
+        lambda *_args, **_kwargs: _Response(
+            {
+                "tag_name": "v1.4.0",
+                "assets": [
+                    {
+                        "name": "YOLOTool_Setup_1.4.0.exe",
+                        "browser_download_url": "https://github.com/example/gpu.exe",
+                    },
+                    {
+                        "name": "YOLOTool_CPU_Setup_1.4.0.exe",
+                        "browser_download_url": "https://github.com/example/cpu.exe",
+                    },
+                    {
+                        "name": "YOLOTool_BaseEnv_v3.7z.001",
+                        "browser_download_url": "https://github.com/example/gpu.001",
+                    },
+                    {
+                        "name": "YOLOTool_BaseEnv_v3.7z.002",
+                        "browser_download_url": "https://github.com/example/gpu.002",
+                    },
+                    {
+                        "name": "YOLOTool_CPU_BaseEnv_v3.7z.001",
+                        "browser_download_url": "https://github.com/example/cpu.001",
+                    },
+                    {
+                        "name": "YOLOTool_CPU_BaseEnv_v3.7z.002",
+                        "browser_download_url": "https://github.com/example/cpu.002",
+                    },
+                    {
+                        "name": "YOLOTool_ExtraEnv_v2.7z",
+                        "browser_download_url": "https://github.com/example/gpu-extra.7z",
+                    },
+                ],
+            }
+        ),
+    )
+
+    result = release_updates.check_latest_release("1.3.3")
+
+    assert result.variant == "cpu"
+    assert result.installer_asset_name == "YOLOTool_CPU_Setup_1.4.0.exe"
+    assert result.environment_asset_names == ()
+    assert result.environment_asset_urls == ()
+    assert result.base_environment_version == ""
+    assert result.base_environment_update_available is False
+    assert result.extra_environment_version == ""
+
+
+def test_latest_release_ignores_cpu_base_archive_even_when_present(monkeypatch):
+    from src.services.runtime import release_updates
+
+    monkeypatch.setattr(
+        release_updates,
+        "load_install_instance",
+        lambda: {"variant": "cpu", "base_package_version": "v1"},
+    )
+    monkeypatch.setattr(
+        release_updates,
+        "urlopen",
+        lambda *_args, **_kwargs: _Response(
+            {
+                "tag_name": "v1.4.0",
+                "assets": [
+                    {
+                        "name": "YOLOTool_CPU_Setup_1.4.0.exe",
+                        "browser_download_url": "https://github.com/example/cpu.exe",
+                    },
+                    {
+                        "name": "YOLOTool_CPU_BaseEnv_v3.7z.001",
+                        "browser_download_url": "https://github.com/example/cpu.001",
+                    },
+                ],
+            }
+        ),
+    )
+
+    result = release_updates.check_latest_release("1.3.3")
+
+    assert result.environment_asset_names == ()
+    assert result.base_environment_update_available is False
+
+
 def test_latest_release_does_not_mark_equal_or_older_versions(monkeypatch):
     from src.services.runtime import release_updates
 

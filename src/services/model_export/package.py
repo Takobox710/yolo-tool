@@ -32,6 +32,7 @@ from src.services.model_export.archive_extract import (
 )
 from src.services.model_export.probe import probe_packages
 from src.services.runtime.install_instance import instance_extensions_root
+from src.services.runtime.variant import CPU_VARIANT, installed_variant
 
 
 EXTENSION_DIR_NAME = "model-export-runtime"
@@ -112,6 +113,10 @@ def install_extension_package(
     probe: Callable[[Path], dict] = probe_packages,
     progress: Callable[[str, int], None] | None = None,
 ) -> InstalledExtension:
+    if installed_variant() == CPU_VARIANT:
+        raise ExtensionPackageError(
+            "CPU 版已将 OpenVINO、NCNN、PNNX 内置，不接受 GPU 模型转换附加包。"
+        )
     package_path = Path(package_path)
     if not package_path.is_file():
         raise ExtensionPackageError("请选择存在的模型转换环境包。")

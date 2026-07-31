@@ -5,7 +5,7 @@ import json
 import py7zr
 
 
-def _build_base_archive(tmp_path):
+def _build_base_archive(tmp_path, *, variant="gpu"):
     source = tmp_path / "source"
     source.mkdir()
     manifest = {
@@ -13,6 +13,7 @@ def _build_base_archive(tmp_path):
         "package_id": "yolo-tool-base-runtime-models",
         "version": "base-runtime-models-1",
         "runtime_version": "runtime-1",
+        "variant": variant,
         "platform": "win-64",
         "architecture": "x86_64",
         "uncompressed_size": 1234,
@@ -29,6 +30,19 @@ def _build_base_archive(tmp_path):
     return archive_path
 
 
+def test_companion_catalog_rejects_cpu_gpu_variant_mismatch(tmp_path):
+    from src.devtools.companion_catalog import build_companion_catalog
+
+    archive_path = _build_base_archive(tmp_path, variant="cpu")
+
+    try:
+        build_companion_catalog(archive_path, variant="gpu")
+    except ValueError as exc:
+        assert "变体" in str(exc)
+    else:
+        raise AssertionError("CPU base package was accepted for GPU catalog")
+
+
 def test_companion_catalog_records_base_version_without_archive_identity(tmp_path):
     from src.devtools.companion_catalog import build_companion_catalog
 
@@ -40,14 +54,54 @@ def test_companion_catalog_records_base_version_without_archive_identity(tmp_pat
         "schema_version": 1,
         "base": {
             "filename": "base.7z",
+            "integrated": False,
             "package_id": "yolo-tool-base-runtime-models",
             "manifest_schema": 1,
             "platform": "win-64",
             "architecture": "x86_64",
             "version": "base-runtime-models-1",
             "runtime_version": "runtime-1",
+            "variant": "gpu",
             "uncompressed_size": 1234,
         },
+    }
+
+
+def test_companion_catalog_accepts_cpu_integrated_staging(tmp_path):
+    from src.devtools.companion_catalog import build_companion_catalog
+
+    staging = tmp_path / "BaseRuntimeModels-CPU"
+    staging.mkdir()
+    (staging / "base-package-manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "package_id": "yolo-tool-base-runtime-models",
+                "version": "base-runtime-models-1",
+                "runtime_version": "runtime-1",
+                "variant": "cpu",
+                "platform": "win-64",
+                "architecture": "x86_64",
+                "uncompressed_size": 4321,
+                "files": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    catalog = build_companion_catalog(variant="cpu", base_staging=staging)
+
+    assert catalog["base"] == {
+        "filename": "",
+        "integrated": True,
+        "package_id": "yolo-tool-base-runtime-models",
+        "manifest_schema": 1,
+        "platform": "win-64",
+        "architecture": "x86_64",
+        "version": "base-runtime-models-1",
+        "runtime_version": "runtime-1",
+        "variant": "cpu",
+        "uncompressed_size": 4321,
     }
 
 

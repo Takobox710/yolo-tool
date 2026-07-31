@@ -19,6 +19,7 @@ def test_install_instance_id_is_stable_and_settings_are_readable(tmp_path):
         base_package_version="base-runtime-models-2",
         model_bundle_version="models-2",
         model_export_version="model-export-runtime-2",
+        variant="cpu",
     )
 
     payload = load_install_instance(tmp_path)
@@ -27,6 +28,7 @@ def test_install_instance_id_is_stable_and_settings_are_readable(tmp_path):
     assert payload["app_version"] == "1.3.3"
     assert payload["model_export_installed"] == "true"
     assert payload["model_export_version"] == "model-export-runtime-2"
+    assert payload["variant"] == "cpu"
     assert installed_instance_id(tmp_path) == instance_id
     assert (tmp_path / "_internal" / "yolotool_metadata" / "install-instance.ini").is_file()
     assert not (tmp_path / "install-instance.ini").exists()

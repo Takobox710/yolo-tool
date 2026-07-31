@@ -15,6 +15,8 @@ from src.devtools.base_runtime_builder import (
     BASE_MODEL_NAMES,
     BASE_PACKAGE_ID,
     BASE_PACKAGE_SCHEMA_VERSION,
+    BASE_ARCHIVE_VOLUME_BYTES,
+    BASE_ARCHIVE_VOLUME_COUNT,
     MANAGED_MODELS_NAME,
     STDLIB_ARCHIVE_NAME,
     build_base_runtime_archive,
@@ -33,7 +35,8 @@ from src.services.runtime.release_manifest import ReleaseManifestError
 # Packaging contract: the base builder uses shutil.which("robocopy") if os.name == "nt" else None,
 # the "/MT:16" fallback, "*.py", "/XD", and the loop
 # for source in sorted(site_packages.rglob("*.py")).
-# The archive naming contract remains YOLOTool_BaseEnv_{package_version}.7z.
+# GPU archives retain YOLOTool_BaseEnv_{package_version}.7z; CPU releases embed
+# the complete base runtime staging in YOLOTool_CPU_Setup_{app_version}.exe.
 
 
 def _parse_args() -> argparse.Namespace:
@@ -44,6 +47,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--app-version", required=True)
     parser.add_argument("--runtime-version", default="")
     parser.add_argument("--required-runtime-version", required=True)
+    parser.add_argument("--variant", default="gpu")
     parser.add_argument("--exe-name", default="YOLOTool.exe")
     return parser.parse_args()
 
@@ -57,6 +61,7 @@ def main() -> None:
         app_version=args.app_version,
         runtime_version=args.runtime_version,
         required_runtime_version=args.required_runtime_version,
+        variant=args.variant,
         exe_name=args.exe_name,
     )
 
@@ -66,6 +71,8 @@ __all__ = [
     "BASE_MODEL_NAMES",
     "BASE_PACKAGE_ID",
     "BASE_PACKAGE_SCHEMA_VERSION",
+    "BASE_ARCHIVE_VOLUME_BYTES",
+    "BASE_ARCHIVE_VOLUME_COUNT",
     "LEGACY_PACKAGE_TYPES",
     "MANAGED_MODELS_NAME",
     "PACKAGE_TYPES",

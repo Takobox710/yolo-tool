@@ -78,12 +78,14 @@ def write_package_info(
     package_type: str,
     app_version: str,
     required_runtime_version: str,
+    variant: str = "gpu",
 ) -> None:
     config = configparser.ConfigParser()
     config["Package"] = {
         "type": package_type,
         "app_version": app_version,
         "required_runtime_version": required_runtime_version,
+        "variant": variant,
     }
     with path.open("w", encoding="utf-8", newline="\n") as handle:
         config.write(handle)

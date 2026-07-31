@@ -73,6 +73,7 @@ def write_install_instance(
     base_package_version: str,
     model_bundle_version: str = "",
     model_export_version: str = "",
+    variant: str = "gpu",
 ) -> Path:
     root = Path(root)
     metadata_directory(root).mkdir(parents=True, exist_ok=True)
@@ -86,6 +87,7 @@ def write_install_instance(
         "model_bundle_version": model_bundle_version,
         "model_export_installed": str(bool(model_export_version)).lower(),
         "model_export_version": model_export_version,
+        "variant": variant,
     }
     path = metadata_path(root, INSTALL_INSTANCE_NAME)
     with path.open("w", encoding="utf-8", newline="\n") as handle:

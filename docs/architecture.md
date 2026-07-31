@@ -108,7 +108,7 @@ yolo_tool/
 - `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程。
 - `windows_spawn.py` 提供 Windows 隐藏窗口参数，确保打包后的后台任务不弹终端。
 - `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测；依赖版本优先读取 `importlib.metadata`，冻结态缺少发行版元数据时回退读取模块的 `__version__`。GUI 启动不强制比较运行环境版本；安装器调用的 `--runtime-probe` 仍不加载这些模块，只比较程序清单要求的运行时版本与 `_internal` 基础环境清单中的版本。
-- Release 更新服务按职责拆为 `release_catalog.py`（Release 检查和资源解析）、`release_download.py`（流式下载）与 `release_installer.py`（安装器生命周期），`release_updates.py` 只保留兼容 façade；环境包版本来自 `YOLOTool_BaseEnv_<版本>.7z` / `YOLOTool_ExtraEnv_<版本>.7z` 文件名，并与 `install-instance.ini` / `package-info.ini` 的包版本比较。网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
+- Release 更新服务按职责拆为 `release_catalog.py`（Release 检查和资源解析）、`release_download.py`（流式下载）与 `release_installer.py`（安装器生命周期），`release_updates.py` 只保留兼容 façade；GPU 环境包版本来自 `YOLOTool_BaseEnv_<版本>.7z.001/.002` 或 `YOLOTool_ExtraEnv_<版本>.7z` 文件名，并与 `install-instance.ini` / `package-info.ini` 的包版本比较。CPU 实例只选择带 `_CPU_` 的 Setup，不查找 CPU BaseEnv/ExtraEnv；GPU 实例只选择旧命名资源，基础包分卷作为同一个逻辑资源下载，缺少任一分卷时不允许选择安装。网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
 - `installer/YOLOTool.spec` 在 `YOLO_TOOL_PROGRAM_ONLY=1` 时只分析应用代码，第三方运行时模块由基础包 `_internal/` 提供；程序本体明确收集 `ctypes.util` 和 `ctypes.wintypes`，兼容 Cryptodome 在 Python 3.12 Windows 下从 CFFI 回退到 ctypes 的导入链。打包链路只保留实际需要的 `installer/hooks/hook-torch.py` 与 `installer/hooks/program_external_runtime.py`：前者收集完整环境所需的 Torch 源码、动态库和隐藏导入，后者只在程序-only 模式注册固定的后端 DLL 目录和基础包路径，不递归扫描运行时目录；已排除的 PySide6 deploy_lib 和 tensorboard 模块不再配置空 hook。基础环境构建由 `src/devtools/base_runtime_builder.py` 与 `package_files.py` 负责，`release_package.py` 仅保留兼容导出；动态导入标准库打入 `python_stdlib.zip`，第三方纯 Python 源码过滤测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码。
 - GUI 日志写入前必须通过这里的终端输出清洗逻辑去掉 ANSI/控制字符。
 
@@ -121,13 +121,14 @@ yolo_tool/
 
 ### `src/services/model_export/`
 
-- `formats.py` 定义五种显示名称到 Ultralytics 参数 `onnx`、`torchscript`、`openvino`、`engine`、`ncnn` 的固定映射、产物路径和模型扫描规则。
-- `commands.py` 构建统一的 `YOLOTool.exe --yolo-export` 命令；训练服务保留 `build_export_command` 转发以兼容旧导入。
-- `execute.py` 在输出目录的临时工作区导出，成功后替换最终产物；失败或停止时清理临时文件并保留旧结果。
-- `runtime.py` 区分内置 ONNX/TorchScript、开发态 Pixi 后端和冻结态增量扩展；冻结态 OpenVINO、TensorRT、NCNN 都通过增量扩展提供，并单独判断 TensorRT 的 NVIDIA GPU 能力。
+- `formats.py` 定义五种 Ultralytics 显示名称和 `SAM2 ONNX` 到导出参数的固定映射、产物路径和模型扫描规则，并按目标格式校验 YOLO 与 SAM2 checkpoint。
+- `commands.py` 构建统一的 `YOLOTool.exe --yolo-export` 命令；训练服务保留 `build_export_command` 转发以兼容旧导入，`sam2_onnx` 在同一隐藏 CLI 下绕过 Ultralytics 工厂。
+- `execute.py` 在输出目录的临时工作区导出 YOLO 产物或装配 SAM2 ONNX 导出服务，成功后替换最终产物；失败或停止时清理临时文件并保留旧结果。
+- `sam_onnx.py` 复用当前 SAM2/SAM2.1 配置与 checkpoint，导出固定 1024、batch=1、单点提示的图像编码器和 mask 解码器 ONNX，并写入输入输出协议元数据后执行 ONNX checker 校验。
+- `runtime.py` 区分内置 ONNX/TorchScript、开发态 Pixi 后端和冻结态增量扩展；CPU 变体把一体式安装器内嵌的 OpenVINO/NCNN/PNNX 视为内置能力并始终拒绝 TensorRT，GPU 变体继续通过增量扩展提供 OpenVINO、TensorRT、NCNN，并单独判断 TensorRT 的 NVIDIA GPU 能力。
 - `package.py` 导入纯 `.7z` 或兼容 `.zip` 附加包，校验扩展 schema、协议、平台、安全相对路径、符号链接、文件清单和解压结果，管理候选安装、原子活动指针、失败回滚和“当前 + 上一版本”保留策略；`manifest.py` 集中维护清单协议、路径校验、指纹和 7z 清单读取，避免 `package.py` 与 `inspection.py` 循环依赖。`.7z` 优先调用基础环境随附的原生 `7z.exe`，利用解压过程的 CRC 校验发现归档损坏，没有原生工具时回退到 `py7zr` 解压并检查文件集合。原生 7-Zip 的百分比输出会通过进度回调映射到附加包安装的解压区间，`inspection.py` 的快速入口只读取清单并按压缩包指纹缓存，安装阶段再报告检查、解压、探测和切换。
-- `activation.py` 在隐藏导出子进程启动早期追加活动扩展的 `packages/` 到 `sys.path`，并通过清单注册 DLL 目录；主程序本体与扩展共用同一个 Python、Torch、CUDA、Ultralytics、ONNX 和 ONNX Runtime，不复制这些基础库。
-- `src/devtools/model_export_package.py` 依据 `importlib.metadata` 的 distribution 文件清单收集 OpenVINO、NCNN、PNNX 和 TensorRT 发行包，不使用 PyInstaller `collect_all(...)` 或复制完整运行环境；tqdm 和 portalocker 随基础环境发布。基础环境同时携带 SAM 2.1 Base+ 代码、配置、checkpoint 和针对 Python 3.12/PyTorch 2.13/CUDA 13.0 构建的多架构 CUDA 后处理扩展，用户安装时不编译。附加产物使用原生 7-Zip 的多线程非固实 LZMA2 极限压缩生成纯 `.7z`，不包含安装程序。基础包构建复制第三方纯 Python 源码时，Windows 优先使用 `robocopy /S /MT:16`，并排除测试、示例和开发工具；其他平台或缺少命令时保留逐文件回退。
+- `activation.py` 在 GPU 隐藏导出子进程启动早期追加活动扩展的 `packages/` 到 `sys.path`，并通过清单注册 DLL 目录；CPU 变体不激活或安装 GPU ExtraEnv。主程序本体与 GPU 扩展共用同一个 Python、Torch、CUDA、Ultralytics、SAM2、ONNX、ONNXScript 和 ONNX Runtime，不复制这些基础库。
+- `src/devtools/model_export_package.py` 依据 `importlib.metadata` 的 distribution 文件清单收集 GPU ExtraEnv 的 OpenVINO、NCNN、PNNX 和 TensorRT 发行包，不使用 PyInstaller `collect_all(...)` 或复制完整运行环境；CPU 变体不调用该构建链路。基础环境同时携带 SAM 2.1 Base+ 代码、配置、checkpoint 和 GPU 版针对 Python 3.12/PyTorch 2.13/CUDA 13.0 构建的多架构 CUDA 后处理扩展，用户安装时不编译。附加产物使用原生 7-Zip 的多线程非固实 LZMA2 极限压缩生成纯 `.7z`，不包含安装程序。基础包构建复制第三方纯 Python 源码时，Windows 优先使用 `robocopy /S /MT:16`，并排除测试、示例和开发工具；其他平台或缺少命令时保留逐文件回退。
 
 ### `src/services/validation/`
 
@@ -247,15 +248,15 @@ yolo_tool/
 ## 打包链路
 
 - 完整发布先用完整冻结目录构建基础运行环境，再清理并重建 program-only 程序 staging；Inno Setup 的程序层只允许使用后一次 staging，避免完整冻结 EXE 将 `_internal` 运行库重复带入安装器。
-- 根目录 `打包程序.bat` 在进入上述流程前提供模式选择：空输入只构建程序和基础环境，非空输入才同时构建模型转换附加环境；`打包更新程序.bat` 继续复用已有环境包。
+- 根目录批处理入口统一通过 PowerShell 7 调用脚本：`打包程序.bat` 输入 `C` 构建 CPU 一体式完整安装器，输入 `G` 构建 GPU 完整发布，空输入构建 GPU 程序和基础环境；`打包更新程序.bat` 默认复用 GPU 环境包。CPU 发布不生成 BaseEnv/ExtraEnv 压缩包。
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
 - 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；应用图标和 `sam_assist.svg` 由 PyInstaller/Qt 资源模块随程序本体提供。
 - 基础包模型来源固定为 `data/models/yolo11s.pt`、`data/models/yolo26n.pt`、`data/models/yolov8n.pt` 和 `data/models/sam2.1_hiera_base_plus.pt`；由 PowerShell 复制到产物根目录的 `data/models/`，spec 不收集用户 checkpoint。SAM3 代码与推理依赖随基础包 v3 提供，但官方 `sam3.pt` 不进入源码、基础包或程序包，用户需自行接受条款并放入项目或程序根目录 `data/models/`。
 - `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型路径。
-- `src/devtools/program_package.py` 生成 `Program` staging，`base_runtime_builder.py` 生成 `BaseRuntimeModels` staging/`.7z`，`package_files.py` 负责复制、清单和源码过滤；`release_package.py` 只保留兼容导出。基础包清单登记 `_internal` 与模型文件路径及解压体积，不读取大型运行时文件内容；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、运行时协议和解压体积。
-- 基础包和模型转换附加包都不生成或读取 `.cache.json`，完整发布时每次重新构建 staging 和归档。基础包和附加包都通过原生 7-Zip `-mmt=on` 压缩；`-Clean` 仍可清理并强制重建输出。
-- `installer/yolo_tool.iss` 生成统一的小型 `YOLOTool_Setup_<版本>.exe`。组件页只按版本化文件名和 `.7z` 扩展名识别候选包，不绑定压缩大小或归档哈希；程序与必选基础环境在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。
+- `src/devtools/program_package.py` 生成 `Program` staging，`base_runtime_builder.py` 生成 `BaseRuntimeModels` staging 和默认单卷 `.7z` 基础包，显式开启分卷时才生成最多两个 `.7z.001/.002` 分卷；`package_files.py` 负责复制、清单和源码过滤；`release_package.py` 只保留兼容导出。基础包清单登记 `_internal` 与模型文件路径及解压体积，不读取大型运行时文件内容；`companion_catalog.py` 固定伴随包的名称、标识、版本、平台、运行时协议和解压体积。
+- GPU 基础包和模型转换附加包都不生成或读取 `.cache.json`，完整发布时每次重新构建 staging 和归档；CPU 完整发布每次重新构建 staging 并由 Inno Setup 内嵌到安装器。GPU 基础包和附加包都通过原生 7-Zip `-mmt=on` 压缩，基础包默认单卷，`-SplitBaseArchive` 才启用分卷；`-Clean` 仍可清理并强制重建输出。
+- `installer/yolo_tool.iss` 按变体生成 GPU `YOLOTool_Setup_<版本>.exe` 或 CPU `YOLOTool_CPU_Setup_<版本>.exe`。GPU 组件页按当前变体的版本化文件名识别默认单卷基础包 `.7z`、特殊分卷基础包 `.7z.001/.002` 和 GPU 附加包 `.7z` 候选，不绑定压缩大小或归档哈希；CPU 安装器默认目录为 `YOLOTool_CPU`，直接把 `BaseRuntimeModels-CPU` staging 内嵌到安装器，隐藏 BaseEnv/ExtraEnv 控件并拒绝 GPU 基础包。程序与必选运行时在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。
 - 每个实例的 `install-instance.ini` 与其他安装清单存放在 `_internal/yolotool_metadata/`；基础包维护规范模型 `data/models/yolo26n.pt` 和受管的根目录兼容副本。
 - 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/bootstrap/cli_dispatch.py`；训练、验证/预测、导出、标注和运行时实现分别位于 `bootstrap/cli_training.py`、`cli_validation.py`、`cli_model_export.py`、`cli_annotation.py`、`cli_runtime.py`，`src/train_cli.py` 仅保留兼容转发。
 

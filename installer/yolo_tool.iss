@@ -22,6 +22,15 @@
 #ifndef ExtensionPackageVersion
 #define ExtensionPackageVersion ""
 #endif
+#ifndef PackageVariant
+#define PackageVariant "gpu"
+#endif
+#ifndef ArtifactPrefix
+#define ArtifactPrefix "YOLOTool"
+#endif
+#ifndef DefaultAppDirName
+#define DefaultAppDirName "YOLOTool"
+#endif
 #define GitHubReleaseUrl "https://github.com/Takobox710/yolo-tool/releases"
 
 #define MyAppName "YOLOTool"
@@ -44,10 +53,10 @@ UsePreviousLanguage=no
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=output
-OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersion}
+OutputBaseFilename={#ArtifactPrefix}_Setup_{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
-ArchiveExtraction=enhanced/nopassword
+ArchiveExtraction=full
 WizardStyle=modern
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
@@ -80,7 +89,13 @@ Source: "..\dist\packages\Program\app-version.txt"; DestDir: "{app}\.install-sta
 Source: "..\dist\packages\Program\release-manifest.json"; DestDir: "{app}\.install-staging\program"; Flags: ignoreversion
 Source: "..\dist\packages\Program\program-package-info.ini"; DestDir: "{app}\.install-staging\program"; Flags: ignoreversion
 Source: "..\dist\packages\Program\companion-catalog.json"; DestDir: "{app}\.install-staging\program"; Flags: ignoreversion
+#ifdef IntegratedRuntime
+#ifdef IntegratedRuntimeStaging
+Source: "..\dist\packages\BaseRuntimeModels-CPU\*"; DestDir: "{app}\.install-staging\base"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: ShouldInstallBase
+#endif
+#else
 Source: "{code:GetBaseArchivePath}"; DestDir: "{app}\.install-staging\base"; ExternalSize: {#BaseUnpackedSize}; Flags: external extractarchive recursesubdirs createallsubdirs ignoreversion; Check: ShouldInstallBase
+#endif
 
 [Icons]
 Name: "{group}\{code:GetShortcutName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -144,6 +159,7 @@ var
   BaseArchiveValid: Boolean;
   ExtensionArchiveChecked: Boolean;
   ExtensionArchiveValid: Boolean;
+  InstallPathVariantConflict: Boolean;
 
 function NormalizeInstallPath(const Value: String): String;
 begin
@@ -175,10 +191,20 @@ end;
 function IsRecognizableInstallPath(const Value: String): Boolean;
 var
   Normalized: String;
+  InstalledVariant: String;
 begin
   Normalized := RemoveBackslashUnlessRoot(ExpandFileName(Value));
   Result := FileExists(AddBackslash(Normalized) + '{#MyAppExeName}') and
     DirExists(AddBackslash(Normalized) + '_internal');
+  if not Result then
+    exit;
+  InstalledVariant := GetIniString('Package', 'variant', '',
+    AddBackslash(Normalized) + '{#MetadataRelativeRoot}\package-info.ini');
+  if InstalledVariant = '' then
+    InstalledVariant := GetIniString('Install', 'variant', '',
+      AddBackslash(Normalized) + '{#MetadataRelativeRoot}\install-instance.ini');
+  Result := ((InstalledVariant = '') and (CompareText('{#PackageVariant}', 'gpu') = 0)) or
+    (CompareText(InstalledVariant, '{#PackageVariant}') = 0);
 end;
 
 function GetDefaultAppDir(Param: String): String;
@@ -198,7 +224,7 @@ begin
   if TryGetLegacyInstallDir(Candidate) and IsRecognizableInstallPath(Candidate) then
     Result := Candidate
   else
-    Result := ExpandConstant('{autopf}\{#MyAppName}');
+    Result := ExpandConstant('{autopf}\{#DefaultAppDirName}');
 end;
 
 function GetShortcutName(Param: String): String;
@@ -269,6 +295,22 @@ begin
     AddBackslash(Root) + 'model-export-runtime\active.ini');
 end;
 
+function IsIntegratedRuntime(): Boolean;
+begin
+  Result := False;
+#ifdef IntegratedRuntime
+  Result := True;
+#endif
+end;
+
+function HasIntegratedRuntimeStaging(): Boolean;
+begin
+  Result := False;
+#ifdef IntegratedRuntimeStaging
+  Result := True;
+#endif
+end;
+
 function IsVersionedArchiveCandidate(const FileName, ExpectedName: String): Boolean;
 begin
   Result := False;
@@ -276,15 +318,25 @@ begin
     exit;
   if CompareText(ExtractFileName(FileName), ExpectedName) <> 0 then
     exit;
-  Result := CompareText(ExtractFileExt(FileName), '.7z') = 0;
+  if CompareText(ExtractFileExt(FileName), '.7z') = 0 then
+  begin
+    Result := True;
+    exit;
+  end;
+  Result :=
+    (CompareText(ExtractFileExt(FileName), '.001') = 0) and
+    (not FileExists(ChangeFileExt(FileName, '.003')));
 end;
 
 function IsValidBaseArchive(): Boolean;
 begin
   if not BaseArchiveChecked then
   begin
-    BaseArchiveValid := IsVersionedArchiveCandidate(BaseArchivePath,
-      '{#BasePackageName}');
+    if IsIntegratedRuntime() then
+      BaseArchiveValid := HasIntegratedRuntimeStaging()
+    else
+      BaseArchiveValid := IsVersionedArchiveCandidate(BaseArchivePath,
+        '{#BasePackageName}');
     BaseArchiveChecked := True;
   end;
   Result := BaseArchiveValid;
@@ -341,14 +393,17 @@ end;
 procedure DetectInstalledState();
 var
   LegacyExtensionVersion: String;
+  PathHasInstall: Boolean;
 begin
   ExistingAppVersion := ReadInstalledValue('app_version',
     ReadTextFile(ResolveInstalledMetadataPath('app-version.txt')));
   ExistingRuntimeVersion := ReadInstalledValue('runtime_version',
     ReadTextFile(ExpandConstant('{app}\runtime-version.txt')));
   ExistingBaseVersion := ReadInstalledValue('base_package_version', '');
-  ExistingInstall := FileExists(ExpandConstant('{app}\{#MyAppExeName}')) and
+  PathHasInstall := FileExists(ExpandConstant('{app}\{#MyAppExeName}')) and
     DirExists(ExpandConstant('{app}\_internal'));
+  ExistingInstall := PathHasInstall and IsRecognizableInstallPath(ExpandConstant('{app}'));
+  InstallPathVariantConflict := PathHasInstall and not ExistingInstall;
   ExistingExtensionVersion := ReadExtensionVersionAt(InstanceExtensionRoot());
   if ExistingExtensionVersion = '' then
   begin
@@ -370,7 +425,9 @@ var
   VersionComparison: Integer;
 begin
   DetectInstalledState();
-  if not ExistingInstall then
+  if InstallPathVariantConflict then
+    ProgramStatus.Caption := '安装目录已有其他运行环境变体，请选择独立目录。'
+  else if not ExistingInstall then
     ProgramStatus.Caption := '将安装程序本体 {#MyAppVersion}'
   else
   begin
@@ -402,13 +459,25 @@ begin
       BaseStatus.Caption := '首次安装必须提供匹配的基础环境和模型包，当前无法继续。'
     else if BaseIsRequired then
       BaseStatus.Caption := '未找到匹配基础环境包，将继续使用旧环境；可能导致部分功能缺失。'
-    else
+  else
       BaseStatus.Caption := '未找到合法基础包，本次将保留现有运行环境。';
   end;
   BaseGithubButton.Visible := BaseIsRequired and not IsValidBaseArchive();
+  if IsIntegratedRuntime() then
+  begin
+    BaseCheck.Visible := False;
+    BaseStatus.Visible := False;
+    BasePathEdit.Visible := False;
+    BaseBrowseButton.Visible := False;
+    BaseGithubButton.Visible := False;
+  end;
 
   ExtensionCheck.Checked := False;
-  ExtensionCheck.Enabled := IsValidExtensionArchive();
+  ExtensionCheck.Visible := CompareText('{#PackageVariant}', 'cpu') <> 0;
+  ExtensionPathEdit.Visible := ExtensionCheck.Visible;
+  ExtensionBrowseButton.Visible := ExtensionCheck.Visible;
+  ExtensionStatus.Visible := ExtensionCheck.Visible;
+  ExtensionCheck.Enabled := ExtensionCheck.Visible and IsValidExtensionArchive();
   ExtensionPathEdit.Text := ExtensionArchivePath;
   if IsValidExtensionArchive() then
   begin
@@ -436,7 +505,7 @@ var
 begin
   Selected := BaseArchivePath;
   if GetOpenFileName('选择本体环境和模型包', Selected,
-    ExtractFileDir(Selected), '7z 压缩包|*.7z', '7z') then
+    ExtractFileDir(Selected), '7z 基础包|*.7z;*.7z.001', '7z') then
   begin
     BaseArchivePath := Selected;
     BaseArchiveChecked := False;
@@ -564,6 +633,12 @@ begin
   Result := True;
   if CurPageID = ComponentsPage.ID then
   begin
+    if InstallPathVariantConflict then
+    begin
+      Result := False;
+      MsgBox('当前安装目录已有其他版本变体，请选择独立安装目录。', mbError, MB_OK);
+      exit;
+    end;
     if (not ExistingInstall) and BaseIsRequired and
       not IsValidBaseArchive() then
     begin
@@ -593,8 +668,12 @@ function GetCleanupParameters(Param: String): String;
 begin
   Result := '/C ping 127.0.0.1 -n 3 > nul & del /f /q "' +
     ExpandConstant('{srcexe}') + '"';
-  if ShouldInstallBase() then
+  if ShouldInstallBase() and not IsIntegratedRuntime() then
+  begin
     Result := Result + ' & del /f /q "' + BaseArchivePath + '"';
+    if CompareText(ExtractFileExt(BaseArchivePath), '.001') = 0 then
+      Result := Result + ' & del /f /q "' + ChangeFileExt(BaseArchivePath, '.002') + '"';
+  end;
   if ExtensionCheck.Checked then
     Result := Result + ' & del /f /q "' + ExtensionArchivePath + '"';
 end;
@@ -916,11 +995,13 @@ begin
   SetIniString('Package', 'runtime_version', RuntimeVersion, InstalledMetadataPath('package-info.ini'));
   SetIniString('Package', 'required_runtime_version', '{#RequiredRuntimeVersion}', InstalledMetadataPath('package-info.ini'));
   SetIniString('Package', 'base_package_version', BaseVersion, InstalledMetadataPath('package-info.ini'));
+  SetIniString('Package', 'variant', '{#PackageVariant}', InstalledMetadataPath('package-info.ini'));
   SetIniString('Install', 'schema_version', '1', InstalledMetadataPath('install-instance.ini'));
   SetIniString('Install', 'instance_id', PathInstanceId(ExpandConstant('{app}')), InstalledMetadataPath('install-instance.ini'));
   SetIniString('Install', 'app_version', '{#MyAppVersion}', InstalledMetadataPath('install-instance.ini'));
   SetIniString('Install', 'runtime_version', RuntimeVersion, InstalledMetadataPath('install-instance.ini'));
   SetIniString('Install', 'base_package_version', BaseVersion, InstalledMetadataPath('install-instance.ini'));
+  SetIniString('Install', 'variant', '{#PackageVariant}', InstalledMetadataPath('install-instance.ini'));
   SetIniString('Install', 'model_bundle_version', BaseVersion,
     InstalledMetadataPath('install-instance.ini'));
 end;
@@ -1189,6 +1270,11 @@ begin
   Result := '';
   TransactionAppDir := RemoveBackslashUnlessRoot(ExpandFileName(WizardDirValue));
   TransactionInitialized := True;
+  if InstallPathVariantConflict then
+  begin
+    Result := '当前安装目录已有其他版本变体，请选择独立安装目录。';
+    exit;
+  end;
   if DirExists(AddBackslash(TransactionAppDir) + '.install-staging') or
     DirExists(AddBackslash(TransactionAppDir) + '.install-backup') then
   begin

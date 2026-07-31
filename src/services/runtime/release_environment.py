@@ -12,24 +12,67 @@ from src.services.runtime.release_versions import (
 )
 from src.services.runtime.metadata import resolve_metadata_path
 from src.shared.paths import ROOT
+from src.services.runtime.variant import (
+    CPU_VARIANT,
+    GPU_VARIANT,
+    normalize_variant,
+    variant_asset_prefix,
+)
 
 
 _ENVIRONMENT_ASSET_VERSION_PATTERN = re.compile(
-    r"^YOLOTool_(BaseEnv|ExtraEnv)_(?P<version>[0-9A-Za-z.-]+)\.(?:7z|zip)$",
+    r"^YOLOTool(?:_CPU)?_(BaseEnv|ExtraEnv)_(?P<version>[0-9A-Za-z.-]+)\.(?:7z|zip)(?:\.(?P<part>[0-9]{3}))?$",
+    re.IGNORECASE,
+)
+_BASE_VOLUME_PATTERN = re.compile(
+    r"^(YOLOTool(?:_CPU)?_BaseEnv_[0-9A-Za-z.-]+\.7z)\.(?P<part>[0-9]{3})$",
     re.IGNORECASE,
 )
 
 
-def has_environment_asset(names: tuple[str, ...], prefix: str) -> bool:
-    return any(
-        name.casefold().startswith(f"yolotool_{prefix}_") for name in names
-    )
+def has_environment_asset(
+    names: tuple[str, ...],
+    prefix: str,
+    *,
+    variant: str = GPU_VARIANT,
+) -> bool:
+    if normalize_variant(variant) == CPU_VARIANT:
+        return False
+    prefix = str(prefix).casefold()
+    marker = variant_asset_prefix(variant).casefold()
+    if prefix == "baseenv":
+        if any(
+            name.casefold().startswith(f"{marker}_baseenv_")
+            and name.casefold().endswith(".7z")
+            for name in names
+        ):
+            return True
+        parts = {
+            int(match.group("part"))
+            for name in names
+            if name.casefold().startswith(f"{marker}_baseenv_")
+            and (match := _BASE_VOLUME_PATTERN.fullmatch(name)) is not None
+        }
+        return 1 in parts and 3 not in parts
+    return any(name.casefold().startswith(f"{marker}_{prefix}_") for name in names)
 
 
-def environment_asset_version(names: tuple[str, ...], prefix: str) -> str:
+def environment_asset_version(
+    names: tuple[str, ...],
+    prefix: str,
+    *,
+    variant: str = GPU_VARIANT,
+) -> str:
+    if normalize_variant(variant) == CPU_VARIANT:
+        return ""
     expected = {"baseenv": "baseenv", "extraenv": "extraenv"}.get(prefix)
+    marker = variant_asset_prefix(variant)
+    pattern = re.compile(
+        rf"^{re.escape(marker)}_(BaseEnv|ExtraEnv)_(?P<version>[0-9A-Za-z.-]+)\.(?:7z|zip)(?:\.(?P<part>[0-9]{{3}}))?$",
+        re.IGNORECASE,
+    )
     for name in names:
-        match = _ENVIRONMENT_ASSET_VERSION_PATTERN.fullmatch(name)
+        match = pattern.fullmatch(name)
         if match is None or match.group(1).casefold() != expected:
             continue
         return normalize_environment_version(match.group("version"))

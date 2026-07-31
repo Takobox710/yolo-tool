@@ -10,6 +10,7 @@ from src.services.runtime.release_updates import (
     pause_installer,
     resume_installer,
 )
+from src.services.runtime.variant import variant_asset_prefix
 from src.ui.features.settings.update_dialog_state import (
     apply_download_detail as _apply_download_detail,
     build_download_progress_reporter as _build_download_progress_reporter,
@@ -168,7 +169,9 @@ class ReleaseUpdateDownloadMixin:
             (
                 path
                 for path in paths
-                if path.name.casefold().startswith("yolotool_extraenv_")
+                if path.name.casefold().startswith(
+                    f"{variant_asset_prefix(self.result.variant).casefold()}_extraenv_"
+                )
             ),
             None,
         )

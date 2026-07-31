@@ -76,15 +76,16 @@
 
 ## 模型格式转换
 
-- 数据处理页新增“模型格式转换”工具，支持从 Ultralytics YOLO `.pt` 模型导出 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN。
-- 默认扫描当前项目 `result/**/weights/*.pt`，也允许浏览选择 `data/models/` 或项目外的 `.pt` 文件；基础模型目录不自动出现在转换列表中。
+- 数据处理页新增“模型格式转换”工具，支持从 Ultralytics YOLO `.pt` 模型导出 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN，并支持 SAM2/SAM2.1 checkpoint 导出 SAM2 ONNX。
+- 默认扫描当前项目 `result/**/weights/*.pt` 和当前项目/程序根目录 `data/models/` 中可识别的 SAM2/SAM2.1 checkpoint，也允许浏览选择其他 `.pt` 文件；普通基础 YOLO 模型目录不自动出现在转换列表中。
+- `SAM2 ONNX` 只接受 SAM 2/2.1 checkpoint（例如 `sam2.1_hiera_base_plus.pt`），固定 batch=1、输入 1024、单点提示，生成包含 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json` 的目录；SAM 1、SAM3 和未知自定义 SAM 名称仍需使用对应专用流程。
 - 源模型和输出目录放在同一行，目标格式、静态方形输入尺寸 `imgsz` 放在下一行；默认格式为 ONNX、尺寸为 `640`、简化开启。
-- 默认输出根目录为 `data/models/model_exports/`，每个模型使用独立子目录，产物名分别为 `.onnx`、`.torchscript`、`_openvino_model/`、`.engine` 和 `_ncnn_model/`。
+- 默认输出根目录为 `data/models/model_exports/`，每个模型使用独立子目录，YOLO 产物名分别为 `.onnx`、`.torchscript`、`_openvino_model/`、`.engine` 和 `_ncnn_model/`，SAM2 产物目录名为 `_sam2_onnx/`。
 - “预览转换”显示源模型、目标产物、运行环境、能力状态和覆盖风险；目标已存在时必须在执行前确认，只有新产物完整生成后才替换旧结果。
 - 转换过程提供结构化实时日志、停止和打开结果文件夹；运行期间禁用模型、格式、参数、环境安装和开始操作，程序退出时复用 `export_handle` 停止子进程。
-- ONNX、TorchScript 使用基础安装环境；OpenVINO、TensorRT 和 NCNN 在发布版中需要另行安装模型转换附加包；开发态 Pixi 环境直接具备全部能力。
-- 模型转换附加包发布名为 `YOLOTool_ExtraEnv_<版本>.7z`，包含 OpenVINO、NCNN/PNNX 和 TensorRT 运行库，同时兼容同结构 `.zip`，不执行第三方安装器；已安装旧版本时必须先确认替换。
+- YOLO 的 ONNX、TorchScript 与 SAM2 ONNX 使用基础安装环境；SAM2 ONNX 导出依赖 PyTorch、SAM2、ONNX、ONNXScript 和 ONNX Runtime。GPU 发布版的 OpenVINO、TensorRT 和 NCNN 通过模型转换附加包提供，CPU 一体式安装器直接内置 OpenVINO、NCNN、PNNX，TensorRT 始终不可用；开发态 Pixi 环境按当前 GPU/CPU 环境组合提供对应能力。
+- GPU 模型转换附加包发布名为 `YOLOTool_ExtraEnv_<版本>.7z`，包含 OpenVINO、NCNN/PNNX 和 TensorRT 运行库，同时兼容同结构 `.zip`，不执行第三方安装器；CPU 发布不生成或安装 ExtraEnv，已安装旧版本时 GPU 必须先确认替换。
 - 附加包安装显示阶段进度，拒绝路径穿越、绝对路径、符号链接、错误平台、协议不匹配、缺失文件和未登记文件；7-Zip/Zip 解压错误会使安装失败并继续使用旧版本，成功后只保留当前版本和一个上一版本。
 - 附加环境安装到当前程序目录的 `_internal/extensions/model-export-runtime/`，基础环境升级时保留该目录；旧版本位于 `%LOCALAPPDATA%/YOLOTool/` 时在升级过程中迁移到新位置。
-- 未安装扩展时选择 OpenVINO、TensorRT 或 NCNN 会明确提示缺少模型转换环境包；无 NVIDIA GPU 时 OpenVINO 和 NCNN 仍可用，TensorRT 显示硬件不可用。
-- 第一版固定 FP32、静态输入、batch 1、无内置 NMS，不开放 FP16、INT8、动态尺寸和校准流程。TensorRT `.engine` 受 GPU、驱动和 TensorRT 版本约束，不保证跨机器通用。
+- GPU 未安装扩展时选择 OpenVINO、TensorRT 或 NCNN 会明确提示缺少模型转换环境包；无 NVIDIA GPU 时 OpenVINO 和 NCNN 仍可用，TensorRT 显示硬件不可用。CPU 冻结环境检测到内置 OpenVINO/NCNN/PNNX 时直接显示内置能力，TensorRT 明确提示 CPU 版不包含该后端。
+- 第一版固定 FP32、静态输入、batch 1、无内置 NMS，不开放 FP16、INT8、动态尺寸和校准流程；SAM2 ONNX 额外固定 1024 输入和单点提示。TensorRT `.engine` 受 GPU、驱动和 TensorRT 版本约束，不保证跨机器通用。

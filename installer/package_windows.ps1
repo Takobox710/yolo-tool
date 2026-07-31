@@ -3,10 +3,13 @@
     [switch]$BuildBaseRuntimeModels,
     [switch]$BuildModelExportRuntime,
     [switch]$SkipModelExportRuntime,
+    [ValidateSet("GPU", "CPU")]
+    [string]$Variant = "GPU",
     [ValidateSet("Program", "Full", "AppUpdate", "RuntimeFull")]
     [string]$PackageType = "Program",
     [string]$RuntimeVersion = "",
-    [string]$RequiredRuntimeVersion = ""
+    [string]$RequiredRuntimeVersion = "",
+    [switch]$SplitBaseArchive
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,6 +70,15 @@ function Get-InnoSetupCompiler {
 
 Set-Location $Root
 try {
+    $RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-base" }
+    $ArtifactPrefix = if ($Variant -eq "CPU") { "YOLOTool_CPU" } else { "YOLOTool" }
+    $IntegratedRuntime = $Variant -eq "CPU"
+    if ($IntegratedRuntime -and $SplitBaseArchive) {
+        throw "CPU 版使用一体式安装包，不支持生成基础环境分卷。"
+    }
+    if ($Variant -eq "CPU" -and $BuildModelExportRuntime) {
+        throw "CPU 版不支持构建模型转换附加环境；OpenVINO、NCNN、PNNX 已并入 CPU 基础环境。"
+    }
     if ($PackageType -ne "Program") {
         Write-Warning "PackageType '$PackageType' is deprecated and now maps to Program."
     }
@@ -82,8 +94,21 @@ try {
     }
 
     $BaseVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "base-runtime-models-version.txt") -Raw).Trim()
-    $BaseArchive = Join-Path $InstallerOutputDir "YOLOTool_BaseEnv_${BaseVersion}.7z"
-    if (-not $BuildBaseRuntimeModels -and -not (Test-Path -LiteralPath $BaseArchive)) {
+    $BaseStaging = Join-Path $Root "dist\packages\BaseRuntimeModels-CPU"
+    $BaseArchivePath = Join-Path $InstallerOutputDir "${ArtifactPrefix}_BaseEnv_${BaseVersion}.7z"
+    $BaseArchiveFirstVolume = "${BaseArchivePath}.001"
+    $BaseArchive = if ($SplitBaseArchive -and (Test-Path -LiteralPath $BaseArchiveFirstVolume)) {
+        $BaseArchiveFirstVolume
+    } elseif (Test-Path -LiteralPath $BaseArchivePath) {
+        $BaseArchivePath
+    } elseif (Test-Path -LiteralPath $BaseArchiveFirstVolume) {
+        $BaseArchiveFirstVolume
+    } elseif ($SplitBaseArchive) {
+        $BaseArchiveFirstVolume
+    } else {
+        $BaseArchivePath
+    }
+    if (-not $IntegratedRuntime -and -not $BuildBaseRuntimeModels -and -not (Test-Path -LiteralPath $BaseArchive)) {
         throw "Required base archive is missing: $BaseArchive. Run the full packaging entry first."
     }
 
@@ -97,6 +122,7 @@ try {
     & (Join-Path $PSScriptRoot "build_windows.ps1") `
         -Mode release -Clean:$Clean -PackageType Program `
         -ProgramOnly:$ProgramOnly `
+        -Variant $Variant `
         -RuntimeVersion $RuntimeVersion -RequiredRuntimeVersion $RequiredRuntimeVersion
     if ($LASTEXITCODE -ne 0) {
         throw "Program build failed with exit code $LASTEXITCODE"
@@ -106,9 +132,17 @@ try {
 
     if ($BuildBaseRuntimeModels) {
         $BaseStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
-        Write-Step "[2/5] 正在构建基础环境和模型归档..."
-        & (Join-Path $PSScriptRoot "build_base_runtime_models.ps1") `
-            -Clean:$Clean -RuntimeVersion $RuntimeVersion
+        if ($IntegratedRuntime) {
+            Write-Step "[2/5] 正在构建 CPU 一体式安装包运行时 staging..."
+            & (Join-Path $PSScriptRoot "build_base_runtime_models.ps1") `
+                -Clean:$Clean -Variant $Variant -RuntimeVersion $RuntimeVersion `
+                -NoArchive
+        } else {
+            Write-Step "[2/5] 正在构建基础环境和模型归档..."
+            & (Join-Path $PSScriptRoot "build_base_runtime_models.ps1") `
+                -Clean:$Clean -Variant $Variant -RuntimeVersion $RuntimeVersion `
+                -SplitBaseArchive:$SplitBaseArchive
+        }
         if ($LASTEXITCODE -ne 0) {
             throw "Base runtime and models build failed with exit code $LASTEXITCODE"
         }
@@ -123,6 +157,7 @@ try {
         & (Join-Path $PSScriptRoot "build_windows.ps1") `
             -Mode release -Clean -PackageType Program `
             -ProgramOnly `
+            -Variant $Variant `
             -RuntimeVersion $RuntimeVersion -RequiredRuntimeVersion $RequiredRuntimeVersion
         if ($LASTEXITCODE -ne 0) {
             throw "Program-only build failed after base runtime build with exit code $LASTEXITCODE"
@@ -141,30 +176,66 @@ try {
         Write-StepElapsed "[4/5] 附加环境包步骤完成" $ExtensionStepTimer
     }
 
-    if (-not (Test-Path -LiteralPath $BaseArchive)) {
+    if (-not $IntegratedRuntime -and -not (Test-Path -LiteralPath $BaseArchive)) {
         throw "Required base archive is missing: $BaseArchive. Re-run with -BuildBaseRuntimeModels."
     }
-    $ExtensionVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "model-export-runtime-version.txt") -Raw).Trim()
-    $ExtensionArchive = Join-Path $InstallerOutputDir "YOLOTool_ExtraEnv_${ExtensionVersion}.7z"
+    if ($IntegratedRuntime -and $BuildBaseRuntimeModels -and
+        -not (Test-Path -LiteralPath (Join-Path $BaseStaging "base-package-manifest.json"))) {
+        throw "CPU 一体式安装包缺少基础运行时 staging 清单：$BaseStaging"
+    }
+    $ExtensionVersion = ""
+    $ExtensionArchive = ""
+    if ($Variant -eq "GPU") {
+        $ExtensionVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "model-export-runtime-version.txt") -Raw).Trim()
+        $ExtensionArchive = Join-Path $InstallerOutputDir "YOLOTool_ExtraEnv_${ExtensionVersion}.7z"
+    }
     $ProgramStaging = Join-Path $Root "dist\packages\Program"
     $CatalogPath = Join-Path $ProgramStaging "companion-catalog.json"
-    $CatalogArgs = @(
-        "-m", "src.devtools.companion_catalog",
-        "--base", $BaseArchive,
-        "--output", $CatalogPath
-    )
-    if (Test-Path -LiteralPath $ExtensionArchive) {
-        $CatalogArgs += @("--extension", $ExtensionArchive)
-    }
-    & pixi run -e release-base python @CatalogArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "生成伴随包清单失败。"
+    if ($IntegratedRuntime -and -not $BuildBaseRuntimeModels -and
+        -not (Test-Path -LiteralPath (Join-Path $BaseStaging "base-package-manifest.json"))) {
+        $Catalog = [ordered]@{
+            schema_version = 1
+            base = [ordered]@{
+                filename = ""
+                integrated = $true
+                package_id = "yolo-tool-base-runtime-models"
+                manifest_schema = 1
+                platform = "win-64"
+                architecture = "x86_64"
+                version = $BaseVersion
+                runtime_version = $RuntimeVersion
+                variant = "cpu"
+                uncompressed_size = 0
+            }
+        }
+        $Catalog | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $CatalogPath -Encoding utf8
+    } else {
+        $CatalogArgs = @("-m", "src.devtools.companion_catalog")
+        if ($IntegratedRuntime) {
+            $CatalogArgs += @("--base-staging", $BaseStaging)
+        } else {
+            $CatalogArgs += @("--base", $BaseArchive)
+        }
+        $CatalogArgs += @(
+            "--variant", $Variant.ToLowerInvariant(),
+            "--output", $CatalogPath
+        )
+        if (Test-Path -LiteralPath $ExtensionArchive) {
+            $CatalogArgs += @("--extension", $ExtensionArchive)
+        }
+        & pixi run -e $RuntimeEnvironment python @CatalogArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "生成伴随包清单失败。"
+        }
     }
     $Catalog = Get-Content -LiteralPath $CatalogPath -Raw | ConvertFrom-Json
     if ($Catalog.base.runtime_version -ne $RequiredRuntimeVersion) {
         throw "基础包运行时版本 '$($Catalog.base.runtime_version)' 与要求的版本 '$RequiredRuntimeVersion' 不一致。"
     }
-    if (Test-Path -LiteralPath (Join-Path $ProgramStaging "_internal")) {
+    if ($Catalog.base.variant -ne $Variant.ToLowerInvariant()) {
+        throw "基础包变体 '$($Catalog.base.variant)' 与当前构建变体 '$($Variant.ToLowerInvariant())' 不一致。"
+    }
+    if (-not $IntegratedRuntime -and (Test-Path -LiteralPath (Join-Path $ProgramStaging "_internal"))) {
         throw "程序 staging 异常包含 _internal；拒绝生成重复携带运行环境的安装器。"
     }
 
@@ -172,15 +243,25 @@ try {
     if (-not $isccPath) {
         throw "ISCC.exe was not found. Install Inno Setup 6.4 or newer."
     }
-    $AppVersion = (& pixi run -e release-base python -c "from src import APP_VERSION; print(APP_VERSION)" | Out-String).Trim()
+    $AppVersion = (& pixi run -e $RuntimeEnvironment python -c "from src import APP_VERSION; print(APP_VERSION)" | Out-String).Trim()
     $InnoArgs = @(
         "/DMyAppVersion=$AppVersion",
+        "/DPackageVariant=$($Variant.ToLowerInvariant())",
+        "/DArtifactPrefix=$ArtifactPrefix",
+        "/DMyAppName=$(if ($Variant -eq "CPU") { "YOLOTool CPU" } else { "YOLOTool" })",
+        "/DDefaultAppDirName=$(if ($Variant -eq "CPU") { "YOLOTool_CPU" } else { "YOLOTool" })",
         "/DRequiredRuntimeVersion=$RequiredRuntimeVersion",
         "/DBasePackageName=$($Catalog.base.filename)",
         "/DBasePackageVersion=$($Catalog.base.version)",
         "/DBaseRuntimeVersion=$($Catalog.base.runtime_version)",
         "/DBaseUnpackedSize=$($Catalog.base.uncompressed_size)"
     )
+    if ($IntegratedRuntime) {
+        $InnoArgs += "/DIntegratedRuntime=1"
+        if ($BuildBaseRuntimeModels) {
+            $InnoArgs += "/DIntegratedRuntimeStaging=1"
+        }
+    }
     if ($Catalog.model_export) {
         $InnoArgs += @(
             "/DExtensionPackageName=$($Catalog.model_export.filename)",
@@ -199,8 +280,12 @@ try {
     Write-StepElapsed "[5/5] 安装包构建完成" $InstallerStepTimer
 
     Write-Step "[5/5] 打包完成。"
-    Write-Host "安装包：$(Join-Path $InstallerOutputDir "YOLOTool_Setup_${AppVersion}.exe")" -ForegroundColor Green
-    Write-Host "基础环境包：$BaseArchive" -ForegroundColor Green
+    Write-Host "安装包：$(Join-Path $InstallerOutputDir "${ArtifactPrefix}_Setup_${AppVersion}.exe")" -ForegroundColor Green
+    if ($IntegratedRuntime) {
+        Write-Host "CPU 一体式运行时 staging：$BaseStaging" -ForegroundColor Green
+    } else {
+        Write-Host "基础环境包：$BaseArchive" -ForegroundColor Green
+    }
     if (Test-Path -LiteralPath $ExtensionArchive) {
         Write-Host "附加环境包：$ExtensionArchive" -ForegroundColor Green
     }

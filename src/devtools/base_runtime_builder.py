@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 
 from src.services.runtime.release_manifest import MANIFEST_SCHEMA_VERSION, ReleaseManifestError
+from src.services.runtime.variant import normalize_variant, variant_asset_prefix
 from src.devtools.package_files import (
     copy_file,
     copy_third_party_python_sources,
@@ -29,6 +30,8 @@ BASE_MODEL_NAMES = (
     "sam2.1_hiera_base_plus.pt",
 )
 STDLIB_ARCHIVE_NAME = "python_stdlib.zip"
+BASE_ARCHIVE_VOLUME_BYTES = 1_073_700_000
+BASE_ARCHIVE_VOLUME_COUNT = 2
 
 
 def build_standard_library_archive(destination: Path) -> None:
@@ -52,9 +55,11 @@ def build_base_runtime_layer(
     *,
     package_version: str,
     runtime_version: str,
+    variant: str = "gpu",
 ) -> Path:
     app_root = Path(app_root).resolve()
     staging_root = Path(staging_root).resolve()
+    variant = normalize_variant(variant)
     runtime_root = app_root / "_internal"
     if not runtime_root.is_dir():
         raise ReleaseManifestError("PyInstaller 产物缺少 _internal 运行环境")
@@ -97,7 +102,11 @@ def build_base_runtime_layer(
     runtime_files = relative_files(staging_root / "_internal")
     write_json(
         staging_root / "runtime-manifest.json",
-        {"schema_version": MANIFEST_SCHEMA_VERSION, "runtime_version": runtime_version},
+        {
+            "schema_version": MANIFEST_SCHEMA_VERSION,
+            "runtime_version": runtime_version,
+            "variant": variant,
+        },
     )
     models_root = staging_root / "data" / "models"
     model_files = relative_files(models_root) if models_root.is_dir() else []
@@ -114,6 +123,7 @@ def build_base_runtime_layer(
         "package_id": BASE_PACKAGE_ID,
         "version": package_version,
         "runtime_version": runtime_version,
+        "variant": variant,
         "platform": "win-64",
         "architecture": "x86_64",
         "uncompressed_size": unpacked_size,
@@ -133,31 +143,74 @@ def build_base_runtime_archive(
     *,
     package_version: str,
     runtime_version: str,
+    variant: str = "gpu",
+    split: bool = False,
 ) -> Path:
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    archive_path = output_dir / f"YOLOTool_BaseEnv_{package_version}.7z"
+    variant = normalize_variant(variant)
+    archive_path = output_dir / (
+        f"{variant_asset_prefix(variant)}_BaseEnv_{package_version}.7z"
+    )
+    first_volume_path = Path(f"{archive_path}.001")
     build_base_runtime_layer(
         app_root,
         staging_root,
         package_version=package_version,
         runtime_version=runtime_version,
+        variant=variant,
     )
     archive_path.unlink(missing_ok=True)
+    for volume_path in output_dir.glob(f"{archive_path.name}.*"):
+        volume_path.unlink(missing_ok=True)
     seven_zip = shutil.which("7z") or shutil.which("7z.exe")
     if not seven_zip:
         raise ReleaseManifestError("未找到 Pixi 提供的 7z 命令，无法构建基础环境包。")
     archive_started = time.perf_counter()
     print("[Base] 正在使用 7-Zip 压缩，下面显示实时进度：", flush=True)
+    command = [
+        seven_zip,
+        "a",
+        "-t7z",
+        str(archive_path),
+        "*",
+    ]
+    if split:
+        command.append(f"-v{BASE_ARCHIVE_VOLUME_BYTES}b")
+    command.extend(
+        [
+            "-m0=lzma2",
+            "-mx=5",
+            "-ms=off",
+            "-mmt=on",
+            "-bsp1",
+            "-bb0",
+        ]
+    )
     completed = subprocess.run(
-        [seven_zip, "a", "-t7z", str(archive_path), "*", "-m0=lzma2", "-mx=5", "-ms=off", "-mmt=on", "-bsp1", "-bb0"],
+        command,
         cwd=Path(staging_root).resolve(),
         check=False,
     )
     if completed.returncode != 0:
         raise ReleaseManifestError(f"7z 基础环境包构建失败，退出码：{completed.returncode}")
+    if split:
+        volume_paths = sorted(output_dir.glob(f"{archive_path.name}.[0-9][0-9][0-9]"))
+        if not volume_paths or len(volume_paths) > BASE_ARCHIVE_VOLUME_COUNT:
+            raise ReleaseManifestError(
+                f"基础环境包最多允许生成 {BASE_ARCHIVE_VOLUME_COUNT} 个分卷，实际生成 {len(volume_paths)} 个。"
+            )
+        if any(path.stat().st_size >= 1_073_741_824 for path in volume_paths):
+            raise ReleaseManifestError("基础环境包分卷必须严格小于 1 GiB。")
+    elif not archive_path.is_file():
+        raise ReleaseManifestError("基础环境包单卷归档未生成。")
     print_elapsed("[Base] 7-Zip 压缩完成", archive_started, perf_counter=time.perf_counter)
-    print(f"[Base] 归档路径：{archive_path}", flush=True)
+    if split:
+        print(f"[Base] 归档首卷：{first_volume_path}", flush=True)
+        for volume_path in volume_paths:
+            print(f"[Base] 分卷：{volume_path.name} ({volume_path.stat().st_size} bytes)", flush=True)
+        return first_volume_path
+    print(f"[Base] 单卷归档：{archive_path}", flush=True)
     return archive_path
 
 
@@ -166,6 +219,8 @@ __all__ = [
     "BASE_MODEL_NAMES",
     "BASE_PACKAGE_ID",
     "BASE_PACKAGE_SCHEMA_VERSION",
+    "BASE_ARCHIVE_VOLUME_BYTES",
+    "BASE_ARCHIVE_VOLUME_COUNT",
     "MANAGED_MODELS_NAME",
     "STDLIB_ARCHIVE_NAME",
     "build_base_runtime_archive",

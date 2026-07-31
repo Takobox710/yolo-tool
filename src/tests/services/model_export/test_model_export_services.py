@@ -13,17 +13,25 @@ def test_format_mapping_targets_and_model_scan(tmp_path):
     )
 
     base = tmp_path / "data" / "models" / "base.pt"
+    sam = tmp_path / "data" / "models" / "sam2.1_hiera_base_plus.pt"
     best = tmp_path / "result" / "train-2" / "weights" / "best.pt"
     base.parent.mkdir(parents=True)
     best.parent.mkdir(parents=True)
     base.write_bytes(b"base")
+    sam.write_bytes(b"sam")
     best.write_bytes(b"best")
 
     assert resolve_export_format("TensorRT").argument == "engine"
+    assert resolve_export_format("SAM2 ONNX").argument == "sam2_onnx"
     assert not resolve_export_format("OpenVINO").built_in
     assert not resolve_export_format("NCNN").built_in
     assert export_artifact_path(base, tmp_path, "OpenVINO").name == "base_openvino_model"
+    assert export_artifact_path(base, tmp_path, "SAM2 ONNX").name == "base_sam2_onnx"
     assert find_export_model_paths(tmp_path, tmp_path) == [best.resolve()]
+    assert find_export_model_paths(tmp_path, tmp_path, include_sam_models=True) == [
+        best.resolve(),
+        sam.resolve(),
+    ]
 
 
 def test_build_export_command_selects_builtin_or_extension(tmp_path):
@@ -74,6 +82,23 @@ def test_tensorrt_capability_does_not_import_backend(monkeypatch):
 
     assert capability.available is True
     assert imported == []
+
+
+def test_cpu_capability_uses_builtins_and_rejects_tensorrt(monkeypatch):
+    from src.services.model_export import runtime as runtime_service
+
+    monkeypatch.setattr(runtime_service, "installed_variant", lambda: "cpu")
+    monkeypatch.setattr(runtime_service, "_modules_available", lambda _modules: True)
+
+    openvino = runtime_service.export_capability("openvino", frozen=True)
+    ncnn = runtime_service.export_capability("ncnn", frozen=True)
+    tensorrt = runtime_service.export_capability("engine", frozen=True)
+
+    assert openvino.available is True
+    assert openvino.runtime == "CPU 内置运行环境"
+    assert ncnn.available is True
+    assert tensorrt.available is False
+    assert "不包含 TensorRT" in tensorrt.reason
 
 
 def test_export_uses_staging_and_replaces_only_after_success(tmp_path):
@@ -141,6 +166,65 @@ def test_export_failure_preserves_existing_target(tmp_path):
 
     assert target.read_bytes() == b"old"
     assert not list(output.glob(".yolo-export-*"))
+
+
+def test_sam_checkpoint_is_rejected_before_yolo_loading(tmp_path):
+    from src.services.model_export import export_model_to_directory
+
+    source = tmp_path / "sam2.1_hiera_base_plus.pt"
+    source.write_bytes(b"sam checkpoint")
+    called = False
+
+    def yolo_factory(_model):
+        nonlocal called
+        called = True
+        raise AssertionError("SAM checkpoint must not be passed to YOLO")
+
+    with pytest.raises(ValueError, match="不是 Ultralytics YOLO 权重"):
+        export_model_to_directory(
+            {
+                "model": str(source),
+                "format": "onnx",
+                "imgsz": 640,
+                "output_dir": str(tmp_path / "exports"),
+            },
+            yolo_factory=yolo_factory,
+        )
+
+    assert called is False
+
+
+def test_sam2_format_routes_to_sam_exporter(monkeypatch, tmp_path):
+    from src.services.model_export import export_model_to_directory
+    from src.services.model_export import sam_onnx
+
+    source = tmp_path / "sam2.1_hiera_base_plus.pt"
+    source.write_bytes(b"sam checkpoint")
+    expected = tmp_path / "exports" / "sam2"
+    received = {}
+
+    def fake_export(options, progress=None):
+        received.update(options)
+        return expected
+
+    monkeypatch.setattr(
+        sam_onnx,
+        "export_sam2_model_to_directory",
+        fake_export,
+    )
+
+    result = export_model_to_directory(
+        {
+            "model": str(source),
+            "format": "sam2_onnx",
+            "output_dir": str(tmp_path / "exports"),
+        },
+        yolo_factory=None,
+    )
+
+    assert result == expected
+    assert received["model"] == str(source.resolve())
+    assert received["output_dir"] == str(tmp_path / "exports")
 
 
 def test_partial_move_failure_restores_existing_target(monkeypatch, tmp_path):

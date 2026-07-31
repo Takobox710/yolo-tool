@@ -20,9 +20,6 @@ python = "3.12.*"
 7zip = ">=24, <27"
 
 [pypi-dependencies]
-torch = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
-torchvision = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
-torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 pyside6 = ">=6.10.0, <7"
 pillow = ">=12.2.0, <13"
 ultralytics = ">=8.4.80, <9"
@@ -37,6 +34,7 @@ pyinstaller = ">=6.17.0, <7"
 lap = ">=0.5.13, <0.6"
 onnx = ">=1.22.0, <2"
 onnxslim = ">=0.1.94, <0.2"
+onnxscript = ">=0.7.1, <0.8"
 py7zr = ">=1.0.0, <2"
 sam2 = { path = "installer/vendor/sam2-1.1.0-cp312-cp312-win_amd64.whl" }
 sam3 = { path = "installer/vendor/sam3-0.1.0-py3-none-any.whl" }
@@ -50,8 +48,25 @@ pycocotools = ">=2.0.7, <3"
 tqdm = ">=4.69.0, <5"
 portalocker = ">=3.2.0, <4"
 
+[feature.cpu.pypi-dependencies]
+torch = { version = "*", index = "https://download.pytorch.org/whl/cpu" }
+torchvision = { version = "*", index = "https://download.pytorch.org/whl/cpu" }
+torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cpu" }
+
+[feature.gpu.pypi-dependencies]
+torch = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+torchvision = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
+
 [feature.release-base.pypi-dependencies]
 onnxruntime = ">=1.27.0, <2"
+
+[feature.release-cpu.pypi-dependencies]
+onnxruntime = ">=1.27.0, <2"
+openvino = ">=2026.2.1, <2027"
+openvino-telemetry = ">=2025.2.0, <2027"
+ncnn = ">=1.0.20260526"
+pnnx = ">=20260526"
 
 [feature.export-full.pypi-dependencies]
 onnxruntime-gpu = ">=1.27.0, <2"
@@ -65,7 +80,8 @@ tensorrt-cu13-libs = { version = "==11.1.0.106", index = "https://pypi.nvidia.co
 tensorrt-cu13-bindings = { version = "==11.1.0.106", index = "https://pypi.nvidia.com" }
 
 [environments]
-default = ["export-full"]
-release-base = ["release-base"]
-export-full = ["export-full"]
+default = ["gpu", "export-full"]
+release-base = ["gpu", "release-base"]
+release-cpu = ["cpu", "release-cpu"]
+export-full = ["gpu", "export-full"]
 

@@ -7,19 +7,22 @@ from src.bootstrap.cli_common import _emit_structured, _parse_key_values
 
 def _run_export_cli_impl(argv: list[str]) -> int:
     os.environ["YOLO_AUTOINSTALL"] = "false"
+    options = _parse_key_values(argv)
+    if not options.get("model"):
+        raise SystemExit("Missing model=... for export")
     from src.services.ultralytics_compat import ensure_cv2_highgui_compat
     from src.services.model_export import export_model_to_directory
 
     ensure_cv2_highgui_compat()
-    from ultralytics import YOLO
-
-    options = _parse_key_values(argv)
-    if not options.get("model"):
-        raise SystemExit("Missing model=... for export")
     try:
+        yolo_factory = None
+        if str(options.get("format") or "").strip().lower() != "sam2_onnx":
+            from ultralytics import YOLO
+
+            yolo_factory = YOLO
         result = export_model_to_directory(
             options,
-            yolo_factory=YOLO,
+            yolo_factory=yolo_factory,
             progress=lambda message: _emit_structured("progress", message=message),
         )
         _emit_structured("done", ok=True, result_path=str(result))

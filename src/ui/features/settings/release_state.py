@@ -14,6 +14,7 @@ def apply_release_check(page, payload) -> None:
             urls = (urls,)
         result = ReleaseCheckResult(
             current_version=str(payload.get("current_version") or ""),
+            variant=str(payload.get("variant") or "gpu"),
             latest_version=str(payload.get("latest_version") or ""),
             release_url=str(payload.get("release_url") or ""),
             release_notes=str(payload.get("release_notes") or ""),

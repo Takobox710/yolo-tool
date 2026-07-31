@@ -14,6 +14,7 @@ from src.services.model_export import (
     export_model_display_path,
     find_export_model_paths,
     resolve_export_format,
+    validate_model_export_source,
 )
 from src.services.runtime import spawn_structured_process, stop_process
 from src.shared.paths import ROOT
@@ -71,7 +72,9 @@ class ModelExportTab(
         current = self.model_combo.currentText()
         show_last = self.context.settings.features.show_last_training_models
         paths = find_export_model_paths(
-            self.project_root(), show_last_training_models=show_last
+            self.project_root(),
+            show_last_training_models=show_last,
+            include_sam_models=True,
         )
         self._model_display_paths = {
             export_model_display_path(path, self.project_root()): path for path in paths
@@ -108,6 +111,7 @@ class ModelExportTab(
         if not model_path.is_file() or model_path.suffix.lower() != ".pt":
             raise ValueError("请选择存在的 .pt 模型文件。")
         spec = resolve_export_format(self.format_combo.currentText())
+        validate_model_export_source(model_path, spec.argument)
         output_root = Path(self.resolve_path_text(self.output_edit))
         return ModelExportConfig(
             model_path=model_path,

@@ -24,7 +24,7 @@ def build_model_export_layout(page) -> None:
     )
     page.imgsz_box, page.imgsz_edit = page.field(
         "输入尺寸", str(settings.imgsz), placeholder="例如 640",
-        help_text="第一版导出固定 batch=1 和静态方形输入。",
+        help_text="YOLO 导出使用该尺寸；SAM2 ONNX 固定使用 1024，输出编码器和点提示解码器两个文件。",
     )
     page.simplify_box, page.simplify_check = page.checkbox_with_help(
         "简化 ONNX", settings.simplify, "仅用于 ONNX 和 TensorRT 的中间 ONNX 图。"

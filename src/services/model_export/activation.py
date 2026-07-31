@@ -10,12 +10,15 @@ from src.services.model_export.package import (
     load_installed_extension,
 )
 from src.services.model_export.types import InstalledExtension
+from src.services.runtime.variant import CPU_VARIANT, installed_variant
 
 
 _DLL_HANDLES: list[object] = []
 
 
 def activate_installed_extension(base_root: Path | None = None) -> bool:
+    if installed_variant() == CPU_VARIANT:
+        return False
     candidate_root = os.environ.get(PROBE_EXTENSION_ROOT_ENV, "").strip()
     installed = (
         load_extension_at(Path(candidate_root))

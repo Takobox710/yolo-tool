@@ -9,16 +9,18 @@ from urllib.request import Request
 
 
 _INSTALLER_NAME_PATTERN = re.compile(
-    r"^YOLOTool_Setup_[0-9A-Za-z.-]+\.exe$", re.IGNORECASE
+    r"^YOLOTool(?:_CPU)?_Setup_[0-9A-Za-z.-]+\.exe$", re.IGNORECASE
 )
 _DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 def _is_environment_asset(name: str) -> bool:
     lowered = name.casefold()
-    return lowered.endswith((".7z", ".zip")) and (
+    return (lowered.endswith((".7z", ".zip")) or re.search(r"\.7z\.[0-9]{3}$", lowered)) and (
         lowered.startswith("yolotool_baseenv_")
         or lowered.startswith("yolotool_extraenv_")
+        or lowered.startswith("yolotool_cpu_baseenv_")
+        or lowered.startswith("yolotool_cpu_extraenv_")
     )
 
 

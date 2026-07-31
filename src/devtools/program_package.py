@@ -18,6 +18,7 @@ def build_program_package(
     *,
     app_version: str,
     required_runtime_version: str,
+    variant: str = "gpu",
     exe_name: str = "YOLOTool.exe",
 ) -> Path:
     app_root = Path(app_root).resolve()
@@ -32,6 +33,7 @@ def build_program_package(
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "app_version": app_version,
         "required_runtime_version": required_runtime_version,
+        "variant": variant,
         "app_files": {exe_name: sha256_file(app_root / exe_name)},
     }
     write_json(output_root / "release-manifest.json", release_manifest)
@@ -41,6 +43,7 @@ def build_program_package(
         package_type=PROGRAM_PACKAGE_TYPE,
         app_version=app_version,
         required_runtime_version=required_runtime_version,
+        variant=variant,
     )
     return output_root
 
@@ -53,6 +56,7 @@ def build_package(
     app_version: str,
     runtime_version: str,
     required_runtime_version: str,
+    variant: str = "gpu",
     exe_name: str = "YOLOTool.exe",
 ) -> Path:
     if package_type not in PACKAGE_TYPES:
@@ -63,6 +67,7 @@ def build_package(
         output_root,
         app_version=app_version,
         required_runtime_version=required_runtime_version,
+        variant=variant,
         exe_name=exe_name,
     )
 

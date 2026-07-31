@@ -39,7 +39,6 @@ from src.services.runtime.release_manifest import (
     sha256_file,
 )
 from src.services.runtime.windows_spawn import hidden_subprocess_kwargs
-
 __all__ = [
     "ProcessHandle",
     "STRUCTURED_OUTPUT_PREFIX",

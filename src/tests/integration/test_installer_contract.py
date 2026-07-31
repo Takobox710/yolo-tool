@@ -13,15 +13,18 @@ def _section(source: str, start: str, end: str) -> str:
 def test_release_artifact_names_and_versions_are_short_and_stable():
     installer = INSTALLER.read_text(encoding="utf-8")
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
-    base_builder = Path("src/devtools/release_package.py").read_text(encoding="utf-8")
+    base_builder = Path("src/devtools/base_runtime_builder.py").read_text(encoding="utf-8")
     extra_builder = Path("src/devtools/model_export_package.py").read_text(
         encoding="utf-8"
     )
 
-    assert "OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersion}" in installer
-    assert "YOLOTool_BaseEnv_${BaseVersion}.7z" in package_script
+    assert "OutputBaseFilename={#ArtifactPrefix}_Setup_{#MyAppVersion}" in installer
+    assert "${ArtifactPrefix}_BaseEnv_${BaseVersion}.7z" in package_script
+    assert "-SplitBaseArchive:$SplitBaseArchive" in package_script
+    assert "-NoArchive" in package_script
     assert "YOLOTool_ExtraEnv_${ExtensionVersion}.7z" in package_script
-    assert "YOLOTool_BaseEnv_{package_version}.7z" in base_builder
+    assert "_BaseEnv_{package_version}.7z" in base_builder
+    assert "-v{BASE_ARCHIVE_VOLUME_BYTES}b" in base_builder
     assert "YOLOTool_ExtraEnv_{version}.7z" in extra_builder
     assert Path("installer/base-runtime-models-version.txt").read_text().strip() == "v3"
     assert Path("installer/model-export-runtime-version.txt").read_text().strip() == "v2"
@@ -45,6 +48,9 @@ def test_component_page_uses_environment_version_without_archive_hashing():
     assert "GetSHA256OfFile" not in source
     assert "FileSize64(FileName, ActualSize)" not in source
     assert "IsVersionedArchiveCandidate(BaseArchivePath" in source
+    assert "ArchiveExtraction=full" in source
+    assert "CompareText(ExtractFileExt(FileName), '.7z') = 0" in source
+    assert "ChangeFileExt(FileName, '.003')" in source
     assert "IsVersionedArchiveCandidate(ExtensionArchivePath" in source
     assert "BaseCompressedSize" not in source
     assert "ExtensionCompressedSize" not in source
@@ -70,6 +76,7 @@ def test_installer_requires_base_for_first_install_and_cleans_up_on_finish():
     assert "function GetCleanupParameters(Param: String): String;" in source
     assert "ExpandConstant('{srcexe}')" in source
     assert "Result := Result + ' & del /f /q \"' + BaseArchivePath + '\"';" in source
+    assert "ChangeFileExt(BaseArchivePath, '.002')" in source
     assert "Result := Result + ' & del /f /q \"' + ExtensionArchivePath + '\"';" in source
     assert "CleanupPackagesCheck" not in source
     assert "CleanupPackagesStatus" not in source
@@ -161,6 +168,65 @@ def test_program_update_build_uses_program_only_output_without_runtime_layer():
     assert 'Remove-Item -LiteralPath $AppDir -Recurse -Force' in build_script
     assert '仅程序输出异常包含 _internal' in build_script
     assert '"sam2.1_hiera_base_plus.pt"' in build_script
+
+
+def test_cpu_variant_has_isolated_artifacts_and_runtime_selection():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+    base_script = Path("installer/build_base_runtime_models.ps1").read_text(encoding="utf-8")
+    build_script = Path("installer/build_windows.ps1").read_text(encoding="utf-8")
+    installer = INSTALLER.read_text(encoding="utf-8")
+    spec = Path("installer/YOLOTool.spec").read_text(encoding="utf-8")
+
+    assert '[ValidateSet("GPU", "CPU")]' in package_script
+    assert '"YOLOTool_CPU"' in package_script
+    assert '"--variant", $Variant.ToLowerInvariant()' in build_script
+    assert '"release-cpu"' in build_script
+    assert '"YOLOTool_CPU"' in base_script
+    assert '[switch]$SplitBaseArchive' in base_script
+    assert '"--split"' in base_script
+    assert '${ArtifactPrefix}_BaseEnv_' in package_script
+    assert 'BaseRuntimeModels-CPU' in package_script
+    assert 'CPU 一体式安装包缺少基础运行时 staging 清单' in package_script
+    assert '"/DPackageVariant=$($Variant.ToLowerInvariant())"' in package_script
+    assert '#define PackageVariant "gpu"' in installer
+    assert '#define ArtifactPrefix "YOLOTool"' in installer
+    assert 'build_variant = os.environ.get("YOLO_TOOL_BUILD_VARIANT", "gpu")' in spec
+    assert 'runtime_packages += ["openvino", "ncnn", "pnnx"]' in spec
+
+
+def test_cpu_is_an_integrated_installer_and_gpu_keeps_external_archives():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+    installer = INSTALLER.read_text(encoding="utf-8")
+    catalog = Path("src/devtools/companion_catalog.py").read_text(encoding="utf-8")
+
+    assert 'if ($IntegratedRuntime) {' in package_script
+    assert '-NoArchive' in package_script
+    assert '"--base-staging", $BaseStaging' in package_script
+    assert '/DIntegratedRuntime=1' in package_script
+    assert '/DIntegratedRuntimeStaging=1' in package_script
+    assert '#ifdef IntegratedRuntime' in installer
+    assert 'BaseRuntimeModels-CPU\\*' in installer
+    assert 'Source: "{code:GetBaseArchivePath}"' in installer
+    assert 'integrated=True' in catalog
+
+
+def test_cpu_update_and_batch_contract_hides_gpu_extra_environment():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+    batch_script = Path("打包程序.bat").read_text(encoding="utf-8")
+    update_batch = Path("打包更新程序.bat").read_text(encoding="utf-8")
+    dialog_layout = Path(
+        "src/ui/features/settings/update_dialog_layout.py"
+    ).read_text(encoding="utf-8")
+    dialog_state = Path(
+        "src/ui/features/settings/update_dialog_state.py"
+    ).read_text(encoding="utf-8")
+
+    assert "CPU 版不支持构建模型转换附加环境" in package_script
+    assert 'set "PACKAGE_ARGS=-Variant CPU -BuildBaseRuntimeModels"' in batch_script
+    assert "pwsh.exe -NoProfile" in batch_script
+    assert "pwsh.exe -NoProfile" in update_batch
+    assert "normalize_variant(dialog.result.variant) != CPU_VARIANT" in dialog_layout
+    assert "normalize_variant(result.variant) != CPU_VARIANT" in dialog_state
 
 
 def test_full_packaging_rebuilds_program_only_installer_after_base_runtime():

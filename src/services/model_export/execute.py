@@ -5,7 +5,11 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from src.services.model_export.formats import export_artifact_path, resolve_export_format
+from src.services.model_export.formats import (
+    export_artifact_path,
+    resolve_export_format,
+    validate_model_export_source,
+)
 
 
 def _remove_path(path: Path) -> None:
@@ -39,7 +43,7 @@ def cleanup_stale_export_workdirs(output_dir: str | Path) -> None:
 def export_model_to_directory(
     options: dict,
     *,
-    yolo_factory: Callable[[str], object],
+    yolo_factory: Callable[[str], object] | None,
     progress: Callable[[str], None] | None = None,
 ) -> Path:
     values = dict(options)
@@ -48,6 +52,16 @@ def export_model_to_directory(
     if not model_path.is_file() or model_path.suffix.lower() != ".pt":
         raise ValueError("请选择存在的 .pt 模型文件。")
     spec = resolve_export_format(str(values.get("format", "")))
+    validate_model_export_source(model_path, spec.argument)
+    if spec.argument == "sam2_onnx":
+        from src.services.model_export.sam_onnx import export_sam2_model_to_directory
+
+        sam_options = dict(values)
+        sam_options["model"] = str(model_path)
+        sam_options["output_dir"] = output_dir_value
+        return export_sam2_model_to_directory(sam_options, progress=progress)
+    if yolo_factory is None:
+        raise ValueError("YOLO 导出缺少 Ultralytics 运行时。")
     values["format"] = spec.argument
     values["batch"] = 1
     for unsupported in ("dynamic", "half", "int8", "quantize", "nms"):

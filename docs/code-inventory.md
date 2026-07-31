@@ -4,17 +4,17 @@
 
 ## 目录摘要
 
-- `src`: 326 个文件，38352 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
-- `docs`: 8 个文件，901 行文本；架构、规格、打包与代码清单文档。
-- `installer`: 15 个文件，2226 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
+- `src`: 331 个文件，39806 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `docs`: 8 个文件，912 行文本；架构、规格、打包与代码清单文档。
+- `installer`: 15 个文件，2497 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
 
 | 路径 | 行数 | 说明 |
 | --- | ---: | --- |
-| `AGENTS.md` | 179 | 本仓库 AI 执行约束与开发规则。 |
-| `README.md` | 438 | 项目概览、命令入口与使用说明。 |
-| `pixi.toml` | 71 | Pixi 环境、依赖与任务命令定义。 |
+| `AGENTS.md` | 192 | 本仓库 AI 执行约束与开发规则。 |
+| `README.md` | 453 | 项目概览、命令入口与使用说明。 |
+| `pixi.toml` | 87 | Pixi 环境、依赖与任务命令定义。 |
 | `src/__init__.py` | 1 | 仓库文件。 |
 | `src/app.py` | 8 | 仓库文件。 |
 | `src/assets/app_icon.ico` | 0 | 应用图标与静态资源。 |
@@ -28,7 +28,7 @@
 | `src/bootstrap/cli_common.py` | 72 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/cli_dispatch.py` | 110 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/cli_legacy.py` | 46 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
-| `src/bootstrap/cli_model_export.py` | 121 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
+| `src/bootstrap/cli_model_export.py` | 124 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/cli_runtime.py` | 56 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/cli_training.py` | 46 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/cli_validation.py` | 305 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
@@ -36,14 +36,15 @@
 | `src/data/runtime/app_state.json` | 3 | 仓库文件。 |
 | `src/data/runtime/settings.json` | 119 | 仓库文件。 |
 | `src/devtools/__init__.py` | 1 | 仓库文件。 |
-| `src/devtools/base_runtime_builder.py` | 174 | 仓库文件。 |
-| `src/devtools/base_runtime_package.py` | 29 | 仓库文件。 |
-| `src/devtools/companion_catalog.py` | 89 | 仓库文件。 |
+| `src/devtools/base_runtime_builder.py` | 229 | 仓库文件。 |
+| `src/devtools/base_runtime_package.py` | 54 | 仓库文件。 |
+| `src/devtools/companion_catalog.py` | 163 | 仓库文件。 |
+| `src/devtools/cpu_package_guard.py` | 184 | 仓库文件。 |
 | `src/devtools/generate_code_inventory.py` | 151 | 仓库文件。 |
 | `src/devtools/model_export_package.py` | 194 | 仓库文件。 |
-| `src/devtools/package_files.py` | 137 | 仓库文件。 |
-| `src/devtools/program_package.py` | 70 | 仓库文件。 |
-| `src/devtools/release_package.py` | 83 | 仓库文件。 |
+| `src/devtools/package_files.py` | 139 | 仓库文件。 |
+| `src/devtools/program_package.py` | 75 | 仓库文件。 |
+| `src/devtools/release_package.py` | 90 | 仓库文件。 |
 | `src/main.py` | 53 | 仓库文件。 |
 | `src/open_yolo_tool.pyw` | 32 | 仓库文件。 |
 | `src/runtime/settings.json` | 138 | 源码内默认配置参考。 |
@@ -80,33 +81,35 @@
 | `src/services/home/__init__.py` | 5 | 服务层与可测试业务逻辑实现。 |
 | `src/services/home/distribution.py` | 192 | 服务层与可测试业务逻辑实现。 |
 | `src/services/home/summary.py` | 84 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/__init__.py` | 70 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/activation.py` | 46 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/__init__.py` | 74 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/activation.py` | 49 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/archive_extract.py` | 53 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/commands.py` | 51 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/execute.py` | 98 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/formats.py` | 70 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/execute.py` | 112 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/formats.py` | 120 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/inspection.py` | 54 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/manifest.py` | 100 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/native_archive.py` | 150 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/package.py` | 309 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/package.py` | 314 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/probe.py` | 48 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/runtime.py` | 65 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/runtime.py` | 82 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/sam_onnx.py` | 280 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/types.py` | 39 | 服务层与可测试业务逻辑实现。 |
 | `src/services/models/__init__.py` | 1 | 服务层与可测试业务逻辑实现。 |
-| `src/services/runtime/__init__.py` | 76 | 服务层与可测试业务逻辑实现。 |
+| `src/services/runtime/__init__.py` | 75 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/environment_probe.py` | 240 | 服务层与可测试业务逻辑实现。 |
-| `src/services/runtime/install_instance.py` | 124 | 服务层与可测试业务逻辑实现。 |
+| `src/services/runtime/install_instance.py` | 126 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/managed_models.py` | 57 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/metadata.py` | 24 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/process_runner.py` | 204 | 服务层与可测试业务逻辑实现。 |
-| `src/services/runtime/release_catalog.py` | 140 | 服务层与可测试业务逻辑实现。 |
-| `src/services/runtime/release_download.py` | 89 | 服务层与可测试业务逻辑实现。 |
-| `src/services/runtime/release_environment.py` | 118 | 服务层与可测试业务逻辑实现。 |
+| `src/services/runtime/release_catalog.py` | 183 | 服务层与可测试业务逻辑实现。 |
+| `src/services/runtime/release_download.py` | 91 | 服务层与可测试业务逻辑实现。 |
+| `src/services/runtime/release_environment.py` | 161 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/release_installer.py` | 49 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/release_manifest.py` | 123 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/release_updates.py` | 180 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/release_versions.py` | 61 | 服务层与可测试业务逻辑实现。 |
+| `src/services/runtime/variant.py` | 67 | 服务层与可测试业务逻辑实现。 |
 | `src/services/runtime/windows_spawn.py` | 11 | 服务层与可测试业务逻辑实现。 |
 | `src/services/settings/__init__.py` | 76 | 服务层与可测试业务逻辑实现。 |
 | `src/services/settings/defaults.py` | 162 | 服务层与可测试业务逻辑实现。 |
@@ -138,9 +141,10 @@
 | `src/tests/helpers/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/helpers/ui_paths.py` | 70 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/integration/test_app_entry.py` | 206 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/integration/test_installer_contract.py` | 270 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/integration/test_model_export_packaging.py` | 66 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/integration/test_app_entry.py` | 209 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/integration/test_cpu_package_guard.py` | 54 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/integration/test_installer_contract.py` | 336 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/integration/test_model_export_packaging.py` | 75 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/annotation/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/annotation/test_annotation_classes.py` | 67 | pytest 测试、结构约束与回归用例。 |
@@ -159,16 +163,17 @@
 | `src/tests/services/model_export/test_activation.py` | 38 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_export_cli.py` | 95 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_extension_package.py` | 297 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/model_export/test_model_export_services.py` | 196 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/model_export/test_model_export_services.py` | 280 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_package_collector.py` | 97 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/runtime/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/runtime/test_companion_catalog.py` | 79 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/runtime/test_companion_catalog.py` | 133 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/runtime/test_environment_probe.py` | 99 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/runtime/test_install_instance.py` | 107 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/runtime/test_install_instance.py` | 109 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/runtime/test_managed_models.py` | 44 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/runtime/test_process_runner.py` | 79 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/runtime/test_release_manifest.py` | 211 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/runtime/test_release_updates.py` | 302 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/runtime/test_release_manifest.py` | 240 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/runtime/test_release_updates.py` | 437 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/runtime/test_variant.py` | 33 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/settings/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/settings/test_project_settings.py` | 158 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/training/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
@@ -185,12 +190,12 @@
 | `src/tests/ui/annotation/test_annotation_sam_runtime.py` | 570 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/annotation/test_annotation_task_mode.py` | 405 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data_processing/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/data_processing/test_model_export_tab.py` | 180 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/data_processing/test_model_export_tab.py` | 184 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/data_processing/test_resize_tab.py` | 135 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/home/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/home/test_home_charts.py` | 67 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/settings/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/ui/settings/test_release_download_lifecycle.py` | 436 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/ui/settings/test_release_download_lifecycle.py` | 473 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/settings/test_release_status.py` | 487 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/settings/test_settings_page.py` | 209 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/ui/shared/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |
@@ -258,7 +263,7 @@
 | `src/ui/features/data/model_export/__init__.py` | 3 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/model_export/layout.py` | 81 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/model_export/state.py` | 73 | 按功能分包的页面真实实现。 |
-| `src/ui/features/data/model_export/tab.py` | 271 | 按功能分包的页面真实实现。 |
+| `src/ui/features/data/model_export/tab.py` | 275 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/page.py` | 79 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/preview/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/data/preview/tab.py` | 188 | 按功能分包的页面真实实现。 |
@@ -275,14 +280,14 @@
 | `src/ui/features/settings/environment_state.py` | 132 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/layout.py` | 141 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/page.py` | 104 | 按功能分包的页面真实实现。 |
-| `src/ui/features/settings/release_state.py` | 115 | 按功能分包的页面真实实现。 |
+| `src/ui/features/settings/release_state.py` | 116 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/state.py` | 61 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/update_dialog.py` | 111 | 按功能分包的页面真实实现。 |
-| `src/ui/features/settings/update_dialog_download.py` | 264 | 按功能分包的页面真实实现。 |
+| `src/ui/features/settings/update_dialog_download.py` | 267 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/update_dialog_install.py` | 174 | 按功能分包的页面真实实现。 |
-| `src/ui/features/settings/update_dialog_layout.py` | 184 | 按功能分包的页面真实实现。 |
-| `src/ui/features/settings/update_dialog_selection.py` | 240 | 按功能分包的页面真实实现。 |
-| `src/ui/features/settings/update_dialog_state.py` | 241 | 按功能分包的页面真实实现。 |
+| `src/ui/features/settings/update_dialog_layout.py` | 193 | 按功能分包的页面真实实现。 |
+| `src/ui/features/settings/update_dialog_selection.py` | 241 | 按功能分包的页面真实实现。 |
+| `src/ui/features/settings/update_dialog_state.py` | 283 | 按功能分包的页面真实实现。 |
 | `src/ui/features/settings/update_toast.py` | 127 | 按功能分包的页面真实实现。 |
 | `src/ui/features/training/__init__.py` | 1 | 按功能分包的页面真实实现。 |
 | `src/ui/features/training/form.py` | 218 | 按功能分包的页面真实实现。 |
@@ -341,26 +346,26 @@
 | `src/ui/shell/program_log.py` | 27 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/style.py` | 7 | 主窗口壳层、样式与页面协调。 |
 | `src/ui/shell/window.py` | 296 | 主窗口壳层、样式与页面协调。 |
-| `docs/architecture.md` | 268 | 项目架构、打包与维护文档。 |
-| `docs/packaging-windows.md` | 138 | 项目架构、打包与维护文档。 |
+| `docs/architecture.md` | 269 | 项目架构、打包与维护文档。 |
+| `docs/packaging-windows.md` | 147 | 项目架构、打包与维护文档。 |
 | `docs/spec/annotation.md` | 157 | 页面与功能规格说明。 |
-| `docs/spec/data-processing.md` | 90 | 页面与功能规格说明。 |
+| `docs/spec/data-processing.md` | 91 | 页面与功能规格说明。 |
 | `docs/spec/home.md` | 43 | 页面与功能规格说明。 |
 | `docs/spec/settings.md` | 58 | 页面与功能规格说明。 |
 | `docs/spec/training.md` | 73 | 页面与功能规格说明。 |
 | `docs/spec/validation.md` | 74 | 页面与功能规格说明。 |
 | `installer/base-runtime-models-version.txt` | 1 | Windows 打包脚本与安装配置。 |
-| `installer/build_base_runtime_models.ps1` | 41 | Windows 打包脚本与安装配置。 |
+| `installer/build_base_runtime_models.ps1` | 83 | Windows 打包脚本与安装配置。 |
 | `installer/build_model_export_runtime.ps1` | 35 | Windows 打包脚本与安装配置。 |
-| `installer/build_windows.ps1` | 239 | Windows 打包脚本与安装配置。 |
+| `installer/build_windows.ps1` | 271 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/hook-torch.py` | 26 | Windows 打包脚本与安装配置。 |
 | `installer/hooks/program_external_runtime.py` | 50 | Windows 打包脚本与安装配置。 |
 | `installer/languages/ChineseSimplified.isl` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/model-export-runtime-version.txt` | 1 | Windows 打包脚本与安装配置。 |
-| `installer/package_windows.ps1` | 211 | Windows 打包脚本与安装配置。 |
+| `installer/package_windows.ps1` | 296 | Windows 打包脚本与安装配置。 |
 | `installer/runtime-version.txt` | 1 | Windows 打包脚本与安装配置。 |
 | `installer/vendor/sam2-1.1.0-cp312-cp312-win_amd64.whl` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/vendor/sam3-0.1.0-py3-none-any.whl` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/vendor/sam3-LICENSE.txt` | 61 | Windows 打包脚本与安装配置。 |
-| `installer/yolo_tool.iss` | 1323 | Windows 打包脚本与安装配置。 |
-| `installer/YOLOTool.spec` | 237 | Windows 打包脚本与安装配置。 |
+| `installer/yolo_tool.iss` | 1409 | Windows 打包脚本与安装配置。 |
+| `installer/YOLOTool.spec` | 263 | Windows 打包脚本与安装配置。 |

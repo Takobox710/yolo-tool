@@ -16,18 +16,28 @@ from src.services.runtime.release_environment import (
     installed_environment_versions,
 )
 from src.services.runtime.release_versions import is_newer_version, normalize_release_version
+from src.services.runtime.variant import (
+    CPU_VARIANT,
+    GPU_VARIANT,
+    build_variant,
+    normalize_variant,
+    variant_asset_prefix,
+)
 
 
 GITHUB_REPOSITORY = "Takobox710/yolo-tool"
 GITHUB_LATEST_RELEASE_URL = (
     f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 )
-_INSTALLER_NAME_PATTERN = re.compile(r"^YOLOTool_Setup_[0-9A-Za-z.-]+\.exe$", re.IGNORECASE)
+_INSTALLER_NAME_PATTERN = re.compile(
+    r"^YOLOTool(?:_CPU)?_Setup_[0-9A-Za-z.-]+\.exe$", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True, slots=True)
 class ReleaseCheckResult:
     current_version: str
+    variant: str = GPU_VARIANT
     latest_version: str = ""
     release_url: str = ""
     release_notes: str = ""
@@ -49,7 +59,13 @@ class ReleaseCheckResult:
         return not self.error and bool(self.latest_version)
 
 
-def parse_assets(payload) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+def parse_assets(
+    payload,
+    *,
+    variant: str = GPU_VARIANT,
+) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+    variant = normalize_variant(variant)
+    asset_prefix = variant_asset_prefix(variant).casefold()
     installer_name = ""
     installer_url = ""
     environment_names: list[str] = []
@@ -63,18 +79,34 @@ def parse_assets(payload) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
         url = str(asset.get("browser_download_url") or "").strip()
         if not name:
             continue
-        if not installer_name and _INSTALLER_NAME_PATTERN.fullmatch(name):
+        if (
+            not installer_name
+            and _INSTALLER_NAME_PATTERN.fullmatch(name)
+            and name.casefold().startswith(f"{asset_prefix}_setup_")
+        ):
             installer_name, installer_url = name, url
-        elif is_environment_asset(name):
+        elif is_environment_asset(name, variant=variant):
+            if variant == CPU_VARIANT:
+                continue
             environment_names.append(name)
             environment_urls.append(url)
     return installer_name, installer_url, tuple(environment_names), tuple(environment_urls)
 
 
-def is_environment_asset(name: str) -> bool:
+def is_environment_asset(name: str, *, variant: str | None = None) -> bool:
     lowered = name.casefold()
-    return lowered.endswith((".7z", ".zip")) and (
-        lowered.startswith("yolotool_baseenv_") or lowered.startswith("yolotool_extraenv_")
+    if not (
+        lowered.endswith((".7z", ".zip"))
+        or re.search(r"\.7z\.[0-9]{3}$", lowered)
+    ):
+        return False
+    prefixes = ("yolotool_baseenv_", "yolotool_extraenv_")
+    if variant is not None:
+        marker = f"{variant_asset_prefix(variant).casefold()}_"
+        return any(lowered.startswith(marker + prefix.removeprefix("yolotool_")) for prefix in prefixes)
+    return any(lowered.startswith(prefix) for prefix in prefixes) or any(
+        lowered.startswith(f"yolotool_cpu_{prefix.removeprefix('yolotool_')}")
+        for prefix in prefixes
     )
 
 
@@ -101,14 +133,20 @@ def check_latest_release(
     latest_version = normalize_release_version(str(payload.get("tag_name") or "").strip())
     if not latest_version:
         return ReleaseCheckResult(current_version=str(current_version), error="GitHub Release 缺少有效版本号")
-    names = parse_assets(payload.get("assets"))
     if load_install_instance_fn is None:
         load_install_instance_fn = load_install_instance
+    installed_metadata = load_install_instance_fn()
+    variant = normalize_variant(
+        installed_metadata.get("variant") if isinstance(installed_metadata, dict) else "",
+        default=build_variant(),
+    )
+    names = parse_assets(payload.get("assets"), variant=variant)
     installed_base_version, installed_extra_version = installed_environment_versions(load_install_instance_fn)
-    base_version = environment_asset_version(names[2], "baseenv")
-    extra_version = environment_asset_version(names[2], "extraenv")
+    base_version = environment_asset_version(names[2], "baseenv", variant=variant)
+    extra_version = environment_asset_version(names[2], "extraenv", variant=variant)
     return ReleaseCheckResult(
         current_version=str(current_version),
+        variant=variant,
         latest_version=latest_version,
         release_url=str(payload.get("html_url") or ""),
         release_notes=str(payload.get("body") or ""),
@@ -121,10 +159,15 @@ def check_latest_release(
         installed_base_environment_version=installed_base_version,
         installed_extra_environment_version=installed_extra_version,
         base_environment_update_available=environment_update_available(
-            base_version, installed_base_version, has_environment_asset(names[2], "baseenv")
+            base_version,
+            installed_base_version,
+            has_environment_asset(names[2], "baseenv", variant=variant),
         ),
         extra_environment_update_available=environment_update_available(
-            extra_version, installed_extra_version, has_environment_asset(names[2], "extraenv"), missing_is_update=False
+            extra_version,
+            installed_extra_version,
+            has_environment_asset(names[2], "extraenv", variant=variant),
+            missing_is_update=False,
         ),
         update_available=is_newer_version(current_version, latest_version),
     )
