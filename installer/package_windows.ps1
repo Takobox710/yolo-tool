@@ -108,7 +108,7 @@ try {
     }
 
     $BaseVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "base-runtime-models-version.txt") -Raw).Trim()
-    $BaseStaging = Join-Path $Root "dist\packages\BaseRuntimeModels-CPU"
+    $CpuFullApp = Join-Path $Root "dist\CPU\YOLOTool"
     $BaseArchivePath = Join-Path $InstallerOutputDir "${ArtifactPrefix}_BaseEnv_${BaseVersion}.7z"
     $BaseArchiveFirstVolume = "${BaseArchivePath}.001"
     $BaseArchive = if ($SplitBaseArchive -and (Test-Path -LiteralPath $BaseArchiveFirstVolume)) {
@@ -126,7 +126,10 @@ try {
         throw "Required base archive is missing: $BaseArchive. Run the full packaging entry first."
     }
 
-    $ProgramOnly = -not $BuildBaseRuntimeModels
+    # CPU releases are a single complete installer: keep the full frozen
+    # application and let Inno Setup embed it directly. GPU retains the
+    # program-only plus external BaseEnv layering.
+    $ProgramOnly = if ($IntegratedRuntime) { $false } else { -not $BuildBaseRuntimeModels }
     if ($ProgramOnly) {
         Write-Step "[1/5] 正在构建仅程序 EXE 和程序 staging..."
     } else {
@@ -144,7 +147,7 @@ try {
     $ProgramStepTimer.Stop()
     Write-StepElapsed "[1/5] 程序和 staging 构建完成" $ProgramStepTimer
 
-    if ($BuildBaseRuntimeModels) {
+    if ($BuildBaseRuntimeModels -and -not $IntegratedRuntime) {
         $BaseStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
         if ($IntegratedRuntime) {
             Write-Step "[2/5] 正在构建 CPU 一体式安装包运行时 staging..."
@@ -163,21 +166,7 @@ try {
         $BaseStepTimer.Stop()
         Write-StepElapsed "[2/5] 基础环境包步骤完成" $BaseStepTimer
 
-        # The full frozen output above is the source for BaseEnv. The installer
-        # must still carry a runtime-free program EXE so it does not duplicate
-        # Python and third-party modules already owned by BaseEnv.
-        $ProgramOnlyStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
-        Write-Step "[3/5] 正在重新构建仅程序 EXE 和程序 staging..."
-        & (Join-Path $PSScriptRoot "build_windows.ps1") `
-            -Mode release -Clean -PackageType Program `
-            -ProgramOnly `
-            -Variant $Variant `
-            -RuntimeVersion $RuntimeVersion -RequiredRuntimeVersion $RequiredRuntimeVersion
-        if ($LASTEXITCODE -ne 0) {
-            throw "Program-only build failed after base runtime build with exit code $LASTEXITCODE"
-        }
-        $ProgramOnlyStepTimer.Stop()
-        Write-StepElapsed "[3/5] 仅程序 EXE 和 staging 构建完成" $ProgramOnlyStepTimer
+        $ProgramOnlyStepTimer = $null
     }
     if ($BuildModelExportRuntime) {
         $ExtensionStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -193,9 +182,8 @@ try {
     if (-not $IntegratedRuntime -and -not (Test-Path -LiteralPath $BaseArchive)) {
         throw "Required base archive is missing: $BaseArchive. Re-run with -BuildBaseRuntimeModels."
     }
-    if ($IntegratedRuntime -and $BuildBaseRuntimeModels -and
-        -not (Test-Path -LiteralPath (Join-Path $BaseStaging "base-package-manifest.json"))) {
-        throw "CPU 一体式安装包缺少基础运行时 staging 清单：$BaseStaging"
+    if ($IntegratedRuntime -and -not (Test-Path -LiteralPath $CpuFullApp)) {
+        throw "CPU 一体式安装包缺少完整冻结目录：$CpuFullApp"
     }
     $ExtensionVersion = ""
     $ExtensionArchive = ""
@@ -205,15 +193,14 @@ try {
     }
     $ProgramStaging = Join-Path $Root "dist\packages\Program"
     $CatalogPath = Join-Path $ProgramStaging "companion-catalog.json"
-    if ($IntegratedRuntime -and -not $BuildBaseRuntimeModels -and
-        -not (Test-Path -LiteralPath (Join-Path $BaseStaging "base-package-manifest.json"))) {
+    if ($IntegratedRuntime) {
         $Catalog = [ordered]@{
             schema_version = 1
             base = [ordered]@{
                 filename = ""
                 integrated = $true
-                package_id = "yolo-tool-base-runtime-models"
-                manifest_schema = 1
+                package_id = "yolo-tool-full-runtime"
+                manifest_schema = 0
                 platform = "win-64"
                 architecture = "x86_64"
                 version = $BaseVersion
@@ -222,7 +209,8 @@ try {
                 uncompressed_size = 0
             }
         }
-        $Catalog | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $CatalogPath -Encoding utf8
+        # CPU direct installers do not need a companion catalog; the values are
+        # passed to Inno Setup directly below.
     } else {
         $CatalogArgs = @("-m", "src.devtools.companion_catalog")
         if ($IntegratedRuntime) {
@@ -242,7 +230,9 @@ try {
             throw "生成伴随包清单失败。"
         }
     }
-    $Catalog = Get-Content -LiteralPath $CatalogPath -Raw | ConvertFrom-Json
+    if (-not $IntegratedRuntime) {
+        $Catalog = Get-Content -LiteralPath $CatalogPath -Raw | ConvertFrom-Json
+    }
     if ($Catalog.base.runtime_version -ne $RequiredRuntimeVersion) {
         throw "基础包运行时版本 '$($Catalog.base.runtime_version)' 与要求的版本 '$RequiredRuntimeVersion' 不一致。"
     }
@@ -272,11 +262,9 @@ try {
     )
     if ($IntegratedRuntime) {
         $InnoArgs += "/DIntegratedRuntime=1"
-        if ($BuildBaseRuntimeModels) {
-            $InnoArgs += "/DIntegratedRuntimeStaging=1"
-        }
+        $InnoArgs += "/DIntegratedRuntimeDirect=1"
     }
-    if ($Catalog.model_export) {
+    if (-not $IntegratedRuntime -and $Catalog.model_export) {
         $InnoArgs += @(
             "/DExtensionPackageName=$($Catalog.model_export.filename)",
             "/DExtensionPackageVersion=$($Catalog.model_export.version)"
@@ -296,7 +284,7 @@ try {
     Write-Step "[5/5] 打包完成。"
     Write-Host "安装包：$(Join-Path $InstallerOutputDir "${ArtifactPrefix}_Setup_${AppVersion}.exe")" -ForegroundColor Green
     if ($IntegratedRuntime) {
-        Write-Host "CPU 一体式运行时 staging：$BaseStaging" -ForegroundColor Green
+        Write-Host "CPU 完整冻结目录：$CpuFullApp" -ForegroundColor Green
     } else {
         Write-Host "基础环境包：$BaseArchive" -ForegroundColor Green
     }

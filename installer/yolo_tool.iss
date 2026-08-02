@@ -88,9 +88,13 @@ Source: "..\dist\packages\Program\YOLOTool.exe"; DestDir: "{app}\.install-stagin
 Source: "..\dist\packages\Program\app-version.txt"; DestDir: "{app}\.install-staging\program"; Flags: ignoreversion
 Source: "..\dist\packages\Program\release-manifest.json"; DestDir: "{app}\.install-staging\program"; Flags: ignoreversion
 Source: "..\dist\packages\Program\program-package-info.ini"; DestDir: "{app}\.install-staging\program"; Flags: ignoreversion
+#ifndef IntegratedRuntimeDirect
 Source: "..\dist\packages\Program\companion-catalog.json"; DestDir: "{app}\.install-staging\program"; Flags: ignoreversion
+#endif
 #ifdef IntegratedRuntime
-#ifdef IntegratedRuntimeStaging
+#ifdef IntegratedRuntimeDirect
+Source: "..\dist\CPU\YOLOTool\*"; DestDir: "{app}\.install-staging\base"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: ShouldInstallBase
+#else
 Source: "..\dist\packages\BaseRuntimeModels-CPU\*"; DestDir: "{app}\.install-staging\base"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: ShouldInstallBase
 #endif
 #else
@@ -306,8 +310,12 @@ end;
 function HasIntegratedRuntimeStaging(): Boolean;
 begin
   Result := False;
+#ifdef IntegratedRuntimeDirect
+  Result := True;
+#else
 #ifdef IntegratedRuntimeStaging
   Result := True;
+#endif
 #endif
 end;
 
@@ -741,6 +749,16 @@ begin
   Result := RenameFile(Source, Destination);
 end;
 
+function MoveStagedIfPresent(const Source, RelativePath: String): Boolean;
+begin
+  if not (FileExists(Source) or DirExists(Source)) then
+  begin
+    Result := True;
+    exit;
+  end;
+  Result := MoveStaged(Source, RelativePath);
+end;
+
 function RestoreExisting(const RelativePath: String): Boolean;
 var
   Source, Destination: String;
@@ -1088,13 +1106,21 @@ begin
       MoveStaged(ProgramStagePath('release-manifest.json'),
         MetadataRelativePath('release-manifest.json'));
   if Result and ShouldInstallBase() then
+#ifdef IntegratedRuntimeDirect
+    Result := MoveStagedIfPresent(BaseStagePath('runtime-manifest.json'),
+        MetadataRelativePath('runtime-manifest.json'));
+#else
     Result :=
       MoveStaged(BaseStagePath('runtime-manifest.json'),
-        MetadataRelativePath('runtime-manifest.json')) and
-      MoveStaged(BaseStagePath('base-package-manifest.json'),
+        MetadataRelativePath('runtime-manifest.json'));
+#endif
+#ifndef IntegratedRuntimeDirect
+  if Result and ShouldInstallBase() then
+    Result := MoveStaged(BaseStagePath('base-package-manifest.json'),
         MetadataRelativePath('base-package-manifest.json')) and
       MoveStaged(BaseStagePath('managed-models.json'),
         MetadataRelativePath('managed-models.json'));
+#endif
   if Result then
     Result := PrepareRootModel();
   if Result then

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.services.model_export import resolve_export_format
 from src.services.runtime import invalidate_cache
+from src.services.runtime.variant import CPU_VARIANT, installed_variant
 
 
 _FORMAT_OPTION_KEYS = (
@@ -24,18 +25,16 @@ _FORMAT_OPTION_KEYS = (
 class ModelExportStateMixin:
     def model_export_package_installing_changed(self, installing: bool) -> None:
         self.install_btn.setEnabled(not installing and not self.is_exporting)
-        self.install_btn.setVisible(not installing)
+        self.install_btn.setVisible(installed_variant() != CPU_VARIANT)
+        self.install_status.setVisible(installing)
         if installing:
-            self.install_progress.setValue(0)
-            self.install_progress.setFormat("正在准备安装 %p%")
-            self.install_progress.setVisible(True)
+            self.install_status.setText("正在准备安装")
         else:
-            self.install_progress.setVisible(False)
+            self.install_status.clear()
             self.update_option_visibility()
 
     def model_export_package_install_progress(self, message: str, value: int) -> None:
-        self.install_progress.setValue(value)
-        self.install_progress.setFormat(f"{message} %p%")
+        self.install_status.setText(f"{message} {value}%")
 
     def model_export_package_installed(self, _installed) -> None:
         invalidate_cache("dependency_versions")

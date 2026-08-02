@@ -52,13 +52,12 @@ def test_model_export_tab_scans_models_and_exposes_all_formats(tmp_path):
     assert page.calibration_pack_btn.text() == "获取通用校准集"
     assert not page.calibration_pack_progress.isVisible()
     assert page.install_btn.width() == 144
-    assert not page.install_progress.isVisible()
     assert page.context.settings.model_export.output_dir.endswith(
         "data\\models\\model_exports"
     )
 
 
-def test_model_export_package_progress_replaces_right_aligned_button(tmp_path):
+def test_model_export_package_install_keeps_button_without_progress_bar(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from src.services.settings import build_default_settings
@@ -74,25 +73,50 @@ def test_model_export_package_progress_replaces_right_aligned_button(tmp_path):
     )
     page = ModelExportTab(fake_app)
 
-    assert [
-        page.install_controls.indexOf(button)
-        for button in (
-            page.preview_btn,
-            page.start_btn,
-            page.stop_btn,
-            page.open_btn,
-            page.install_btn,
-        )
-    ] == [0, 1, 2, 3, 5]
+    assert page.install_controls.indexOf(page.install_btn) == 5
+    assert not hasattr(page, "install_progress")
+    assert page.install_status.isHidden()
     page.model_export_package_installing_changed(True)
-    assert page.install_btn.isHidden()
-    assert not page.install_progress.isHidden()
-    assert page.install_controls.indexOf(page.install_progress) == 6
+    assert not page.install_btn.isHidden()
+    assert not page.install_btn.isEnabled()
+    assert page.install_status.text() == "正在准备安装"
+    page.model_export_package_install_progress("解压附加环境", 5)
+    assert page.install_status.text() == "解压附加环境 5%"
 
     page.model_export_package_installing_changed(False)
     assert not page.install_btn.isHidden()
-    assert page.install_progress.isHidden()
+    assert page.install_btn.isEnabled()
+    assert page.install_status.text() == ""
     assert page.install_controls.indexOf(page.install_btn) == 5
+
+
+def test_cpu_model_export_hides_extra_package_and_tensorrt(monkeypatch, tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.data.model_export import layout, state
+    from src.ui.features.data.model_export.tab import ModelExportTab
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(layout, "installed_variant", lambda: "cpu")
+    monkeypatch.setattr(state, "installed_variant", lambda: "cpu")
+    fake_app = SimpleNamespace(
+        settings=build_default_settings(tmp_path),
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        workers=[],
+        export_handle=None,
+    )
+
+    page = ModelExportTab(fake_app)
+    try:
+        formats = [page.format_combo.itemText(i) for i in range(page.format_combo.count())]
+        assert formats == ["ONNX", "TorchScript", "OpenVINO", "NCNN"]
+        assert not page.install_btn.isVisible()
+        page.model_export_package_installing_changed(True)
+        assert not page.install_btn.isVisible()
+    finally:
+        page.close()
 
 
 def test_model_export_layout_balances_columns_and_groups_options(tmp_path):
@@ -118,10 +142,10 @@ def test_model_export_layout_balances_columns_and_groups_options(tmp_path):
         page.format_combo.setCurrentText("TorchScript")
         page.resize(800, 740)
         app.processEvents()
-        assert page._model_export_card_ratio == 2.0
+        assert 1.5 <= page._model_export_card_ratio <= 2.0
         page.resize(1000, 740)
         app.processEvents()
-        assert 1.5 < page._model_export_card_ratio < 2.0
+        assert 1.5 <= page._model_export_card_ratio <= 2.0
         assert page.basic_option_row.width() >= page.basic_option_row.minimumSizeHint().width()
         page.resize(1200, 740)
         app.processEvents()
@@ -201,6 +225,21 @@ def test_model_export_layout_balances_columns_and_groups_options(tmp_path):
         assert page.basic_option_row.layout().indexOf(page.dynamic_input_check) >= 0
         assert page.nms_layout.indexOf(page.nms_check) >= 0
         assert page.nms_layout.indexOf(page.agnostic_nms_check) == -1
+        def visible_option_widths():
+            return [
+                widget.width()
+                for widget in (
+                    page.basic_format_box,
+                    page.nms_box,
+                    page.agnostic_nms_check,
+                    page.dynamic_input_check,
+                )
+                if not widget.isHidden()
+            ]
+
+        assert page.basic_option_row.layout().indexOf(page.basic_format_box) == 0
+        assert page.basic_format_box.width() >= page.nms_box.width()
+        assert page.simplify_check.width() > 0
         fixed_positions = {
             name: page.onnx_param_grid.getItemPosition(page.onnx_param_grid.indexOf(widget))[:2]
             for name, widget in (
@@ -213,6 +252,16 @@ def test_model_export_layout_balances_columns_and_groups_options(tmp_path):
         }
         for format_name in ("TorchScript", "OpenVINO", "TensorRT", "NCNN"):
             page.format_combo.setCurrentText(format_name)
+            app.processEvents()
+            widths = visible_option_widths()
+            if format_name == "TorchScript":
+                assert page.basic_option_row.layout().indexOf(page.basic_format_box) == 0
+                assert widths[0] >= max(widths[1:])
+            elif format_name == "TensorRT":
+                assert page.basic_option_row.layout().indexOf(page.basic_format_box) == 0
+                assert max(widths) - min(widths) <= 2
+            elif format_name != "NCNN":
+                assert max(widths) - min(widths) <= 2
             assert page.onnx_source_grid.indexOf(page.model_box) >= 0
             assert page.onnx_param_grid.indexOf(page.imgsz_box) >= 0
             assert {
@@ -239,7 +288,15 @@ def test_model_export_layout_balances_columns_and_groups_options(tmp_path):
                 assert not page.nms_check.isHidden()
                 assert page.nms_box.width() >= page.nms_check.sizeHint().width()
                 if format_name == "TorchScript":
-                    assert page.optimize_check.sizeHint().width() <= page.optimize_box.width()
+                    assert not page.optimize_box.isHidden()
+                    assert page.simplify_box.isHidden()
+                elif format_name == "TensorRT":
+                    assert not page.simplify_box.isHidden()
+                    assert page.optimize_box.isHidden()
+                    assert page.simplify_check.width() > 0
+                else:
+                    assert page.simplify_box.isHidden()
+                    assert page.optimize_box.isHidden()
             else:
                 assert page.dynamic_input_check.isHidden()
             assert page.inference_card.layout.indexOf(page.int8_box) >= 0

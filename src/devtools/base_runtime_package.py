@@ -15,6 +15,11 @@ def main() -> None:
     parser.add_argument("--runtime-version", required=True)
     parser.add_argument("--variant", default="gpu")
     parser.add_argument(
+        "--cpu-runtime-root",
+        type=Path,
+        help="GPU 基础包覆盖使用的 CPU ONNX Runtime Pixi 环境根目录。",
+    )
+    parser.add_argument(
         "--split",
         action="store_true",
         help="使用固定大小生成基础环境分卷；默认生成单个 .7z 文件。",
@@ -36,6 +41,7 @@ def main() -> None:
             package_version=args.version,
             runtime_version=args.runtime_version,
             variant=args.variant,
+            cpu_runtime_root=args.cpu_runtime_root,
         )
     else:
         result = build_base_runtime_archive(
@@ -46,6 +52,7 @@ def main() -> None:
             runtime_version=args.runtime_version,
             variant=args.variant,
             split=args.split,
+            cpu_runtime_root=args.cpu_runtime_root,
         )
     print(result)
 

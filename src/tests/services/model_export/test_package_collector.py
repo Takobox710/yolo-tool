@@ -43,6 +43,37 @@ def test_collector_copies_only_safe_distribution_files(monkeypatch, tmp_path):
     assert not (target / "Scripts").exists()
 
 
+def test_collector_places_gpu_onnxruntime_under_isolated_overlay(monkeypatch, tmp_path):
+    from src.devtools import model_export_package
+
+    source = tmp_path / "source"
+    (source / "onnxruntime" / "capi").mkdir(parents=True)
+    (source / "onnxruntime" / "capi" / "onnxruntime_providers_cuda.dll").write_bytes(
+        b"cuda"
+    )
+
+    class FakeDistribution:
+        version = "1.28.0"
+        files = [Path("onnxruntime/capi/onnxruntime_providers_cuda.dll")]
+
+        @staticmethod
+        def locate_file(item):
+            return source / item
+
+    monkeypatch.setattr(
+        model_export_package.metadata,
+        "distribution",
+        lambda _name: FakeDistribution(),
+    )
+    target = tmp_path / "packages"
+    versions = model_export_package.collect_runtime_overlays(target)
+
+    assert versions == {"onnxruntime_gpu": "1.28.0"}
+    assert (
+        target / "_onnxruntime_gpu" / "onnxruntime" / "capi" / "onnxruntime_providers_cuda.dll"
+    ).read_bytes() == b"cuda"
+
+
 def test_model_export_archive_always_rebuilds_without_cache(monkeypatch, tmp_path):
     from src.devtools import model_export_package
 

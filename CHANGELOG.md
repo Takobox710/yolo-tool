@@ -4,7 +4,15 @@
 
 ## 提交记录
 
-## 完善模型导出链路与 Windows 发布工具（待回填）
+## 完善 CPU 发布与模型导出运行时
+
+- CPU 发布改为直接冻结并内嵌 `dist/CPU/YOLOTool`，移除重复的基础运行时构建与归档。
+- GPU 基础包使用 CPU ONNX Runtime，ExtraEnv v3 增加隔离 GPU Runtime 并按 Provider 自动回退。
+- 完善模型导出 CLI、激活校验与运行时清单，按 CPU/GPU 能力限制格式和附加包操作。
+- 重排模型转换页格式选项与 TorchScript 优化布局，修复控件压缩、隐藏和文字显示问题。
+- 更新安装器与 PowerShell 发布脚本契约，确保一体式 CPU 安装和命名参数调用一致。
+
+## 完善模型导出链路与 Windows 发布工具（b7ee972）
 
 - 统一 YOLO 与 SAM2/SAM3 导出链路，支持 FP16、后端 INT8 校准验证及能力约束。
 - 支持数据标注页加载 SAM2 ONNX 双文件模型，移除 MobileSAM 并保留 SAM2/SAM3 辅助标注。

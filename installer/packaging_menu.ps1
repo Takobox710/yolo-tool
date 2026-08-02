@@ -9,8 +9,28 @@ function Invoke-PackagingScript {
         [string[]]$Arguments = @()
     )
 
+    $NamedArguments = @{}
+    for ($index = 0; $index -lt $Arguments.Count; $index++) {
+        $Argument = $Arguments[$index]
+        if ($Argument -notmatch '^-(?<Name>[^-].*)$') {
+            throw "打包脚本参数必须使用命名参数：$Argument"
+        }
+
+        $Name = $Matches.Name
+        if (
+            $index + 1 -lt $Arguments.Count -and
+            $Arguments[$index + 1] -notmatch '^-.+'
+        ) {
+            $NamedArguments[$Name] = $Arguments[$index + 1]
+            $index++
+        }
+        else {
+            $NamedArguments[$Name] = $true
+        }
+    }
+
     $scriptPath = Join-Path $Root $RelativePath
-    & $scriptPath @Arguments
+    & $scriptPath @NamedArguments
     if ($LASTEXITCODE -ne 0) {
         throw "打包脚本失败：$RelativePath，退出码：$LASTEXITCODE"
     }
@@ -49,7 +69,7 @@ try {
                 "-BuildBaseRuntimeModels", "-BuildModelExportRuntime", "-Clean"
             )
             Invoke-PackagingScript "installer\package_windows.ps1" @(
-                "-Variant", "CPU", "-BuildBaseRuntimeModels", "-Clean"
+                "-Variant", "CPU", "-Clean"
             )
         }
         "2" {
@@ -95,7 +115,7 @@ try {
         "8" {
             Write-Host "正在执行 CPU 版本打包..." -ForegroundColor Cyan
             Invoke-PackagingScript "installer\package_windows.ps1" @(
-                "-Variant", "CPU", "-BuildBaseRuntimeModels", "-Clean"
+                "-Variant", "CPU", "-Clean"
             )
         }
         "9" {

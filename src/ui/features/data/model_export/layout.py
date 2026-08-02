@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.services.model_export import export_display_names, resolve_export_format
+from src.services.runtime.variant import CPU_VARIANT, installed_variant
 from src.shared.qt import (
     QCheckBox,
     QDoubleSpinBox,
@@ -67,10 +68,14 @@ def _build_fixed_fields(page, settings) -> None:
     page.output_box, page.output_edit = page.path_field(
         "输出目录", settings.output_dir, page.choose_dir, "选择模型转换结果目录"
     )
+    format_names = export_display_names(include_engine=installed_variant() != CPU_VARIANT)
+    selected_format = resolve_export_format(settings.format).display_name
+    if selected_format not in format_names:
+        selected_format = format_names[0]
     page.format_box, page.format_combo = page.combo_field(
         "目标格式",
-        resolve_export_format(settings.format).display_name,
-        export_display_names(),
+        selected_format,
+        format_names,
     )
     page.precision_box, page.precision_combo = page.combo_field(
         "导出精度",
@@ -217,8 +222,18 @@ def _build_format_options(page, settings) -> None:
     basic_format_layout.addWidget(page.simplify_box)
     basic_format_layout.addWidget(page.optimize_box)
     page.basic_format_box.setSizePolicy(
-        QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
+        QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
     )
+    page.basic_format_box.setMinimumWidth(0)
+    for option_box, check in (
+        (page.simplify_box, page.simplify_check),
+        (page.optimize_box, page.optimize_check),
+    ):
+        option_box.setMinimumWidth(0)
+        option_box.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        check.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
     page.basic_options_grid = basic_layout
 
     page.inference_format_box = QWidget()
@@ -275,7 +290,7 @@ def _build_format_options(page, settings) -> None:
     page.nms_box = QWidget()
     page.nms_box.setObjectName("modelExportNmsSection")
     page.nms_box.setSizePolicy(
-        QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
     )
     nms_layout = QHBoxLayout(page.nms_box)
     nms_layout.setContentsMargins(0, 0, 0, 0)
@@ -289,10 +304,8 @@ def _build_format_options(page, settings) -> None:
     )
     page.onnx_nms_btn = page.nms_check
     page.onnx_agnostic_btn = page.agnostic_nms_check
-    # Keep the label drawable when the option row is shared with other
-    # format-specific checkboxes. Ignored horizontal sizing can collapse this
-    # wrapper to zero even though the checkbox itself remains visible.
-    page.nms_box.setMinimumWidth(page.nms_check.sizeHint().width())
+    page.nms_box.setMinimumWidth(0)
+    page.nms_check.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     nms_layout.addWidget(page.nms_check)
     page.basic_option_row = QWidget()
     basic_option_layout = QHBoxLayout(page.basic_option_row)
@@ -303,6 +316,14 @@ def _build_format_options(page, settings) -> None:
     basic_option_layout.addWidget(page.agnostic_nms_check)
     basic_option_layout.addWidget(page.dynamic_input_check)
     basic_option_layout.addStretch(1)
+    page.agnostic_nms_check.setSizePolicy(
+        QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+    )
+    page.dynamic_input_check.setSizePolicy(
+        QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+    )
+    for index in range(4):
+        basic_option_layout.setStretch(index, 1)
     page.basic_options_grid.addWidget(page.basic_option_row, 0, 0, 1, 4)
 
     page.int8_box, int8_layout = _section_box(
@@ -376,18 +397,101 @@ def _build_format_options(page, settings) -> None:
     page.inference_card.layout.addStretch(1)
 
 
+def arrange_basic_option_row(page, export_argument: str) -> None:
+    """Reorder the shared format options and keep every visible cell equal-width."""
+    order = {
+        "onnx": (
+            page.basic_format_box,
+            page.nms_box,
+            page.agnostic_nms_check,
+            page.dynamic_input_check,
+        ),
+        "torchscript": (
+            page.basic_format_box,
+            page.nms_box,
+            page.agnostic_nms_check,
+            page.dynamic_input_check,
+        ),
+        "openvino": (
+            page.nms_box,
+            page.agnostic_nms_check,
+            page.dynamic_input_check,
+            page.basic_format_box,
+        ),
+        "engine": (
+            page.basic_format_box,
+            page.nms_box,
+            page.agnostic_nms_check,
+            page.dynamic_input_check,
+        ),
+    }.get(export_argument)
+    if order is None:
+        order = (
+            page.basic_format_box,
+            page.nms_box,
+            page.agnostic_nms_check,
+            page.dynamic_input_check,
+        )
+
+    layout = page.basic_option_row.layout()
+    stretch = layout.takeAt(layout.count() - 1)
+    stretch_factors = (135, 100, 100, 100) if export_argument == "torchscript" else (1, 1, 1, 1)
+    explicit_visibility = {
+        widget: not widget.isHidden()
+        for widget in order
+    }
+    while layout.count():
+        item = layout.takeAt(0)
+        if item.widget() is not None:
+            item.widget().setParent(page.basic_option_row)
+    for index, widget in enumerate(order):
+        layout.addWidget(widget, stretch_factors[index])
+        layout.setStretch(index, stretch_factors[index])
+        widget.setVisible(explicit_visibility[widget])
+    if stretch.spacerItem() is not None:
+        layout.addItem(stretch)
+    visible = [widget for widget in order if not widget.isHidden()]
+    widths = []
+    for widget in visible:
+        if widget is page.basic_format_box:
+            widths.append(
+                max(
+                    page.simplify_check.fontMetrics().horizontalAdvance(
+                        page.simplify_check.text()
+                    )
+                    + 24,
+                    page.optimize_check.fontMetrics().horizontalAdvance(
+                        page.optimize_check.text()
+                    )
+                    + 24,
+                )
+            )
+        else:
+            check = widget.findChild(QCheckBox) or widget
+            widths.append(
+                max(
+                    widget.sizeHint().width(),
+                    check.fontMetrics().horizontalAdvance(check.text()) + 24,
+                )
+            )
+    spacing = layout.spacing()
+    page.basic_option_row.setMinimumWidth(
+        sum(widths)
+        + max(0, len(visible) - 1) * spacing
+        + 48
+    )
+
+
 def _build_action_row(page, root_layout) -> None:
     page.install_btn = QPushButton("安装/替换附加包")
     page.install_btn.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
     page.install_btn.setFixedWidth(144)
     page.install_btn.setToolTip("选择并安装或替换模型格式转换附加环境包")
     page.install_btn.clicked.connect(page.choose_model_export_package)
-    page.install_progress = QProgressBar()
-    page.install_progress.setRange(0, 100)
-    page.install_progress.setValue(0)
-    page.install_progress.setFormat("正在安装 %p%")
-    page.install_progress.setFixedWidth(180)
-    page.install_progress.setVisible(False)
+    page.install_status = QLabel()
+    page.install_status.setMinimumWidth(150)
+    page.install_status.setVisible(False)
+    page.install_btn.setVisible(installed_variant() != CPU_VARIANT)
     page.install_controls = QHBoxLayout()
     page.install_controls.setContentsMargins(0, 0, 0, 0)
     page.install_controls.setSpacing(8)
@@ -406,7 +510,7 @@ def _build_action_row(page, root_layout) -> None:
         page.install_controls.addWidget(button)
     page.install_controls.addStretch(1)
     page.install_controls.addWidget(page.install_btn)
-    page.install_controls.addWidget(page.install_progress)
+    page.install_controls.addWidget(page.install_status)
     root_layout.addLayout(page.install_controls)
 
 
@@ -437,7 +541,10 @@ def update_model_export_card_ratio(page) -> None:
         )
         if available > 0:
             card_margins = page.source_card.layout.contentsMargins()
-            required_left = page.basic_option_row.minimumSizeHint().width() + (
+            required_left = max(
+                page.basic_option_row.minimumSizeHint().width(),
+                page.basic_option_row.minimumWidth(),
+            ) + (
                 card_margins.left() + card_margins.right()
             )
             default_left = available * 3 / 5

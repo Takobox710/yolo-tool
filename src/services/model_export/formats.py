@@ -35,8 +35,12 @@ def resolve_export_format(value: str) -> ExportFormatSpec:
     raise ValueError(f"不支持的模型格式：{value}。可用格式：{supported}")
 
 
-def export_display_names() -> list[str]:
-    return [spec.display_name for spec in EXPORT_FORMATS]
+def export_display_names(*, include_engine: bool = True) -> list[str]:
+    return [
+        spec.display_name
+        for spec in EXPORT_FORMATS
+        if include_engine or spec.argument != "engine"
+    ]
 
 
 def export_artifact_name(

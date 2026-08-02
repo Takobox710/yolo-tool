@@ -16,7 +16,7 @@ def main() -> None:
     freeze_support()
 
     flag = sys.argv[1] if len(sys.argv) > 1 else None
-    if flag in {"--yolo-export", "--yolo-export-probe"}:
+    if flag in {None, "--yolo-export", "--yolo-export-probe"}:
         from src.services.model_export.activation import activate_installed_extension
 
         activate_installed_extension()

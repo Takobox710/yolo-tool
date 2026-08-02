@@ -31,6 +31,12 @@ def run_export_probe(argv: list[str]) -> int:
     return handler(argv)
 
 
+def run_ort_probe(argv: list[str]) -> int:
+    from src.bootstrap.cli_model_export import run_ort_probe as handler
+
+    return handler(argv)
+
+
 def run_install_model_export_package(argv: list[str]) -> int:
     from src.bootstrap.cli_model_export import run_install_model_export_package as handler
 
@@ -84,6 +90,7 @@ __all__ = [
     "run_ai_runtime",
     "run_export",
     "run_export_probe",
+    "run_ort_probe",
     "run_install_model_export_package",
     "run_migrate_legacy_extension",
     "run_model_labels",

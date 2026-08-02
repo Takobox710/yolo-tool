@@ -27,7 +27,7 @@ def test_release_artifact_names_and_versions_are_short_and_stable():
     assert "-v{BASE_ARCHIVE_VOLUME_BYTES}b" in base_builder
     assert "YOLOTool_ExtraEnv_{version}.7z" in extra_builder
     assert Path("installer/base-runtime-models-version.txt").read_text().strip() == "v3"
-    assert Path("installer/model-export-runtime-version.txt").read_text().strip() == "v2"
+    assert Path("installer/model-export-runtime-version.txt").read_text().strip() == "v3"
     assert Path("installer/runtime-version.txt").read_text().strip() == "runtime-2"
 
 
@@ -197,9 +197,9 @@ def test_cpu_variant_has_isolated_artifacts_and_runtime_selection():
     assert '[switch]$SplitBaseArchive' in base_script
     assert '"--split"' in base_script
     assert '${ArtifactPrefix}_BaseEnv_' in package_script
-    assert 'BaseRuntimeModels-CPU' in package_script
+    assert 'BaseRuntimeModels-CPU' not in package_script
     assert '"sam2.1_hiera_tiny.pt"' in build_script
-    assert 'CPU 一体式安装包缺少基础运行时 staging 清单' in package_script
+    assert 'CPU 一体式安装包缺少完整冻结目录' in package_script
     assert '"/DPackageVariant=$($Variant.ToLowerInvariant())"' in package_script
     assert '#define PackageVariant "gpu"' in installer
     assert '#define ArtifactPrefix "YOLOTool"' in installer
@@ -216,11 +216,11 @@ def test_cpu_is_an_integrated_installer_and_gpu_keeps_external_archives():
 
     assert 'if ($IntegratedRuntime) {' in package_script
     assert '-NoArchive' in package_script
-    assert '"--base-staging", $BaseStaging' in package_script
+    assert 'dist\\CPU\\YOLOTool' in package_script
     assert '/DIntegratedRuntime=1' in package_script
-    assert '/DIntegratedRuntimeStaging=1' in package_script
+    assert '/DIntegratedRuntimeDirect=1' in package_script
     assert '#ifdef IntegratedRuntime' in installer
-    assert 'BaseRuntimeModels-CPU\\*' in installer
+    assert '..\\dist\\CPU\\YOLOTool\\*' in installer
     assert 'Source: "{code:GetBaseArchivePath}"' in installer
     assert 'integrated=True' in catalog
 
@@ -249,6 +249,14 @@ def test_cpu_update_and_batch_contract_hides_gpu_extra_environment():
     assert "normalize_variant(result.variant) != CPU_VARIANT" in dialog_state
 
 
+def test_packaging_menu_splats_named_arguments_for_child_scripts():
+    menu_script = Path("installer/packaging_menu.ps1").read_text(encoding="utf-8")
+
+    assert "$NamedArguments = @{}" in menu_script
+    assert "$NamedArguments[$Name] = $true" in menu_script
+    assert "& $scriptPath @NamedArguments" in menu_script
+
+
 def test_model_export_archive_builder_supports_checked_split_volumes():
     builder = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
     script = Path("installer/build_model_export_runtime.ps1").read_text(encoding="utf-8")
@@ -264,17 +272,12 @@ def test_model_export_archive_builder_supports_checked_split_volumes():
     assert 'YOLOTool_ExtraEnv_${Version}.7z.???' in script
 
 
-def test_full_packaging_rebuilds_program_only_installer_after_base_runtime():
+def test_gpu_full_packaging_rebuilds_program_only_installer_after_base_runtime():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
 
-    base_build = package_script.index("build_base_runtime_models.ps1")
-    program_only_rebuild = package_script.index(
-        "正在重新构建仅程序 EXE 和程序 staging"
-    )
-    assert program_only_rebuild > base_build
-    assert "-Clean -PackageType Program `" in package_script
-    assert "-ProgramOnly `" in package_script
-    assert "runtime-free program EXE" in package_script
+    assert 'if ($BuildBaseRuntimeModels -and -not $IntegratedRuntime)' in package_script
+    assert "-Mode release -Clean:$Clean -PackageType Program `" in package_script
+    assert "ProgramOnly:$ProgramOnly" in package_script
     assert 'Join-Path $ProgramStaging "_internal"' in package_script
     assert "拒绝生成重复携带运行环境的安装器" in package_script
 

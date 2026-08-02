@@ -107,13 +107,13 @@ def test_release_dialog_hot_installs_extra_environment_when_selected_alone(tmp_p
         ReleaseCheckResult(
             current_version="1.3.3",
             latest_version="1.4.0",
-            environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
+            environment_asset_names=("YOLOTool_ExtraEnv_v3.7z",),
             environment_asset_urls=("https://github.com/example/extra.7z",),
             update_available=True,
         ),
     )
     dialog.extra_environment_checkbox.setChecked(True)
-    package_path = tmp_path / "YOLOTool_ExtraEnv_v2.7z"
+    package_path = tmp_path / "YOLOTool_ExtraEnv_v3.7z"
 
     dialog._apply_download_result("release_assets_download", (package_path,))
 
@@ -137,7 +137,7 @@ def test_release_dialog_uses_install_copy_for_extra_only_selection():
         ReleaseCheckResult(
             current_version="1.3.3",
             latest_version="1.4.0",
-            environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
+            environment_asset_names=("YOLOTool_ExtraEnv_v3.7z",),
             environment_asset_urls=("https://github.com/example/extra.7z",),
             update_available=True,
         ),
@@ -259,7 +259,7 @@ def test_release_dialog_confirms_replacing_installed_extra_environment(monkeypat
         ReleaseCheckResult(
             current_version="1.3.3",
             latest_version="1.4.0",
-            environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
+            environment_asset_names=("YOLOTool_ExtraEnv_v3.7z",),
             environment_asset_urls=("https://github.com/example/extra.7z",),
             update_available=True,
         ),
@@ -307,7 +307,7 @@ def test_release_dialog_distinguishes_extra_environment_with_program_selected(
         latest_version="1.4.0",
         installer_asset_name="YOLOTool_Setup_1.4.0.exe",
         installer_asset_url="https://github.com/example/setup.exe",
-        environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
+        environment_asset_names=("YOLOTool_ExtraEnv_v3.7z",),
         environment_asset_urls=("https://github.com/example/extra.7z",),
         update_available=True,
     )
@@ -358,7 +358,7 @@ def test_release_dialog_distinguishes_all_three_selected_resources(monkeypatch):
         installer_asset_url="https://github.com/example/setup.exe",
         environment_asset_names=(
             "YOLOTool_BaseEnv_v2.7z",
-            "YOLOTool_ExtraEnv_v2.7z",
+            "YOLOTool_ExtraEnv_v3.7z",
         ),
         environment_asset_urls=(
             "https://github.com/example/base.7z",

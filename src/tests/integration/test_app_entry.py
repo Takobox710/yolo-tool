@@ -215,7 +215,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
         assert label in menu_script
     for argument in (
         '"-BuildBaseRuntimeModels", "-BuildModelExportRuntime", "-Clean"',
-        '"-Variant", "CPU", "-BuildBaseRuntimeModels", "-Clean"',
+            '"-Variant", "CPU", "-Clean"',
         '"-Variant", "GPU", "-Clean", "-SplitBaseArchive"',
         '"-Clean", "-SplitArchive"',
         '"-Mode", "dev"',

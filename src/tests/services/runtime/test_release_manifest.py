@@ -183,6 +183,11 @@ def test_gpu_base_runtime_filters_extra_environment_files(monkeypatch, tmp_path)
     (app_root / "data" / "models").mkdir(parents=True)
     (app_root / "_internal" / "openvino" / "runtime.pyd").write_bytes(b"extra")
     (app_root / "_internal" / "onnxruntime" / "runtime.pyd").write_bytes(b"gpu")
+    cpu_root = tmp_path / "release-cpu"
+    cpu_package = cpu_root / "Lib" / "site-packages" / "onnxruntime"
+    cpu_package.mkdir(parents=True)
+    (cpu_package / "runtime.pyd").write_bytes(b"cpu")
+    (cpu_root / "Lib" / "site-packages" / "onnxruntime-1.0.dist-info").mkdir()
     for name in (
         "yolo11s.pt",
         "yolo26n.pt",
@@ -194,8 +199,12 @@ def test_gpu_base_runtime_filters_extra_environment_files(monkeypatch, tmp_path)
     monkeypatch.setattr(
         base_runtime_builder,
         "extension_distribution_paths",
-        lambda: {Path("openvino/runtime.pyd")},
+        lambda distributions=(): {
+            Path("openvino/runtime.pyd"),
+            Path("onnxruntime/runtime.pyd"),
+        },
     )
+    monkeypatch.setattr(base_runtime_builder.metadata, "version", lambda _name: "1.0")
 
     layer = tmp_path / "base-layer"
     base_runtime_builder.build_base_runtime_layer(
@@ -204,10 +213,11 @@ def test_gpu_base_runtime_filters_extra_environment_files(monkeypatch, tmp_path)
         package_version="v1",
         runtime_version="runtime-1",
         variant="gpu",
+        cpu_runtime_root=cpu_root,
     )
 
     assert not (layer / "_internal" / "openvino" / "runtime.pyd").exists()
-    assert (layer / "_internal" / "onnxruntime" / "runtime.pyd").exists()
+    assert (layer / "_internal" / "onnxruntime" / "runtime.pyd").read_bytes() == b"cpu"
 
 
 def test_cpu_base_runtime_keeps_integrated_export_files(tmp_path):

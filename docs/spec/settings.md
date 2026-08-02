@@ -24,7 +24,7 @@
 - 首次安装、基础环境缺失或版本不兼容时，优先提供匹配的本体环境和模型 `.7z`；首次安装缺少基础包时安装器阻止继续；已有安装缺少新基础包时允许只更新程序、保留旧环境并警告部分功能可能无法使用。基础包安装后的运行环境版本不匹配或自检未通过时也只显示警告并继续安装，不恢复旧版本。
 - GPU 模型转换附加环境始终可选。系统设置页支持点击选择或拖入附加包，安装到当前程序目录 `_internal/extensions/model-export-runtime/`；CPU 版不显示此控件，手动导入 GPU 附加包时拒绝安装。旧版本位于 `%LOCALAPPDATA%/YOLOTool/` 时自动迁移，同盘原子移动，跨盘复制完成后删除旧目录。仅勾选 GPU 附加包，或同时勾选程序安装包和附加包时，都会根据是否已有附加包分别显示自动安装或下载替换提示；三项全部勾选时会合并显示基础包重装和附加包替换状态；已有附加包时下载前需要确认替换。
 - GPU 安装器组件页只快速检查默认单卷 `YOLOTool_BaseEnv_<版本>.7z` 或特殊分卷首卷 `.7z.001`，以及 `YOLOTool_ExtraEnv_<版本>.7z` 版本化名称，不绑定压缩大小或归档 SHA-256；特殊分卷缺少 `.002` 时视为不可用，metadata 中 `variant` 不匹配时同样拒绝。CPU 安装器不检查外部 BaseEnv/ExtraEnv，而是把 CPU 基础运行时 staging 直接内嵌到 `YOLOTool_CPU_Setup_<版本>.exe`；CPU Release 更新也只下载 CPU Setup。软件内 GPU 附加包安装优先由基础包携带的原生 7-Zip 完成并使用 CRC，安装清单隐藏在 `_internal/yolotool_metadata/`。
-- GPU BaseEnv 只包含 `release-gpu` 的基础运行库、GPU `onnxruntime-gpu`、模型和 SAM 资源；OpenVINO、NNCF、NCNN、PNNX、TensorRT 及其依赖由 ExtraEnv 单独提供。CPU 一体式运行时继续使用独立的 CPU `onnxruntime`，两个变体不能混用。
+- GPU BaseEnv 包含基础运行库、同版本 CPU `onnxruntime`、模型和 SAM 资源；GPU ExtraEnv v3 以 `_onnxruntime_gpu` 隔离覆盖层提供 GPU `onnxruntime-gpu`，启动前探测 `CUDAExecutionProvider` 后自动优先加载，失败则继续使用 CPU Runtime。OpenVINO、NNCF、NCNN、PNNX、TensorRT 及其依赖仍由 ExtraEnv 单独提供。CPU 一体式运行时继续使用独立的 CPU `onnxruntime`，两个变体不能混用。
 - 安装成功页在右侧“启动 YOLOTool”选项下方提供“安装完成后删除本次使用的安装包和环境包”，勾选后延迟删除本次使用的安装器、基础环境包和附加环境包。
 - 安装开始前由 Inno Setup 的 Windows Restart Manager 注册当前安装目录中的 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不弹出是否停止应用的询问页，其他安装目录的实例不受影响；自动关闭不负责恢复未保存的程序状态。
 

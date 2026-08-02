@@ -19,6 +19,7 @@ from src.devtools.package_files import (
     write_json,
 )
 from src.devtools.runtime_package_boundaries import (
+    GPU_BASE_EXCLUDED_DISTRIBUTIONS,
     distribution_path_roots,
     extension_distribution_paths,
     is_excluded_relative_path,
@@ -56,12 +57,58 @@ def _gpu_extension_exclusions(variant: str) -> tuple[set[Path], set[str]]:
     if variant != "gpu":
         return set(), set()
     try:
-        paths = extension_distribution_paths()
+        paths = extension_distribution_paths(GPU_BASE_EXCLUDED_DISTRIBUTIONS)
     except metadata.PackageNotFoundError as exc:
         raise ReleaseManifestError(
             f"GPU 打包环境缺少模型转换分发包：{exc.name}"
         ) from exc
     return paths, distribution_path_roots(paths)
+
+
+def _copy_cpu_onnxruntime(
+    staging_internal: Path,
+    cpu_runtime_root: Path,
+) -> None:
+    site_packages = Path(cpu_runtime_root).resolve() / "Lib" / "site-packages"
+    package_source = site_packages / "onnxruntime"
+    if not package_source.is_dir():
+        raise ReleaseManifestError(
+            f"CPU ONNX Runtime 目录不存在：{package_source}"
+        )
+    dist_infos = sorted(site_packages.glob("onnxruntime-*.dist-info"))
+    if not dist_infos:
+        raise ReleaseManifestError(
+            f"CPU ONNX Runtime 缺少 dist-info：{site_packages}"
+        )
+    try:
+        gpu_version = metadata.version("onnxruntime-gpu")
+    except metadata.PackageNotFoundError as exc:
+        raise ReleaseManifestError("GPU 打包环境缺少 onnxruntime-gpu。") from exc
+    cpu_version = dist_infos[0].name[len("onnxruntime-") : -len(".dist-info")]
+    if cpu_version != gpu_version:
+        raise ReleaseManifestError(
+            f"CPU/GPU ONNX Runtime 版本不一致：CPU {cpu_version}，GPU {gpu_version}"
+        )
+
+    target_package = staging_internal / "onnxruntime"
+    if target_package.exists():
+        shutil.rmtree(target_package)
+    for candidate in staging_internal.glob("onnxruntime*.dist-info"):
+        if candidate.is_dir():
+            shutil.rmtree(candidate)
+    copy_tree(package_source, target_package)
+    for dist_info in dist_infos:
+        copy_tree(dist_info, staging_internal / dist_info.name)
+
+
+def _without_onnxruntime_paths(
+    paths: set[Path],
+    roots: set[str],
+) -> tuple[set[Path], set[str]]:
+    return (
+        {path for path in paths if not path.parts[0].startswith("onnxruntime")},
+        {root for root in roots if not root.startswith("onnxruntime")},
+    )
 
 
 def build_standard_library_archive(destination: Path) -> None:
@@ -86,6 +133,7 @@ def build_base_runtime_layer(
     package_version: str,
     runtime_version: str,
     variant: str = "gpu",
+    cpu_runtime_root: Path | None = None,
 ) -> Path:
     app_root = Path(app_root).resolve()
     staging_root = Path(staging_root).resolve()
@@ -122,6 +170,11 @@ def build_base_runtime_layer(
         print("[Base] 正在生成 Python 标准库压缩包...", flush=True)
         build_standard_library_archive(staging_root / "_internal" / STDLIB_ARCHIVE_NAME)
         print_elapsed("[Base] Python 标准库压缩包生成完成", step_started, perf_counter=time.perf_counter)
+    if variant == "gpu" and cpu_runtime_root is not None:
+        step_started = time.perf_counter()
+        print("[Base] 正在覆盖 CPU ONNX Runtime...", flush=True)
+        _copy_cpu_onnxruntime(staging_root / "_internal", Path(cpu_runtime_root))
+        print_elapsed("[Base] CPU ONNX Runtime 覆盖完成", step_started, perf_counter=time.perf_counter)
 
     model_source = app_root / "data" / "models"
     required_model = model_source / "yolo26n.pt"
@@ -141,13 +194,17 @@ def build_base_runtime_layer(
     step_started = time.perf_counter()
     print("[Base] 正在生成文件清单...", flush=True)
     runtime_files = relative_files(staging_root / "_internal")
+    overlap_paths, overlap_roots = _without_onnxruntime_paths(
+        extension_paths,
+        extension_roots,
+    )
     overlap = [
         relative
         for relative in runtime_files
         if is_excluded_relative_path(
             Path(relative),
-            excluded_paths=extension_paths,
-            excluded_roots=extension_roots,
+            excluded_paths=overlap_paths,
+            excluded_roots=overlap_roots,
         )
     ]
     if overlap:
@@ -199,6 +256,7 @@ def build_base_runtime_archive(
     runtime_version: str,
     variant: str = "gpu",
     split: bool = False,
+    cpu_runtime_root: Path | None = None,
 ) -> Path:
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -213,6 +271,7 @@ def build_base_runtime_archive(
         package_version=package_version,
         runtime_version=runtime_version,
         variant=variant,
+        cpu_runtime_root=cpu_runtime_root,
     )
     archive_path.unlink(missing_ok=True)
     for volume_path in output_dir.glob(f"{archive_path.name}.*"):

@@ -144,7 +144,7 @@ def test_latest_release_filters_assets_by_cpu_variant(monkeypatch):
                         "browser_download_url": "https://github.com/example/cpu.002",
                     },
                     {
-                        "name": "YOLOTool_ExtraEnv_v2.7z",
+                        "name": "YOLOTool_ExtraEnv_v3.7z",
                         "browser_download_url": "https://github.com/example/gpu-extra.7z",
                     },
                 ],
@@ -257,7 +257,7 @@ def test_environment_update_requires_a_higher_package_version(monkeypatch):
         "load_install_instance",
         lambda: {
             "base_package_version": "base-runtime-models-2",
-            "model_export_version": "model-export-runtime-2",
+                "model_export_version": "model-export-runtime-3",
         },
     )
     monkeypatch.setattr(
@@ -272,7 +272,7 @@ def test_environment_update_requires_a_higher_package_version(monkeypatch):
                         "browser_download_url": "https://github.com/example/base.7z",
                     },
                     {
-                        "name": "YOLOTool_ExtraEnv_v2.7z",
+                        "name": "YOLOTool_ExtraEnv_v3.7z",
                         "browser_download_url": "https://github.com/example/extra.7z",
                     },
                 ],
@@ -309,7 +309,7 @@ def test_environment_update_is_detected_when_release_package_is_newer(monkeypatc
                         "browser_download_url": "https://github.com/example/base.7z",
                     },
                     {
-                        "name": "YOLOTool_ExtraEnv_v2.7z",
+                        "name": "YOLOTool_ExtraEnv_v3.7z",
                         "browser_download_url": "https://github.com/example/extra.7z",
                     },
                 ],

@@ -12,6 +12,7 @@ FLAG_HANDLERS: dict[str, CliHandler] = {
     "--yolo-train": handlers.run_train,
     "--yolo-export": handlers.run_export,
     "--yolo-export-probe": handlers.run_export_probe,
+    "--yolo-ort-probe": handlers.run_ort_probe,
     "--install-model-export-package": handlers.run_install_model_export_package,
     "--migrate-legacy-extension": handlers.run_migrate_legacy_extension,
     "--runtime-probe": handlers.run_runtime_probe,
@@ -48,6 +49,10 @@ def run_export_cli(argv: list[str]) -> int:
 
 def run_export_probe_cli(argv: list[str]) -> int:
     return handlers.run_export_probe(argv)
+
+
+def run_ort_probe_cli(argv: list[str]) -> int:
+    return handlers.run_ort_probe(argv)
 
 
 def run_install_model_export_package_cli(argv: list[str]) -> int:
@@ -97,6 +102,7 @@ __all__ = [
     "run_ai_runtime_cli",
     "run_export_cli",
     "run_export_probe_cli",
+    "run_ort_probe_cli",
     "run_install_model_export_package_cli",
     "run_migrate_legacy_extension_cli",
     "run_model_labels_cli",

@@ -13,6 +13,8 @@ EXTENSION_SCHEMA_VERSION = 1
 EXPORT_PROTOCOL_VERSION = 1
 EXTENSION_PACKAGE_ID = "yolo-tool-model-export-runtime"
 PACKAGE_MANIFEST_NAME = "extension-manifest.json"
+ORT_GPU_OVERLAY_KEY = "onnxruntime_gpu"
+ORT_GPU_OVERLAY_DIR = "_onnxruntime_gpu"
 
 
 class ExtensionPackageError(ValueError):
@@ -74,6 +76,11 @@ def validate_extension_manifest(manifest: dict) -> dict:
     if not isinstance(dll_dirs, list):
         raise ExtensionPackageError("环境包 DLL 目录清单无效。")
     for relative in dll_dirs:
+        safe_relative_path(str(relative))
+    overlays = manifest.get("runtime_overlays", {})
+    if not isinstance(overlays, dict):
+        raise ExtensionPackageError("环境包运行时覆盖清单无效。")
+    for relative in overlays.values():
         safe_relative_path(str(relative))
     return manifest
 

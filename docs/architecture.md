@@ -61,7 +61,7 @@ yolo_tool/
 
 ## 分层边界
 
-- `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-export-probe`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label`、`--sam-assist-runtime` 等隐藏 CLI。
+- `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-export-probe`、`--yolo-ort-probe`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label`、`--sam-assist-runtime` 等隐藏 CLI。
 - `src/app.py` 与 `src/bootstrap/app_factory.py` 负责 GUI 应用创建，不承载业务规则。
 - `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。
 - `src/shared/` 只放跨层共享基础能力，例如路径、Qt 导出和主题；设置模型与任务模型分别归属设置服务和 UI 上下文，不再放入通用类型文件。
@@ -121,7 +121,7 @@ yolo_tool/
 
 ### `src/services/model_export/`
 
-- `formats.py` 定义五种显示名称、旧 `sam2_onnx` 兼容别名、按精度命名的产物路径和模型扫描规则，并按目标格式校验 YOLO 与 SAM2 checkpoint。
+- `formats.py` 定义模型格式显示名称、旧 `sam2_onnx` 兼容别名、按精度命名的产物路径和模型扫描规则，并按目标格式校验 YOLO 与 SAM2 checkpoint；模型转换页按安装变体隐藏 CPU 不可用的 TensorRT。
 - `capabilities.py` 描述 YOLO/SAM2 与五种格式的能力矩阵，归一化精度和旧 CLI 字段，校验动态轴、NMS、校准、workspace、opset 等配置，禁止无效参数流入后端。
 - `backend.py` 将配置转换为 Ultralytics 后端参数，统一处理非 ONNX 动态输入、精度编码、校准 dataset 临时清单和产物路径解析。
 - `commands.py` 构建统一的 `YOLOTool.exe --yolo-export` 命令；训练服务保留 `build_export_command` 转发以兼容旧导入，精度统一编码为 `quantize=32/16/8`。
@@ -129,10 +129,10 @@ yolo_tool/
 - `backend.py` 将公共配置字段映射为 Ultralytics 实际参数名（例如 `nms_conf`/`nms_iou`/`nms_max_det` 映射为 `conf`/`iou`/`max_det`），并在配置校验层拒绝 TorchScript FP16 优化和 TensorRT batch=1 动态导出等后端组合约束。
 - `calibration.py` 识别 dataset YAML、图片目录和图片列表，提供 ORT 校准 reader、FP16 转换、静态 INT8 量化和量化后冒烟验证；SAM2 使用与官方 predictor 一致的 RGB 缩放、`[0,1]` 转换和 ImageNet 均值/方差归一化，YOLO 保持原有图像校准路径；`calibration_pack.py` 按需下载并缓存公开的 COCO128 通用校准图片，供通用平台在没有项目图片时完成静态量化；`onnx_utils.py` 负责图简化、动态轴约束和 ONNX checker。
 - `sam_onnx.py` 复用当前 SAM2/SAM2.1 配置和 checkpoint，导出固定 1024、batch=1、单点提示的图像编码器和 mask 解码器 ONNX，支持 FP16 和完整 metadata；SAM2/SAM2.1 的 ORT 静态 INT8 已因实际点提示质量不足而禁用。
-- `runtime.py` 区分内置 ONNX/TorchScript、开发态 Pixi 后端和冻结态增量扩展，并在 SAM2 ONNX 能力探测中检查 ONNXSlim、在 OpenVINO INT8 能力探测中检查 NNCF；CPU 变体把一体式安装器内嵌的 OpenVINO/NNCF/NCNN/PNNX 视为内置能力并始终拒绝 TensorRT，GPU 变体继续通过增量扩展提供 OpenVINO/NNCF、TensorRT、NCNN，并在依赖探测前先判断 TensorRT 的 NVIDIA GPU 能力。
-- `package.py` 导入纯 `.7z` 或兼容 `.zip` 附加包，校验扩展 schema、协议、平台、安全相对路径、符号链接、文件清单和解压结果，管理候选安装、原子活动指针、失败回滚和“当前 + 上一版本”保留策略；`manifest.py` 集中维护清单协议、路径校验、指纹和 7z 清单读取，避免 `package.py` 与 `inspection.py` 循环依赖。`.7z` 优先调用基础环境随附的原生 `7z.exe`，利用解压过程的 CRC 校验发现归档损坏，没有原生工具时回退到 `py7zr` 解压并检查文件集合。原生 7-Zip 的百分比输出会通过进度回调映射到附加包安装的解压区间，`inspection.py` 的快速入口只读取清单并按压缩包指纹缓存，安装阶段再报告检查、解压、探测和切换。
-- `activation.py` 在 GPU 隐藏导出子进程启动早期追加活动扩展的 `packages/` 到 `sys.path`，并通过清单注册 DLL 目录；CPU 变体不激活或安装 GPU ExtraEnv。主程序本体与 GPU 扩展共用同一个 Python、Torch、CUDA、Ultralytics、SAM2、ONNX、ONNXScript 和 ONNX Runtime，不复制这些基础库。
-- `src/devtools/runtime_package_boundaries.py` 集中维护 GPU ExtraEnv distribution 清单和安全路径归属；`base_runtime_builder.py` 在 GPU 构建时用同一清单过滤冻结文件与第三方源码，CPU 构建不启用过滤。`src/devtools/model_export_package.py` 依据该清单收集 GPU ExtraEnv 的 OpenVINO、NNCF 及其运行时依赖、NCNN、PNNX 和 TensorRT 发行包，不使用 PyInstaller `collect_all(...)` 或复制完整环境，并在提供 BaseEnv staging 时拒绝重复文件；CPU 变体不调用该构建链路。基础环境同时携带 SAM 2.1 Base+ 代码、配置、checkpoint 和 GPU 版针对 Python 3.12/PyTorch 2.13/CUDA 13.0 构建的多架构 CUDA 后处理扩展，用户安装时不编译。附加产物使用原生 7-Zip 的多线程非固实 LZMA2 极限压缩生成纯 `.7z`，不包含安装程序。基础包构建复制第三方纯 Python 源码时，Windows 无过滤场景优先使用 `robocopy /S /MT:16`，有扩展排除集时使用路径感知复制；其他平台或缺少命令时保留逐文件回退。
+- `runtime.py` 区分内置 ONNX/TorchScript、开发态 Pixi 后端和冻结态增量扩展，并在 SAM2 ONNX 能力探测中检查 ONNXSlim、在 OpenVINO INT8 能力探测中检查 NNCF；CPU 变体把一体式安装器内嵌的 OpenVINO/NNCF/NCNN/PNNX 视为内置能力并始终拒绝 TensorRT，GPU 变体的 BaseEnv 使用 CPU ONNX Runtime，ExtraEnv v3 提供隔离 GPU ORT 覆盖层，启动前探测 `CUDAExecutionProvider` 后选择 GPU 或回退 CPU，并继续通过增量扩展提供 OpenVINO/NNCF、TensorRT、NCNN。
+- `package.py` 导入纯 `.7z` 或兼容 `.zip` 附加包，校验扩展 schema、协议、平台、安全相对路径、符号链接、文件清单和解压结果，管理候选安装、原子活动指针、失败回滚和“当前 + 上一版本”保留策略；`manifest.py` 集中维护清单协议、路径校验、指纹和 7z 清单读取，避免 `package.py` 与 `inspection.py` 循环依赖。`.7z` 优先调用基础环境随附的原生 `7z.exe`，利用解压过程的 CRC 校验发现归档损坏，没有原生工具时回退到 `py7zr` 解压并检查文件集合。原生 7-Zip 的百分比输出会通过进度回调映射到附加包安装的解压区间，`inspection.py` 的快速入口只读取清单并按压缩包指纹缓存，安装阶段再报告检查、解压、探测和切换。模型转换自检入口会显式激活候选附属包目录后再导入 OpenVINO、NNCF、NCNN、PNNX 与 TensorRT，避免把已随附属包提供的依赖误判为缺失。
+- `activation.py` 在程序或 GPU 隐藏导出子进程启动早期追加活动扩展的 `packages/` 到 `sys.path`，并通过清单注册 DLL 目录；若清单声明 `_onnxruntime_gpu` 覆盖层，则先用隐藏 `--yolo-ort-probe` 子进程验证 CUDA Provider，成功时将覆盖层插到基础 CPU Runtime 前，失败时保留 CPU Runtime。CPU 变体不激活或安装 GPU ExtraEnv。主程序本体与 GPU 扩展共用同一个 Python、Torch、CUDA、Ultralytics、SAM2、ONNX、ONNXScript 和基础 CPU ONNX Runtime，GPU ORT 只在覆盖层中提供，不覆盖基础文件。
+- `src/devtools/runtime_package_boundaries.py` 集中维护 GPU ExtraEnv distribution 清单、GPU ORT 覆盖层和安全路径归属；`base_runtime_builder.py` 在 GPU 构建时过滤全部附加发行包及 GPU ORT，再从 `release-cpu` 覆盖同版本 CPU ORT，CPU 构建不启用过滤。`src/devtools/model_export_package.py` 依据该清单收集 GPU ExtraEnv 的 OpenVINO、NNCF 及其运行时依赖、NCNN、PNNX、TensorRT 和隔离 GPU ORT，不使用 PyInstaller `collect_all(...)` 或复制完整环境，并在提供 BaseEnv staging 时拒绝普通路径重复文件；CPU 变体不调用该构建链路。基础环境同时携带 SAM 2.1 Base+ 代码、配置、checkpoint 和 GPU 版针对 Python 3.12/PyTorch 2.13/CUDA 13.0 构建的多架构 CUDA 后处理扩展，用户安装时不编译。附加产物使用原生 7-Zip 的多线程非固实 LZMA2 极限压缩生成纯 `.7z`，不包含安装程序。基础包构建复制第三方纯 Python 源码时，Windows 无过滤场景优先使用 `robocopy /S /MT:16`，有扩展排除集时使用路径感知复制；其他平台或缺少命令时保留逐文件回退。
 
 ### `src/services/validation/`
 
@@ -206,8 +206,7 @@ yolo_tool/
 - `WorkbenchWindow` 默认尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`；项目内路径在 UI 中优先显示为相对路径，写入文件时由设置存储层解析/序列化。
 - 页面通过上下文提交设置变更并接收字段路径通知；控件刷新期间阻断信号，避免通知回写造成重复保存。
 - 项目路径字段分为三组共享路径：`paths.images_dir`（数据集划分、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、数据集划分、批量重命名）和 `paths.labels_dir`（标注预览、数据集划分）；图片压缩源目录单独使用 `image_resize.source_dir`。
-- 数据处理页的 `ModelExportTab` 只负责控件状态、预览、确认和结构化日志；格式、路径、依赖、进程命令和扩展安装规则均由 `src/services/model_export/` 提供。模型转换页默认只展示训练结果权重，基础模型和 SAM checkpoint 仍可通过浏览选择；与系统设置页共用附加包拖放处理，识别 `.7z/.zip` 清单并确认后再在后台安装。
-- `src/ui/features/data/model_export/layout.py` 只负责模型转换页装配；所有格式默认复用 ONNX 基线的 `3:2` 等高双卡片，当基础配置第三行的格式选项空间不足时自适应扩大左卡片，最大为 `2:1`。固定配置分为`基础配置`和`推理参数`两张卡片，格式专属配置直接追加在对应卡片的固定字段下方，不创建第三张配置卡片。固定字段不随格式搬移，不支持项由页面状态禁用；配置内容使用统一滚动容器，底部操作保持独立。两卡片等高排列，`基础配置` 被较高卡片拉伸时，额外纵向空间按卡片内标题、各配置行与边框之间的空隙平均分配，而不是全部堆在底部。`controls.py` 提供分区标题、字段压缩和数值字段等页面专属布局辅助，不承载转换业务规则。
+- 数据处理页的 `ModelExportTab` 负责模型转换页面装配，格式、路径、依赖、进程命令和扩展安装规则均由 `src/services/model_export/` 提供；与系统设置页共用附加包拖放处理。页面安装附加包时不再显示解压百分比进度条。
 - `src/ui/features/data/model_export/state.py` 负责公共字段持久化、格式专属字段的当前会话缓存、格式切换恢复和控件信号镜像；`src/ui/features/data/model_export/tab.py` 负责模型扫描、能力状态同步、统一配置采集、预览确认、转换进程和结果打开等页面协调职责。服务层仍由 `ExportCapabilities`、配置归一化和命令构建控制实际导出参数。
 - 标注页“更多设置”使用等权垂直伸缩项承接窗口额外高度，保证各设置行之间的间隔一致；复合设置内部（如直线扩展像素标题与数值框）不参与外层间隔分配。
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
@@ -254,7 +253,7 @@ yolo_tool/
 ## 打包链路
 
 - 完整发布先用完整冻结目录构建基础运行环境，再清理并重建 program-only 程序 staging；Inno Setup 的程序层只允许使用后一次 staging，避免完整冻结 EXE 将 `_internal` 运行库重复带入安装器。
-- 根目录批处理入口统一通过 PowerShell 7 调用脚本：`打包程序.bat` 使用 1 至 9 的数字菜单，覆盖 GPU+CPU 全量发布、GPU 全量发布、GPU BaseEnv/ExtraEnv 单卷与分卷归档、GPU 程序安装器、CPU 全量发布和开发快包；`打包更新程序.bat` 保持原样并默认复用 GPU 环境包。CPU 发布不生成 BaseEnv/ExtraEnv 压缩包。
+- 根目录批处理入口统一通过 PowerShell 7 调用脚本：`打包程序.bat` 使用 1 至 9 的数字菜单，覆盖 GPU+CPU 全量发布、GPU 全量发布、GPU BaseEnv/ExtraEnv 单卷与分卷归档、GPU 程序安装器、CPU 全量发布和开发快包；菜单将参数数组转换为命名参数后调用子脚本，避免开关参数被误作为 `Variant` 等位置参数；`打包更新程序.bat` 保持原样并默认复用 GPU 环境包。CPU 发布不生成 BaseEnv/ExtraEnv 压缩包。
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
 - 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；应用图标和 `sam_assist.svg` 由 PyInstaller/Qt 资源模块随程序本体提供。
@@ -262,9 +261,9 @@ yolo_tool/
 - `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型路径。
 - `src/devtools/program_package.py` 生成 `Program` staging，`base_runtime_builder.py` 生成 `BaseRuntimeModels` staging 和默认单卷 `.7z` 基础包，显式开启分卷时才生成最多两个 `.7z.001/.002` 分卷；`model_export_package.py` 以相同的 7-Zip 参数和卷大小限制生成 ExtraEnv 单卷或分卷归档。基础包与附加包的分卷大小参数均为 `1073700000b`，构建后再次验证每卷严格小于 `1 GiB`；`package_files.py` 负责复制、清单和源码过滤；`release_package.py` 只保留兼容导出。
 - GPU 基础包和模型转换附加包都不生成或读取 `.cache.json`，完整发布时每次重新构建 staging 和归档；CPU 完整发布每次重新构建 staging 并由 Inno Setup 内嵌到安装器。GPU 基础包和附加包都通过原生 7-Zip `-mmt=on` 压缩，默认单卷，分别由 `-SplitBaseArchive`、`-SplitArchive` 启用分卷；`-Clean` 仍可清理并强制重建输出。
-- `installer/yolo_tool.iss` 按变体生成 GPU `YOLOTool_Setup_<版本>.exe` 或 CPU `YOLOTool_CPU_Setup_<版本>.exe`。GPU 组件页按当前变体的版本化文件名识别默认单卷基础包 `.7z`、特殊分卷基础包 `.7z.001/.002` 和 GPU 附加包 `.7z` 候选，不绑定压缩大小或归档哈希；CPU 安装器默认目录为 `YOLOTool_CPU`，直接把 `BaseRuntimeModels-CPU` staging 内嵌到安装器，隐藏 BaseEnv/ExtraEnv 控件并拒绝 GPU 基础包。程序与必选运行时在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。安装器由 Inno Setup 7.0.2+ 编译，PowerShell 打包脚本只发现 Inno Setup 7。
+- `installer/yolo_tool.iss` 按变体生成 GPU `YOLOTool_Setup_<版本>.exe` 或 CPU `YOLOTool_CPU_Setup_<版本>.exe`。GPU 组件页按当前变体的版本化文件名识别默认单卷基础包 `.7z`、特殊分卷基础包 `.7z.001/.002` 和 GPU 附加包 `.7z` 候选，不绑定压缩大小或归档哈希；CPU 安装器默认目录为 `YOLOTool_CPU`，直接把完整 `dist/CPU/YOLOTool` 内嵌到安装器，隐藏 BaseEnv/ExtraEnv 控件并拒绝 GPU 基础包。程序与必选运行时在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。安装器由 Inno Setup 7.0.2+ 编译，PowerShell 打包脚本只发现 Inno Setup 7。
 - 每个实例的 `install-instance.ini` 与其他安装清单存放在 `_internal/yolotool_metadata/`；基础包维护规范模型 `data/models/yolo26n.pt` 和受管的根目录兼容副本。
-- 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/bootstrap/cli_dispatch.py`；训练、验证/预测、导出、标注和运行时实现分别位于 `bootstrap/cli_training.py`、`cli_validation.py`、`cli_model_export.py`、`cli_annotation.py`、`cli_runtime.py`，`src/train_cli.py` 仅保留兼容转发。
+- 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/bootstrap/cli_dispatch.py`；`--yolo-ort-probe` 由模型导出 handler 提供 GPU ONNX Runtime 隔离探测；训练、验证/预测、导出、标注和运行时实现分别位于 `bootstrap/cli_training.py`、`cli_validation.py`、`cli_model_export.py`、`cli_annotation.py`、`cli_runtime.py`，`src/train_cli.py` 仅保留兼容转发。
 
 ## 维护建议
 

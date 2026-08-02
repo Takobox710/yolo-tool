@@ -36,3 +36,30 @@ def test_installed_extension_adds_package_directory_to_sys_path(tmp_path):
         assert str(package_root.resolve()) in sys.path
     finally:
         sys.path[:] = original
+
+
+def test_gpu_ort_overlay_is_preferred_when_probe_succeeds(monkeypatch, tmp_path):
+    from src.services.model_export import activation
+    from src.services.model_export.types import InstalledExtension
+
+    package_root = tmp_path / "packages"
+    gpu_root = package_root / "_onnxruntime_gpu"
+    (gpu_root / "onnxruntime" / "capi").mkdir(parents=True)
+    package_root.mkdir(exist_ok=True)
+    installed = InstalledExtension(
+        version="v3",
+        root=tmp_path,
+        package_dir=package_root,
+        supported_formats=("openvino", "engine", "ncnn"),
+        manifest={
+            "runtime_overlays": {"onnxruntime_gpu": "_onnxruntime_gpu"},
+            "dll_dirs": [],
+        },
+    )
+    monkeypatch.setattr(activation, "_gpu_ort_available", lambda _root: True)
+    original = list(sys.path)
+    try:
+        activation.activate_extension(installed)
+        assert sys.path[0] == str(gpu_root.resolve())
+    finally:
+        sys.path[:] = original

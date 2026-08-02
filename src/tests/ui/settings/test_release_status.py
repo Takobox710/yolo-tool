@@ -249,7 +249,7 @@ def test_release_update_dialog_hides_environment_update_hint_for_equal_versions(
             installer_asset_url="https://github.com/example/setup.exe",
             environment_asset_names=(
                 "YOLOTool_BaseEnv_v2.7z",
-                "YOLOTool_ExtraEnv_v2.7z",
+                "YOLOTool_ExtraEnv_v3.7z",
             ),
             environment_asset_urls=(
                 "https://github.com/example/base.7z",
@@ -294,7 +294,7 @@ def test_release_update_dialog_explains_missing_optional_extra_environment():
             latest_version="1.4.0",
             installer_asset_name="YOLOTool_Setup_1.4.0.exe",
             installer_asset_url="https://github.com/example/setup.exe",
-            environment_asset_names=("YOLOTool_ExtraEnv_v2.7z",),
+            environment_asset_names=("YOLOTool_ExtraEnv_v3.7z",),
             environment_asset_urls=("https://github.com/example/extra.7z",),
             extra_environment_version="2.0.0",
             installed_extra_environment_version="",
@@ -332,7 +332,7 @@ def test_release_update_dialog_hides_all_environment_notice_when_everything_matc
             installer_asset_url="https://github.com/example/setup.exe",
             environment_asset_names=(
                 "YOLOTool_BaseEnv_v2.7z",
-                "YOLOTool_ExtraEnv_v2.7z",
+                "YOLOTool_ExtraEnv_v3.7z",
             ),
             environment_asset_urls=(
                 "https://github.com/example/base.7z",

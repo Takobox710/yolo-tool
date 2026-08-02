@@ -19,6 +19,15 @@ GPU_EXTRA_DISTRIBUTIONS = (
     "tensorrt-cu13-bindings",
 )
 
+# GPU ONNX Runtime is an alternate core runtime, not an ordinary optional
+# backend. It is kept out of BaseEnv and copied into an isolated ExtraEnv
+# overlay so the application can choose it before importing ``onnxruntime``.
+GPU_RUNTIME_OVERLAY_DISTRIBUTIONS = ("onnxruntime-gpu",)
+GPU_BASE_EXCLUDED_DISTRIBUTIONS = (
+    *GPU_EXTRA_DISTRIBUTIONS,
+    *GPU_RUNTIME_OVERLAY_DISTRIBUTIONS,
+)
+
 
 def safe_distribution_path(value: object) -> Path | None:
     path = PurePosixPath(str(value).replace("\\", "/"))
@@ -62,7 +71,9 @@ def is_excluded_relative_path(
 
 
 __all__ = [
+    "GPU_BASE_EXCLUDED_DISTRIBUTIONS",
     "GPU_EXTRA_DISTRIBUTIONS",
+    "GPU_RUNTIME_OVERLAY_DISTRIBUTIONS",
     "distribution_path_roots",
     "distribution_relative_files",
     "extension_distribution_paths",

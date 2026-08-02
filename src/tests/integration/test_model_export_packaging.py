@@ -66,6 +66,8 @@ def test_model_export_runtime_build_contract_is_present():
     assert "YOLOTool_ExtraEnv_${Version}.7z" in build_script
     assert "SplitArchive" in build_script
     assert "GPU_EXTRA_DISTRIBUTIONS" in collector
+    assert "collect_runtime_overlays" in collector
+    assert "ORT_GPU_OVERLAY_DIR" in collector
     assert 'shutil.which("7z") or shutil.which("7z.exe")' in collector
     assert '"-m0=lzma2"' in collector
     assert '"-mmt=on"' in collector
@@ -101,12 +103,15 @@ def test_runtime_package_boundaries_are_shared_between_base_and_extra_builders()
     assert "extension_distribution_paths" in base_builder
     assert "exclude_roots=extension_roots" in base_builder
     assert "_validate_no_base_overlap" in collector
+    assert "GPU_BASE_EXCLUDED_DISTRIBUTIONS" in boundaries
+    assert '"onnxruntime-gpu"' in boundaries
 
 
 def test_extension_manifest_supports_optional_openvino_and_ncnn_formats():
     collector = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
 
     assert '"supported_formats": ["openvino", "engine", "ncnn"]' in collector
+    assert '"runtime_overlays": {ORT_GPU_OVERLAY_KEY: ORT_GPU_OVERLAY_DIR}' in collector
     assert "file_hashes" not in collector
 
 

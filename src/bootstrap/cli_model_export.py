@@ -2,9 +2,51 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 from src.bootstrap.cli_common import _emit_structured, _parse_key_values
+
+
+def _run_ort_probe_cli_impl(argv: list[str]) -> int:
+    from src.services.model_export.activation import ORT_GPU_ROOT_ENV
+
+    del argv
+    root = Path(os.environ.get(ORT_GPU_ROOT_ENV, "").strip())
+    if not root.is_dir():
+        print(
+            json.dumps(
+                {"ok": False, "providers": [], "error": "GPU ORT overlay missing"}
+            )
+        )
+        return 1
+    sys.path.insert(0, str(root.resolve()))
+    capi = root / "onnxruntime" / "capi"
+    if os.name == "nt" and hasattr(os, "add_dll_directory") and capi.is_dir():
+        os.add_dll_directory(str(capi.resolve()))
+    if capi.is_dir():
+        os.environ["PATH"] = os.pathsep.join(
+            [str(capi.resolve()), os.environ.get("PATH", "")]
+        )
+    try:
+        import onnxruntime as ort
+
+        providers = list(ort.get_available_providers())
+    except Exception as exc:
+        print(
+            json.dumps(
+                {"ok": False, "providers": [], "error": str(exc)},
+                ensure_ascii=False,
+            )
+        )
+        return 1
+    payload = {
+        "ok": "CUDAExecutionProvider" in providers,
+        "providers": providers,
+    }
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
+    return 0 if payload["ok"] else 1
+
 
 def _run_export_cli_impl(argv: list[str]) -> int:
     os.environ["YOLO_AUTOINSTALL"] = "false"
@@ -38,9 +80,14 @@ def _run_export_cli_impl(argv: list[str]) -> int:
 def _run_export_probe_cli_impl(argv: list[str]) -> int:
     from importlib import metadata
     import importlib
+    from src.services.model_export.activation import activate_installed_extension
     from src.services.model_export.package import EXPORT_PROTOCOL_VERSION
 
     del argv
+    # The probe is also invoked directly by the package installer.  Activate
+    # the candidate extension here so its packages directory and DLL paths are
+    # available even when the caller bypasses ``src.main``.
+    activate_installed_extension()
     distributions = {
         "openvino": "openvino",
         "ncnn": "ncnn",
@@ -116,6 +163,10 @@ def run_export_probe(argv: list[str]) -> int:
     return _run_export_probe_cli_impl(argv)
 
 
+def run_ort_probe(argv: list[str]) -> int:
+    return _run_ort_probe_cli_impl(argv)
+
+
 def run_install_model_export_package(argv: list[str]) -> int:
     return _run_install_model_export_package_cli_impl(argv)
 
@@ -124,4 +175,10 @@ def run_migrate_legacy_extension(argv: list[str]) -> int:
     return _run_migrate_legacy_extension_cli_impl(argv)
 
 
-__all__ = ["run_export", "run_export_probe", "run_install_model_export_package", "run_migrate_legacy_extension"]
+__all__ = [
+    "run_export",
+    "run_export_probe",
+    "run_install_model_export_package",
+    "run_migrate_legacy_extension",
+    "run_ort_probe",
+]

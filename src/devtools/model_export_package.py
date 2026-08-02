@@ -19,6 +19,7 @@ from src.services.model_export import (
     EXTENSION_PACKAGE_ID,
     EXTENSION_SCHEMA_VERSION,
 )
+from src.services.model_export.manifest import ORT_GPU_OVERLAY_DIR, ORT_GPU_OVERLAY_KEY
 
 
 OPTIONAL_DISTRIBUTIONS = GPU_EXTRA_DISTRIBUTIONS
@@ -76,6 +77,29 @@ def collect_optional_distributions(
             copied.add(target)
     if not copied:
         raise RuntimeError("未收集到模型转换环境文件。")
+    return versions
+
+
+def collect_runtime_overlays(package_root: Path) -> dict[str, str]:
+    """Copy alternate runtimes under isolated roots without shadowing BaseEnv."""
+    versions: dict[str, str] = {}
+    try:
+        distribution = metadata.distribution("onnxruntime-gpu")
+    except metadata.PackageNotFoundError as exc:
+        raise RuntimeError("模型转换环境缺少 GPU ONNX Runtime：onnxruntime-gpu") from exc
+    target_root = Path(package_root) / ORT_GPU_OVERLAY_DIR
+    copied = False
+    for relative in sorted(distribution_relative_files(distribution)):
+        source = Path(distribution.locate_file(relative))
+        if not source.is_file():
+            continue
+        target = target_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied = True
+    if not copied:
+        raise RuntimeError("未收集到 GPU ONNX Runtime 文件。")
+    versions[ORT_GPU_OVERLAY_KEY] = distribution.version
     return versions
 
 
@@ -186,6 +210,7 @@ def build_model_export_layer(
     package_root.mkdir(parents=True)
     step_started = time.perf_counter()
     versions = collect_optional_distributions(package_root)
+    versions.update(collect_runtime_overlays(package_root))
     _print_elapsed("[Extra] 运行库文件复制完成", step_started)
     if base_staging_root is not None:
         _validate_no_base_overlap(staging_root, Path(base_staging_root).resolve())
@@ -209,6 +234,7 @@ def build_model_export_layer(
         "package_dir": "packages",
         "supported_formats": ["openvino", "engine", "ncnn"],
         "dependencies": versions,
+        "runtime_overlays": {ORT_GPU_OVERLAY_KEY: ORT_GPU_OVERLAY_DIR},
         "dll_dirs": dll_dirs,
         "files": files,
     }

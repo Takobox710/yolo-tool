@@ -33,6 +33,7 @@ from src.ui.shared.page_base import BasePage
 from src.ui.shared.workers import Worker
 from src.ui.features.data.model_export.state import ModelExportStateMixin
 from src.ui.features.data.model_export.layout import (
+    arrange_basic_option_row,
     build_model_export_layout,
     update_model_export_card_ratio,
 )
@@ -394,6 +395,7 @@ class ModelExportTab(
         )
         self.nms_check.setEnabled(not self.is_exporting)
         self.agnostic_nms_check.setEnabled(not self.is_exporting)
+        arrange_basic_option_row(self, spec.argument)
 
         precision = {"FP16": "fp16", "INT8": "int8"}.get(
             self.precision_combo.currentText(), "fp32"

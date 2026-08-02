@@ -93,3 +93,28 @@ def test_legacy_extension_migration_cli_reports_result(monkeypatch, capsys):
 
     assert code == 0
     assert '"migrated": true' in capsys.readouterr().out
+
+
+def test_export_probe_activates_candidate_extension_before_imports(monkeypatch, capsys):
+    import importlib
+    from importlib import metadata
+
+    from src.bootstrap import cli_model_export
+
+    activated = []
+    monkeypatch.setattr(
+        "src.services.model_export.activation.activate_installed_extension",
+        lambda: activated.append(True),
+    )
+    monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+
+    class MissingDistribution:
+        @staticmethod
+        def version(_name):
+            raise metadata.PackageNotFoundError
+
+    monkeypatch.setattr(metadata, "version", MissingDistribution.version)
+
+    assert cli_model_export.run_export_probe([]) == 0
+    assert activated == [True]
+    assert '"ok": true' in capsys.readouterr().out

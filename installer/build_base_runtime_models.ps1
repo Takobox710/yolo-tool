@@ -64,6 +64,12 @@ if ($NoArchive) {
     }
     $PackageArgs += "--staging-only"
 }
+if ($Variant -eq "GPU") {
+    $PackageArgs += @(
+        "--cpu-runtime-root",
+        (Join-Path $Root ".pixi\envs\release-cpu")
+    )
+}
 & pixi run -e $(if ($Variant -eq "CPU") { "release-cpu" } else { "release-gpu" }) python @PackageArgs
 if ($LASTEXITCODE -ne 0) {
     throw "基础环境和模型归档构建失败，退出码：$LASTEXITCODE"
