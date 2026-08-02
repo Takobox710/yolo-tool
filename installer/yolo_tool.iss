@@ -1161,7 +1161,7 @@ procedure RegisterExtraCloseApplicationsResources();
 begin
   if FileExists(ExpandConstant('{app}\{#MyAppExeName}')) then
     RegisterExtraCloseApplicationsResource(
-      True, ExpandConstant('{app}\{#MyAppExeName}'));
+      ExpandConstant('{app}\{#MyAppExeName}'));
 end;
 
 function ShouldMigrateLegacyExtension(): Boolean;

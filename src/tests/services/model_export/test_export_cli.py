@@ -8,17 +8,17 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    ("export_format", "artifact_suffix"),
+    ("export_format", "generated_suffix", "artifact_name"),
     [
-        ("onnx", ".onnx"),
-        ("torchscript", ".torchscript"),
-        ("openvino", "_openvino_model"),
-        ("engine", ".engine"),
-        ("ncnn", "_ncnn_model"),
+        ("onnx", ".onnx", "model_fp32.onnx"),
+        ("torchscript", ".torchscript", "model_fp32.torchscript"),
+        ("openvino", "_openvino_model", "model_fp32_openvino_model"),
+        ("engine", ".engine", "model_fp32.engine"),
+        ("ncnn", "_ncnn_model", "model_fp32_ncnn_model"),
     ],
 )
 def test_export_cli_emits_structured_result(
-    monkeypatch, tmp_path, capsys, export_format, artifact_suffix
+    monkeypatch, tmp_path, capsys, export_format, generated_suffix, artifact_name
 ):
     from src.train_cli import run_export_cli
 
@@ -32,12 +32,12 @@ def test_export_cli_emits_structured_result(
 
         def export(self, **options):
             assert options["format"] == export_format
-            if artifact_suffix.startswith("_"):
-                generated = self.model.parent / f"{self.model.stem}{artifact_suffix}"
+            if generated_suffix.startswith("_"):
+                generated = self.model.parent / f"{self.model.stem}{generated_suffix}"
                 generated.mkdir()
                 (generated / "model.bin").write_bytes(b"model")
             else:
-                generated = self.model.with_suffix(artifact_suffix)
+                generated = self.model.with_suffix(generated_suffix)
                 generated.write_bytes(b"model")
             return str(generated)
 
@@ -48,20 +48,20 @@ def test_export_cli_emits_structured_result(
     )
     monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
 
-    code = run_export_cli(
-        [
-            f"model={source}",
-            f"format={export_format}",
-            "imgsz=640",
-            "simplify=true",
-            f"output_dir={output}",
-        ]
-    )
+    arguments = [
+        f"model={source}",
+        f"format={export_format}",
+        "imgsz=640",
+        f"output_dir={output}",
+    ]
+    if export_format in {"onnx", "engine"}:
+        arguments.append("simplify=true")
+    code = run_export_cli(arguments)
 
     captured = capsys.readouterr().out
     assert code == 0
     assert '"event": "done"' in captured
-    assert (output / f"model{artifact_suffix}").exists()
+    assert (output / artifact_name).exists()
 
 
 def test_extension_installer_cli_reports_installed_instance(monkeypatch, tmp_path, capsys):

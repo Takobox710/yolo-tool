@@ -13,9 +13,9 @@
 - 数据集划分页提供“Labelme 转 YOLO 并划分数据集”和“YOLO 原生数据集划分”两种模式，分别处理 Labelme `.json` 与已有 YOLO `.txt` 标注。
 - 支持 `oriented_rectangle` 转 OBB，支持 `line` 标注按半宽扩展为旋转框。
 - 训练命令由服务层统一生成，支持优化器、HSV、MixUp、Mosaic 等常见参数，训练页 tooltip 采用“中文全称（命令参数名）；说明”的统一格式。
-- 模型验证和训练使用 `data/models/` 中的基础模型；模型格式转换默认只显示 `result/**/weights/*.pt`，其余 `.pt` 文件通过浏览选择。
+- 模型验证和训练使用 `data/models/` 中的基础模型；模型格式转换默认只显示 `result/**/weights/*.pt`，`data/models/` 中的基础模型和 SAM checkpoint 通过浏览选择。
 - 支持图片检测、视频检测、摄像头检测、数据集验证四类验证模式。
-- 内置本地数据标注页，默认读写 Labelme `.json`，支持右键切换绘制/编辑模式、类别管理、官方 SAM 3 文本分割预标注、SAM 2/2.1 悬停辅助标注与项目级标注设置。
+- 内置本地数据标注页，默认读写 Labelme `.json`，支持右键切换绘制/编辑模式、类别管理、官方 SAM 3 文本分割预标注、SAM 2/2.1 悬停辅助标注及项目级标注设置。
 - 图片检测模式支持固定输入源和单张图片；视频检测模式支持批量视频目录和单个视频。
 - 数据集验证模式会在点击开始检测后临时改写 `data.yaml` 的 `val:` 指向，验证结束后自动恢复。
 - 模型验证默认输出目录为 `result/gui_val`，结果图片对应的标注会保存到本次输出目录下的 `labels/` 子目录。
@@ -28,8 +28,8 @@
 - Windows 发布同时提供 GPU 与 CPU 变体。GPU 保持现有资源命名；CPU 使用 `_CPU_` 标识、独立安装目录 `YOLOTool_CPU`，更新检查不会在两个变体之间交叉选择资源。
 - 每次启动后首次进入系统设置页会在后台检查 GitHub 最新稳定 Release；后续切换页面不重复检查，发现高于当前 `1.3.3` 的版本时程序版本卡片后显示升级图标，并将该 Release 的更新内容追加到下方程序日志，网络不可用不会阻塞使用。点击程序版本号或升级图标可打开更新窗口，GPU 窗口支持分别勾选程序安装包、基础环境包和附加环境包；CPU 窗口只显示程序安装包。GPU 环境包更新按 Release 文件名中的 `vX` 版本与本机安装清单或包信息版本比较，CPU 只按 `_CPU_` Setup 资源更新，源码版回退读取 `installer/*-version.txt`，Release 带有同版本环境包时不误报环境更新，基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，只有已安装附加包版本较旧时才触发更新；勾选资源会一并下载到用户 `Downloads` 文件夹，勾选程序安装包时下载完成后自动运行安装器，下载按钮右侧提供暂停和停止，下载期间可隐藏窗口且后台任务继续运行。
 - 正式发布拆分为 GPU 小型程序安装器、GPU 基础环境和模型包、可选模型转换附加包；CPU 发布为内嵌完整运行时和模型的一体式安装器，普通更新无需重复分发 GPU 完整环境。
-- Windows 发布包按程序、运行环境、模型和用户数据分层；GPU 普通程序更新包不再重复携带 Torch/CUDA 环境。CPU 一体式安装器使用 CPU Torch 与 CPU ONNX Runtime，并将 OpenVINO、NCNN、PNNX 一并冻结进安装器携带的运行时 staging；CPU 版不生成 BaseEnv/ExtraEnv 压缩包，也不包含 CUDA、TensorRT、GPU ONNX Runtime。
-- 支持把 Ultralytics YOLO `.pt` 模型转换为 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN；另支持 SAM2/SAM2.1 checkpoint 导出为 SAM2 ONNX 双文件包。GPU 版的 OpenVINO、TensorRT、NCNN 仍由可选 ExtraEnv 提供，CPU 版的 OpenVINO、NCNN 直接内置，TensorRT 始终不可用。
+- Windows 发布包按程序、运行环境、模型和用户数据分层；GPU 普通程序更新包不再重复携带 Torch/CUDA 环境。CPU 一体式安装器使用 CPU Torch 与 CPU ONNX Runtime，并将 OpenVINO、NNCF、NCNN、PNNX 一并冻结进安装器携带的运行时 staging；CPU 版不生成 BaseEnv/ExtraEnv 压缩包，也不包含 CUDA、TensorRT、GPU ONNX Runtime。
+- 支持把 Ultralytics YOLO `.pt` 模型转换为 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN；SAM2/SAM2.1 checkpoint 复用 ONNX 入口并按文件名显示固定输入配置。GPU 版的 OpenVINO、NNCF、TensorRT、NCNN 仍由可选 ExtraEnv 提供，CPU 版的 OpenVINO、NNCF、NCNN 直接内置，TensorRT 始终不可用。
 - 根目录提供两个打包入口：`打包更新程序.bat` 使用 PowerShell 7 复用 GPU 环境包；`打包程序.bat` 可选择 GPU 基础发布、GPU 完整发布或 CPU 发布。CPU 也可直接执行 `pwsh -File installer/package_windows.ps1 -Variant CPU -BuildBaseRuntimeModels -Clean`。
 - 服务层与测试已拆分，便于后续继续扩展 GUI 而不把业务逻辑写死在界面回调中；CLI、更新窗口、验证页状态和发布构建也按职责拆成可独立测试的模块，旧入口与公开类名保持兼容。
 - 主导航页面采用“启动先显示首页、窗口空闲后分批预热其余页面”的策略，避免冷启动时连带触发重页面初始化，同时减少首次切到任意页面时的同步卡顿。
@@ -60,8 +60,8 @@
 - 标注预览：读取图片与同名 `.txt` 标签进行可视化预览，支持 `detect` / `obb` / `seg` 标签格式，并使用接近 YOLO 官方的标注框与标签样式。
 - 批量重命名：支持图片、Labelme `.json`、YOLO `.txt` 联动重命名。
 - 图片压缩：递归扫描子目录图片，按画布尺寸对齐长边、贴到统一画布，并保持输出目录结构；是否备份原始图片可选，默认不备份，并可直接从页面打开当前结果文件夹。
-- 模型格式转换：默认扫描 `result/**/weights/*.pt` 和当前项目/程序根目录 `data/models/` 中可识别的 SAM2/SAM2.1 checkpoint；支持浏览选择其他 `.pt` 文件，默认输出到 `data/models/model_exports/<模型名>/`。YOLO 权重使用五种 Ultralytics 导出格式，SAM2 权重使用独立的 `SAM2 ONNX` 格式。
-- `SAM2 ONNX` 固定 batch=1、输入 1024、单点提示，输出 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`；需要基础环境中的 PyTorch、SAM2、ONNX、ONNXScript 和 ONNX Runtime。YOLO ONNX 默认简化且可关闭，TorchScript 无需扩展；GPU 版的 OpenVINO、TensorRT、NCNN 需要发布版模型转换环境，CPU 版的 OpenVINO、NCNN 直接内置且 TensorRT 不可用。
+- 模型格式转换：默认只扫描 `result/**/weights/*.pt`，不主动显示 `data/models/` 中的基础模型或 SAM checkpoint；支持浏览选择其他 `.pt` 文件，默认输出到 `data/models/model_exports/<模型名>/`。页面只显示 ONNX、TorchScript、OpenVINO、TensorRT、NCNN 五种入口，所有格式默认共用 ONNX 基线的 `3:2` 等高双卡片；当第三行格式选项空间不足时，基础配置卡片会自适应扩大，最大不超过 `2:1`；`基础配置`固定源模型、输出目录、目标格式和导出精度，并在其下继续显示格式选项、NMS、类别无关和动态输入；ONNX 下简化、导出 NMS、类别无关位于同一行，TorchScript 下导出 NMS、类别无关、TorchScript 优化、动态输入位于同一行，TensorRT 下导出 NMS、简化 ONNX、类别无关、动态输入位于同一行，OpenVINO 的动态输入也位于该行；`推理参数`固定输入尺寸、Batch、Conf、IoU 和最大检测数，并在最大检测数右侧按格式显示 ONNX opset 或 TensorRT workspace，ONNX 和 NCNN 的动态输入保持原位置，继续显示 INT8 等专属项。配置区支持滚动，切换格式时保留当前会话内的格式专属参数。
+- ONNX + YOLO 支持 FP32/FP16/INT8、独立图简化、Batch/高/宽动态轴、NMS、opset、校准和量化后冒烟验证；ONNX + SAM2/SAM2.1 固定 batch=1、输入 1024、单点提示，输出 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`，当前只提供 FP32/FP16。实际验证表明，SAM2 的 ORT 静态 INT8 会破坏点提示分割质量，因此平台不会生成该精度；YOLO、OpenVINO 和 TensorRT 的 INT8 能力不受影响。校准数据可选 `dataset.yaml` 或图片目录，也可在页面按需下载并缓存 COCO128 通用校准集。
 - 数据处理页面在普通窗口放大或进入全屏后会自动铺满可用宽度，页面内容过高时仍可通过纵向滚动查看。
 
 ### 3. 数据标注
@@ -85,11 +85,11 @@
   - `多边形`
   - `直线拓展`（默认关闭，需要在“更多设置”中启用）
 - 点击“画标注框”后，会先弹出默认宽度为 `240 px`、SAM 标题行距窗口顶部 `12 px` 的标注类型选择窗口；`编辑` 与下方绘制类型共用一个连续外框，中间使用固定 `2 px` 高的较粗分隔线隔开。
-- “画标注框”窗口顶部提供 SAM 图标、动画开关，以及同一行的模型选择和`高级`按钮；画布右键菜单提供同步开关。模型从当前项目和程序根目录的 `data/models/*.pt` 扫描，项目目录中的同名模型优先，所有以 `sam`/`SAM` 开头的 `.pt` 都会显示。官方 SAM 2/2.1 各尺寸、SAM 1 ViT 系列和 `sam3.pt` 会显示简化名称，自定义名称保留文件名；只有可确定画布后端的 SAM 2/2.1 与 SAM 3 可启用开关和高级按钮。所选模型文件名按项目保存，但启用状态不会保存。
+- “画标注框”窗口顶部提供 SAM 图标、动画开关，以及同一行的模型选择和`高级`按钮；画布右键菜单提供同步开关。模型从当前项目和程序根目录的 `data/models/*.pt` 扫描，并额外发现 `data/models/model_exports/**` 下完整的 SAM2 ONNX 双文件目录；项目目录中的同名模型优先，所有以 `sam`/`SAM` 开头的 `.pt` 都会显示。官方 SAM 2/2.1 各尺寸、SAM 1 ViT 系列、SAM2 ONNX 和 `sam3.pt` 会显示简化名称，自定义名称保留文件名；只有可确定画布后端的 SAM 2/2.1、SAM2 ONNX 与 SAM 3 可启用开关和高级按钮。所选模型路径按项目保存，但启用状态不会保存。
 - `SAM 高级设置`窗口约为 `480 x 400 px`，顶部“当前模型”使用下拉框选择模型，右侧“打开文件夹”可直接打开所选 checkpoint 所在目录；取消不切换模型，保存后才同步模型选择。窗口按项目保存快速单结果/三候选优选、最低预测质量、最小掩码面积和多边形轮廓简化比例，其中最小掩码面积使用与轮廓简化比例对齐的对数滑块并保留精确数值框（`1~100000000 px²`）；三个参数数值框均不显示上下调箭头，仍可直接输入并与滑块联动；保存后清除旧预览，下一次悬停立即使用新参数，不重新加载模型或编码图片。
 - SAM 智能标注支持矩形框、有向矩形、镜像有向矩形和多边形；开启时圆形、直线扩展及其快捷键不可用，当前为不支持形状时自动切换为矩形框，编辑模式仍可正常选择和修改已有标注。
 - 鼠标在未被现有标注覆盖的图片区域移动时，SAM 会立即提交首个位置，并根据最近推理耗时在 `50~120 ms` 范围内持续识别最新坐标；同一形状下小于 `2 px` 的原图微小移动会被过滤。控制器最多保持一个在途推理和一个最新待处理坐标，绿色预览采用 LabelPaw 风格的纯绿色不透明边缘、低透明度绿色填充和固定屏幕像素虚线（实线段约 `12 px`、空隙约 `5 px`），并会用最近完成的结果连续更新，无需停住鼠标；窗口缩放不会改变虚线的长短、宽度或粗细。左键直接确认当前可见预览，不再次推理；预览不进入标注列表、撤销记录或保存文件，确认后继续复用当前类别、连续标注、自动保存和 Labelme/YOLO 转换流程。
-- 状态栏会显示 SAM 的加载、图片编码、就绪和推理状态；切图、切模型、切形状、离开画布或关闭开关会立即清除旧预览。SAM 3 画布辅助标注使用官方交互式单点预测器且需要 CUDA；无 CUDA、权重不兼容或显存不足时会自动关闭开关并明确提示，无法从自定义文件名确定后端的模型只显示、不允许启用。关闭开关只暂停智能标注并保留当前模型，离开数据标注页、切换项目或退出程序时才关闭 SAM 子进程并释放模型与显存。启动 AI 预标注前会先关闭画布 SAM 子进程并释放显存，任务结束后不自动重新开启。
+- 状态栏会显示 SAM 的加载、图片编码、就绪和推理状态；切图、切模型、切形状、离开画布或关闭开关会立即清除旧预览。SAM2/2.1 画布辅助标注使用官方点提示 predictor；SAM2 ONNX 画布辅助标注使用导出目录中的 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`，固定使用 ONNX Runtime CPUExecutionProvider；SAM 3 画布辅助标注使用官方交互式单点预测器且需要 CUDA。无 CUDA、权重不兼容、ONNX 文件不完整或显存不足时会自动关闭开关并明确提示，无法从自定义文件名确定后端的模型只显示、不允许启用。关闭开关只暂停智能标注并保留当前模型，离开数据标注页、切换项目或退出程序时才关闭 SAM 子进程并释放模型与显存。启动 AI 预标注前会先关闭画布 SAM 子进程并释放显存，任务结束后不自动重新开启。
 - 按 `W` 可直接打开与“画标注框(W)”按钮相同的标注类型选择窗口。
 - 标注模式快捷键与右键菜单一致：`V` 编辑、`R` 矩形框、`O` 有向矩形、`M` 镜像有向矩形、`P` 多边形、`C` 圆形；启用直线扩展后，`L` 切换到直线扩展。SAM 开启时 `M` 仍可使用，其余不支持形状快捷键保持禁用。
 - 数据标注页底部会显示当前模式状态栏，例如 `当前状态：编辑` 或 `当前状态：圆形`；可在“更多设置”的“显示当前状态”中关闭。离开数据标注页后该状态栏自动隐藏。
@@ -219,7 +219,7 @@ python -m src.main --yolo-train seg train model=... data=... epochs=... imgsz=..
 - pytest
 - torch / torchvision / torchaudio（目标 CUDA 13.0）
 - ONNX / ONNXSlim / ONNXScript；发布基础环境使用 CPU ONNX Runtime
-- GPU 开发/发布环境：OpenVINO / TensorRT / NCNN / PNNX；CPU 发布环境：OpenVINO / NCNN / PNNX 内置，TensorRT 不安装
+- GPU 开发/发布环境：OpenVINO / NNCF / TensorRT / NCNN / PNNX；CPU 发布环境：OpenVINO / NNCF / NCNN / PNNX 内置，TensorRT 不安装
 
 依赖由 `pixi.toml` 管理。默认开发环境保持 GPU CUDA 13.0；`cpu`/`release-cpu` 使用 PyTorch CPU wheel 和 CPU `onnxruntime`，不参与 CUDA、TensorRT 或 GPU ONNX Runtime 的解析。
 
@@ -269,7 +269,7 @@ yolo_tool/
 pixi install
 ```
 
-默认开发环境包含 GPU 的全部模型转换后端；`release-base` 用于 GPU 主安装包，`export-full` 提供 GPU 的 OpenVINO、NCNN、PNNX、TensorRT 和 GPU ONNX Runtime；`release-cpu` 用于 CPU 主安装包并内置 OpenVINO、NCNN、PNNX。`onnxruntime` 与 `onnxruntime-gpu` 保持在不同环境中。
+默认开发环境和 `release-gpu` 共享 GPU 的全部模型转换后端；`release-gpu` 用于 GPU 主程序、基础包和附加包构建，`release-cpu` 用于 CPU 主安装包并内置 OpenVINO、NNCF、NCNN、PNNX。GPU 环境只使用 `onnxruntime-gpu`，CPU 环境只使用 `onnxruntime`。
 
 CPU 环境检查：
 
@@ -303,6 +303,8 @@ pixi run python -m src.main
 
 ## Windows 打包与更新
 
+安装器使用 Inno Setup 7.0.2 或更高版本编译；打包脚本只搜索 Inno Setup 7 的编译器。
+
 完整发布会先生成完整冻结目录供基础环境包使用，基础包完成后再强制重建 program-only EXE 供安装器使用。这样完整发布的 `YOLOTool_Setup_<版本>.exe` 不会把基础环境中的 Python、Torch 和其他运行库重复打入安装器；`dist/YOLOTool/` 仍保留为完整冻结启动验证物。
 
 文档中早期版本的 `2.76 MB` program-only 体积仅作历史参考；当前体积会随应用代码和静态导入模块图变化，发布验证以安装器小于 `100 MB` 且最终 Program staging 不含 `_internal/` 为准。
@@ -317,7 +319,21 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1
 
 双击根目录 `打包更新程序.bat` 只重建 GPU 程序安装器，并复用 `installer/output/` 中已有的 GPU 基础环境包和附加环境包。基础包必须存在，附加包仍为可选；脚本要求 PowerShell 7 的 `pwsh.exe`。
 
-双击根目录 `打包程序.bat` 可输入 `C` 构建 CPU 一体式完整安装包，输入 `G` 构建 GPU 完整发布，直接回车构建 GPU 程序和基础环境。CPU 发布不会生成 BaseEnv/ExtraEnv 压缩包。两种 GPU 模式都会重新生成基础环境包，不生成或读取 `.cache.json`。GPU 完整发布对应 PowerShell 7 命令为：
+双击根目录 `打包程序.bat` 会打开数字菜单，按下数字后立即进入对应流程：
+
+1. GPU 与 CPU 全量发布；
+2. GPU 全量发布；
+3. GPU BaseEnv 单卷归档；
+4. GPU BaseEnv 分卷归档；
+5. GPU ExtraEnv 单卷归档；
+6. GPU ExtraEnv 分卷归档；
+7. GPU 程序安装器；
+8. CPU 全量发布；
+9. 本地开发快包。
+
+选项 1 会先完成 GPU 发布，再完成 CPU 发布；任一步失败都会停止后续流程。CPU 发布不会生成 BaseEnv/ExtraEnv 压缩包。菜单使用 PowerShell 7 的现有脚本组合，不改变 `打包更新程序.bat`。
+
+GPU 全量发布对应 PowerShell 7 命令为：
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
@@ -329,13 +345,25 @@ CPU 正式发布命令为：
 pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Variant CPU -BuildBaseRuntimeModels -Clean
 ```
 
+GPU BaseEnv 分卷归档会先生成完整 GPU 冻结程序，再执行：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_base_runtime_models.ps1 -Variant GPU -Clean -SplitBaseArchive
+```
+
+GPU ExtraEnv 分卷归档使用：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_model_export_runtime.ps1 -Clean -SplitArchive
+```
+
 PowerShell 下也可分别使用 `-SkipBaseRuntimeModels`、`-SkipModelExportRuntime` 跳过未变化的运行包。本地快速验证仍可构建开发快包：
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
 ```
 
-GPU 基础包和附加包都不生成或读取 `.cache.json`，每次完整发布都会重新 staging、计算清单并压缩；GPU 归档默认单卷，只有 `-SplitBaseArchive` 才启用基础包分卷。CPU 每次完整发布重新生成 staging，并由 Inno Setup 直接内嵌，不生成归档。基础包构建在 Windows 优先使用 `robocopy /S /MT:16` 复制第三方纯 Python 源码，并排除测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码，同时排除 ONNX 测试数据。需要完全重建时，在完整命令后增加 `-Clean`；该选项会同时强制重新冻结程序和重新生成对应变体的运行时内容。
+GPU 基础包和附加包都不生成或读取 `.cache.json`，每次完整发布都会重新 staging、计算清单并压缩；GPU 归档默认单卷，显式使用 `-SplitBaseArchive` 或 `-SplitArchive` 才启用对应分卷。分卷使用 `-v1073700000b`，每卷必须严格小于 `1 GiB`，当前最多生成 `.001/.002` 两卷。CPU 每次完整发布重新生成 staging，并由 Inno Setup 直接内嵌，不生成归档。基础包构建在 Windows 优先使用 `robocopy /S /MT:16` 复制第三方纯 Python 源码，并排除测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码，同时排除 ONNX 测试数据。需要完全重建时，在完整命令后增加 `-Clean`；该选项会同时强制重新冻结程序和重新生成对应变体的运行时内容。
 
 面向用户的发布物固定为：
 
@@ -347,13 +375,13 @@ YOLOTool_ExtraEnv_<附加包版本>.7z
 YOLOTool_CPU_Setup_<程序版本>.exe
 ```
 
-当前默认发布基础包为 `YOLOTool_BaseEnv_v3.7z`，附加包为 `YOLOTool_ExtraEnv_v2.7z`，运行时协议仍为 `runtime-2`。基础包包含 SAM 3 推理代码与依赖，但不包含用户自行取得的 `sam3.pt` checkpoint。GPU 基础包默认生成单卷 `.7z`，只有显式使用 `-SplitBaseArchive` 时才生成 `.7z.001/.002` 特殊分卷；CPU 版把完整运行时和模型直接压入 `YOLOTool_CPU_Setup_<版本>.exe`，不生成 CPU BaseEnv 压缩包。
+当前默认发布基础包为 `YOLOTool_BaseEnv_v3.7z`，附加包为 `YOLOTool_ExtraEnv_v2.7z`，运行时协议仍为 `runtime-2`。基础包包含 SAM 3 推理代码与依赖，但不包含用户自行取得的 `sam3.pt` checkpoint。GPU 基础包和附加包默认生成单卷 `.7z`；分卷模式分别生成对应的 `.7z.001/.002` 文件，供需要按卷传输或归档的场景使用。CPU 版把完整运行时和模型直接压入 `YOLOTool_CPU_Setup_<版本>.exe`，不生成 CPU BaseEnv 压缩包。
 
-程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`；CPU 安装器例外，直接内嵌完整 CPU 运行时和模型。GPU 默认环境包文件名为 `YOLOTool_BaseEnv_v3.7z` 和 `YOLOTool_ExtraEnv_v2.7z`，运行时兼容协议使用 `runtime-2`；特殊分卷时安装器也接受基础包 `.7z.001/.002`。基础包还携带 `sam2.1_hiera_base_plus.pt` 及 SAM 2/2.1 配置和 SAM 3 推理代码；`sam3.pt` 由用户自行取得并放入 `data/models/`。GPU 首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时优先提供基础包，首次安装缺少基础包时安装器组件页显示红色风险提示并阻止继续；CPU 一体式安装器不依赖外部基础包。已有安装但没有新基础包时 GPU 可只更新程序、继续使用旧环境，并警告部分功能可能无法使用。GUI 启动不会因运行时版本不一致强制退出，`--runtime-probe` 仍用于安装器和诊断。安装成功页右侧“启动 YOLOTool”选项下方可勾选删除本次使用的安装器和环境包。默认目录为 `YOLOTool`，CPU 默认目录为 `YOLOTool_CPU`。
+程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`；CPU 安装器例外，直接内嵌完整 CPU 运行时和模型。GPU 默认环境包文件名为 `YOLOTool_BaseEnv_v3.7z` 和 `YOLOTool_ExtraEnv_v2.7z`，运行时兼容协议使用 `runtime-2`；特殊分卷时安装器也接受基础包 `.7z.001/.002`。GPU 基础包携带 `sam2.1_hiera_base_plus.pt`，CPU 一体式安装器改为携带更小的 `sam2.1_hiera_tiny.pt`；`sam3.pt` 由用户自行取得并放入 `data/models/`，不会被打包。GPU 首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时优先提供基础包，首次安装缺少基础包时安装器组件页显示红色风险提示并阻止继续；CPU 一体式安装器不依赖外部基础包。已有安装但没有新基础包时 GPU 可只更新程序、继续使用旧环境，并警告部分功能可能无法使用。GUI 启动不会因运行时版本不一致强制退出，`--runtime-probe` 仍用于安装器和诊断。安装成功页右侧“启动 YOLOTool”选项下方可勾选删除本次使用的安装器和环境包。默认目录为 `YOLOTool`，CPU 默认目录为 `YOLOTool_CPU`。
 
 安装器进入文件替换前通过 Inno Setup 的 Windows Restart Manager 注册当前安装目录中的 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不弹出是否停止应用的询问页，也不使用 PowerShell 或 WMI；其他安装目录的实例不会被停止。自动关闭前应保存好必要状态，安装器不负责恢复未保存的数据。
 
-GPU 附加包始终可选，收集 OpenVINO、NCNN/PNNX 和 TensorRT 运行库。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装期间显示进度；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复文件扫描；附加环境安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时会保留该目录，旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展同盘原子迁移、跨盘复制完成后再删除旧目录。CPU 安装器不显示 ExtraEnv，CPU 实例手动导入 GPU 附加包会拒绝安装。
+GPU 附加包始终可选，收集 OpenVINO、NNCF 及其运行时依赖、NCNN/PNNX 和 TensorRT 运行库。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装期间显示进度；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复文件扫描；附加环境安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时会保留该目录，旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展同盘原子迁移、跨盘复制完成后再删除旧目录。CPU 安装器不显示 ExtraEnv，CPU 实例手动导入 GPU 附加包会拒绝安装。
 
 组件页只按版本化名称和扩展名识别本地包，不绑定压缩大小或归档 SHA-256，因此同一环境包版本的不同重打包可以复用。安装器使用普通百分比进度条显示文件安装进度；提交完成前的 `--runtime-probe` 只比较程序清单要求的运行时版本与 `_internal` 基础环境清单版本，不导入 Torch、PySide6 或 ONNX。归档损坏或无法解压时安装事务失败并回滚；运行环境版本不匹配或自检未通过时只显示警告并继续安装，提示部分功能可能无法使用，不恢复旧版本。程序-only 本体明确包含 `ctypes.util`，兼容 Python 3.12 Windows 下 Cryptodome 的 ctypes 回退路径；七个安装清单保存到 `_internal/yolotool_metadata/`，旧根目录清单可自动迁移。基础包同时维护 `data/models/yolo26n.pt` 和根目录兼容副本 `yolo26n.pt`。用户模型和 `data/runtime/`、`images/`、`labels/`、`result/` 均保留。
 

@@ -90,7 +90,7 @@ class SettingsService:
             issues.append(SettingsIssue("settings", "配置文件必须是对象，已恢复默认值"))
 
         migrated = int(payload.get("schema_version", 0) or 0) != 1
-        self._migrate_model_export_output(payload)
+        self._migrate_model_export_config(payload)
         payload["schema_version"] = 1
         payload.setdefault("project", {})["root"] = str(self.project_root)
         merged = deep_merge(settings_to_dict(defaults), payload)
@@ -106,10 +106,21 @@ class SettingsService:
             issues=tuple(issues),
         )
 
-    def _migrate_model_export_output(self, payload: dict[str, Any]) -> None:
+    def _migrate_model_export_config(self, payload: dict[str, Any]) -> None:
         model_export = payload.get("model_export")
         if not isinstance(model_export, dict):
             return
+        format_value = str(model_export.get("format") or "").strip().lower()
+        if format_value in {"sam2_onnx", "sam2 onnx"}:
+            model_export["format"] = "onnx"
+        if "precision" not in model_export and "quantize" in model_export:
+            quantize = str(model_export.get("quantize") or "32").strip().lower()
+            model_export["precision"] = {
+                "32": "fp32",
+                "16": "fp16",
+                "8": "int8",
+            }.get(quantize, "fp32")
+        model_export.pop("quantize", None)
         current = str(model_export.get("output_dir") or "").strip()
         if not current:
             return

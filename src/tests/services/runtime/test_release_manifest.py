@@ -139,6 +139,104 @@ def test_base_runtime_layer_contains_environment_and_managed_models(tmp_path):
     assert not (layer / "YOLOTool.exe").exists()
 
 
+def test_cpu_base_runtime_layer_uses_tiny_sam_checkpoint(tmp_path):
+    from src.devtools.release_package import build_base_runtime_layer
+
+    app_root = tmp_path / "app"
+    (app_root / "_internal").mkdir(parents=True)
+    (app_root / "data" / "models").mkdir(parents=True)
+    (app_root / "_internal" / "torch.dll").write_bytes(b"torch")
+    for name in (
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_tiny.pt",
+    ):
+        (app_root / "data" / "models" / name).write_bytes(b"model")
+
+    layer = tmp_path / "base-layer"
+    build_base_runtime_layer(
+        app_root,
+        layer,
+        package_version="v1",
+        runtime_version="runtime-1",
+        variant="cpu",
+    )
+
+    managed = json.loads((layer / "managed-models.json").read_text(encoding="utf-8"))
+    assert managed["files"] == [
+        "sam2.1_hiera_tiny.pt",
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+    ]
+    assert (layer / "data" / "models" / "sam2.1_hiera_tiny.pt").is_file()
+    assert not (layer / "data" / "models" / "sam2.1_hiera_base_plus.pt").exists()
+
+
+def test_gpu_base_runtime_filters_extra_environment_files(monkeypatch, tmp_path):
+    from src.devtools import base_runtime_builder
+
+    app_root = tmp_path / "app"
+    (app_root / "_internal" / "openvino").mkdir(parents=True)
+    (app_root / "_internal" / "onnxruntime").mkdir(parents=True)
+    (app_root / "data" / "models").mkdir(parents=True)
+    (app_root / "_internal" / "openvino" / "runtime.pyd").write_bytes(b"extra")
+    (app_root / "_internal" / "onnxruntime" / "runtime.pyd").write_bytes(b"gpu")
+    for name in (
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_base_plus.pt",
+    ):
+        (app_root / "data" / "models" / name).write_bytes(b"model")
+
+    monkeypatch.setattr(
+        base_runtime_builder,
+        "extension_distribution_paths",
+        lambda: {Path("openvino/runtime.pyd")},
+    )
+
+    layer = tmp_path / "base-layer"
+    base_runtime_builder.build_base_runtime_layer(
+        app_root,
+        layer,
+        package_version="v1",
+        runtime_version="runtime-1",
+        variant="gpu",
+    )
+
+    assert not (layer / "_internal" / "openvino" / "runtime.pyd").exists()
+    assert (layer / "_internal" / "onnxruntime" / "runtime.pyd").exists()
+
+
+def test_cpu_base_runtime_keeps_integrated_export_files(tmp_path):
+    from src.devtools import base_runtime_builder
+
+    app_root = tmp_path / "app"
+    (app_root / "_internal" / "openvino").mkdir(parents=True)
+    (app_root / "data" / "models").mkdir(parents=True)
+    (app_root / "_internal" / "openvino" / "runtime.pyd").write_bytes(b"cpu")
+    for name in (
+        "yolo11s.pt",
+        "yolo26n.pt",
+        "yolov8n.pt",
+        "sam2.1_hiera_tiny.pt",
+    ):
+        (app_root / "data" / "models" / name).write_bytes(b"model")
+
+    layer = tmp_path / "base-layer"
+    base_runtime_builder.build_base_runtime_layer(
+        app_root,
+        layer,
+        package_version="v1",
+        runtime_version="runtime-1",
+        variant="cpu",
+    )
+
+    assert (layer / "_internal" / "openvino" / "runtime.pyd").exists()
+
+
 def test_base_runtime_archive_excludes_program_and_uses_expected_name(tmp_path):
     from src.devtools.release_package import build_base_runtime_archive
 

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import json
 import contextlib
 import io
+import json
 import shutil
 import uuid
 from pathlib import Path
 from typing import Callable
 
 from src.services.annotation.sam_assist import sam_model_spec_from_path
+from src.services.model_export.calibration import CalibrationSet, convert_onnx_to_fp16
+from src.services.model_export.onnx_utils import check_onnx, simplify_onnx_graph
 
 
 SAM2_ONNX_FORMAT = "sam2_onnx"
@@ -19,7 +21,7 @@ SAM2_OPSET = 18
 def sam2_export_source_error(model_path: str | Path) -> str | None:
     spec = sam_model_spec_from_path(Path(model_path))
     if spec is None:
-        return "SAM2 ONNX 导出只接受可识别的 SAM 2 或 SAM 2.1 checkpoint。"
+        return "ONNX 导出只接受可识别的 SAM 2 或 SAM 2.1 checkpoint。"
     if spec.runtime_kind != "sam2":
         return f"模型“{Path(model_path).name}”不是 SAM 2/2.1 checkpoint。"
     return None
@@ -142,7 +144,15 @@ class _Sam2MaskDecoderWrapper:
         self.module = Wrapper(model)
 
 
-def _export_onnx(module, args, target: Path, input_names: list[str], output_names: list[str]) -> None:
+def _export_onnx(
+    module,
+    args,
+    target: Path,
+    input_names: list[str],
+    output_names: list[str],
+    *,
+    opset: int = SAM2_OPSET,
+) -> None:
     import torch
 
     module.eval()
@@ -153,19 +163,36 @@ def _export_onnx(module, args, target: Path, input_names: list[str], output_name
             str(target),
             input_names=input_names,
             output_names=output_names,
-            opset_version=SAM2_OPSET,
+            opset_version=opset,
             dynamo=True,
             external_data=False,
         )
 
 
-def _write_metadata(target: Path, model_path: Path, config_name: str) -> None:
+def _write_metadata(
+    target: Path,
+    model_path: Path,
+    config_name: str,
+    *,
+    precision: str,
+    simplify: bool,
+    calibration: CalibrationSet | None,
+    validation: dict[str, object] | None,
+) -> None:
     metadata = {
-        "format": SAM2_ONNX_FORMAT,
+        "format": "onnx",
+        "model_kind": "sam2",
+        "precision": precision,
         "source_model": model_path.name,
         "config_name": config_name,
         "image_size": SAM2_IMAGE_SIZE,
         "batch": 1,
+        "simplify": bool(simplify),
+        "calibration": {
+            "source": str(calibration.source) if calibration else "",
+            "samples": calibration.count if calibration else 0,
+        },
+        "validation": validation or {"enabled": False, "samples": 0},
         "prompt": {
             "point_coords": [1, 1, 2],
             "point_labels": [1, 1],
@@ -174,6 +201,21 @@ def _write_metadata(target: Path, model_path: Path, config_name: str) -> None:
         "artifacts": {
             "image_encoder": "image_encoder.onnx",
             "mask_decoder": "mask_decoder.onnx",
+        },
+        "encoder_inputs": {
+            "image": "[1, 3, 1024, 1024]",
+        },
+        "encoder_outputs": {
+            "image_embed": "[1, 256, 64, 64]",
+            "high_res_0": "[1, 32, 256, 256]",
+            "high_res_1": "[1, 64, 128, 128]",
+        },
+        "decoder_inputs": {
+            "image_embed": "[1, 256, 64, 64]",
+            "high_res_0": "[1, 32, 256, 256]",
+            "high_res_1": "[1, 64, 128, 128]",
+            "point_coords": "[1, 1, 2]",
+            "point_labels": "[1, 1]",
         },
         "decoder_outputs": {
             "high_res_masks": "[1, 3, 1024, 1024]",
@@ -184,14 +226,6 @@ def _write_metadata(target: Path, model_path: Path, config_name: str) -> None:
     target.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def _validate_onnx_files(target: Path) -> None:
-    import onnx
-
-    for name in ("image_encoder.onnx", "mask_decoder.onnx"):
-        model = onnx.load(str(target / name), load_external_data=False)
-        onnx.checker.check_model(model)
-
-
 def export_sam2_model_to_directory(
     options: dict,
     *,
@@ -199,20 +233,22 @@ def export_sam2_model_to_directory(
 ) -> Path:
     values = dict(options)
     model_path = Path(str(values.get("model", ""))).resolve()
-    output_dir_value = str(values.get("output_dir", "")).strip()
+    output_dir = Path(str(values.get("output_dir", "") or model_path.parent)).resolve()
+    precision = _normalize_precision(values.get("precision", values.get("quantize", "32")))
+    if precision == "int8":
+        raise ValueError(
+            "SAM2/SAM2.1 ONNX 暂不支持 INT8：当前静态量化会破坏点提示分割质量。请使用 FP16 或 FP32。"
+        )
+    simplify = _as_bool(values.get("simplify", True), True)
+    calibration = None
     if not model_path.is_file() or model_path.suffix.lower() != ".pt":
         raise ValueError("请选择存在的 .pt SAM2 模型文件。")
     error = sam2_export_source_error(model_path)
     if error:
         raise ValueError(error)
-    output_dir = (
-        Path(output_dir_value).resolve()
-        if output_dir_value
-        else model_path.parent
-    )
     output_dir.mkdir(parents=True, exist_ok=True)
     cleanup_stale_sam2_export_workdirs(output_dir)
-    target = output_dir / f"{model_path.stem}_{SAM2_ONNX_FORMAT}"
+    target = output_dir / f"{model_path.stem}_sam2_onnx_{precision}"
     work = output_dir / f".sam2-export-{uuid.uuid4().hex}"
     backup = output_dir / f".sam2-export-backup-{uuid.uuid4().hex}-{target.name}"
     stage = work / target.name
@@ -224,19 +260,19 @@ def export_sam2_model_to_directory(
         import torch
 
         device = next(model.parameters()).device
-        image = torch.zeros(
-            1, 3, SAM2_IMAGE_SIZE, SAM2_IMAGE_SIZE, device=device
-        )
+        image = torch.zeros(1, 3, SAM2_IMAGE_SIZE, SAM2_IMAGE_SIZE, device=device)
         point_coords = torch.zeros(1, 1, 2, device=device)
         point_labels = torch.ones(1, 1, dtype=torch.int32, device=device)
         encoder = _Sam2ImageEncoderWrapper(model).module
         decoder = _Sam2MaskDecoderWrapper(model).module
+        encoder_path = stage / "image_encoder.onnx"
+        decoder_path = stage / "mask_decoder.onnx"
         if progress:
             progress("正在导出 SAM2 图像编码器：image_encoder.onnx")
         _export_onnx(
             encoder,
             (image,),
-            stage / "image_encoder.onnx",
+            encoder_path,
             ["image"],
             ["image_embed", "high_res_0", "high_res_1"],
         )
@@ -247,12 +283,30 @@ def export_sam2_model_to_directory(
         _export_onnx(
             decoder,
             (image_embed, high_res_0, high_res_1, point_coords, point_labels),
-            stage / "mask_decoder.onnx",
+            decoder_path,
             ["image_embed", "high_res_0", "high_res_1", "point_coords", "point_labels"],
             ["high_res_masks", "iou_predictions", "low_res_masks"],
         )
-        _write_metadata(stage / "metadata.json", model_path, spec.config_name)
+        for path in (encoder_path, decoder_path):
+            check_onnx(path)
+            if simplify:
+                simplify_onnx_graph(path)
+            check_onnx(path)
+        if precision == "fp16":
+            if progress:
+                progress("正在转换 SAM2 ONNX FP16 权重")
+            _convert_sam2_precision(stage, precision="fp16")
         _validate_onnx_files(stage)
+        validation: dict[str, object] | None = None
+        _write_metadata(
+            stage / "metadata.json",
+            model_path,
+            spec.config_name,
+            precision=precision,
+            simplify=simplify,
+            calibration=calibration,
+            validation=validation,
+        )
         if target.exists():
             target.replace(backup)
         shutil.move(str(stage), str(target))
@@ -269,6 +323,45 @@ def export_sam2_model_to_directory(
         shutil.rmtree(work, ignore_errors=True)
         if backup.exists() and target.exists():
             _remove_path(backup)
+
+
+def _convert_sam2_precision(stage: Path, *, precision: str) -> None:
+    for name in ("image_encoder.onnx", "mask_decoder.onnx"):
+        source = stage / name
+        converted = stage / f".{name}.converted"
+        convert_onnx_to_fp16(source, converted)
+        converted.replace(source)
+
+
+def _validate_onnx_files(target: Path) -> None:
+    for name in ("image_encoder.onnx", "mask_decoder.onnx"):
+        check_onnx(target / name)
+
+
+def _normalize_precision(value: object) -> str:
+    normalized = str(value or "32").strip().lower()
+    try:
+        return {
+            "32": "fp32",
+            "fp32": "fp32",
+            "16": "fp16",
+            "fp16": "fp16",
+            "8": "int8",
+            "int8": "int8",
+        }[normalized]
+    except KeyError as exc:
+        raise ValueError("导出精度必须是 fp32、fp16 或 int8。") from exc
+
+
+def _as_bool(value: object, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value or "").strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return fallback
 
 
 __all__ = [

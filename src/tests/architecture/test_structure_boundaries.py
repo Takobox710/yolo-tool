@@ -130,6 +130,7 @@ def test_feature_modules_keep_explicit_top_level_class_boundaries():
 def test_large_feature_modules_stay_within_reviewed_safety_ceilings():
     reviewed = {
         Path("src/ui/features/annotation/ai/dialog.py"): 900,
+        Path("src/ui/features/data/model_export/tab.py"): 900,
         Path("src/ui/features/settings/update_dialog.py"): 900,
     }
     offenders = []

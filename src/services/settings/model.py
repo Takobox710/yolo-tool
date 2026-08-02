@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import types
 from dataclasses import fields, is_dataclass
-from typing import Any, get_args, get_origin, get_type_hints
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from src.services.settings.types import (
     AiPrelabelSettings,
@@ -72,6 +73,16 @@ def _coerce_value(expected: Any, raw: Any, fallback: Any, path: str, issues: lis
         return _coerce_dataclass(expected, raw, fallback, path, issues)
     origin = get_origin(expected)
     args = get_args(expected)
+    if origin in {Union, types.UnionType}:
+        if raw is None and type(None) in args:
+            return None
+        for candidate in args:
+            if candidate is type(None):
+                continue
+            if _matches_type(candidate, raw):
+                return _coerce_value(candidate, raw, fallback, path, issues)
+        issues.append(SettingsIssue(path, "类型不正确，已恢复默认值"))
+        return fallback
     if origin is list:
         if not isinstance(raw, list) or (args and any(not isinstance(item, str) for item in raw)):
             issues.append(SettingsIssue(path, "必须是字符串数组，已恢复默认值"))
@@ -99,6 +110,18 @@ def _coerce_value(expected: Any, raw: Any, fallback: Any, path: str, issues: lis
         issues.append(SettingsIssue(path, "类型不正确，已恢复默认值"))
         return fallback
     return float(raw) if expected is float else raw
+
+
+def _matches_type(expected: Any, raw: Any) -> bool:
+    if expected is bool:
+        return isinstance(raw, bool)
+    if expected is int:
+        return isinstance(raw, int) and not isinstance(raw, bool)
+    if expected is float:
+        return isinstance(raw, (int, float)) and not isinstance(raw, bool)
+    if expected is str:
+        return isinstance(raw, str)
+    return True
 
 
 def is_dataclass_type(value: Any) -> bool:

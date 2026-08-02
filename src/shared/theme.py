@@ -53,6 +53,7 @@ QWidget { font-family: "Microsoft YaHei UI"; font-size: 14px; color: #14233A; }
 #releaseCheckClose { background: transparent; border: 0; color: #627286; font-size: 20px; padding: 0px 2px; }
 #releaseCheckClose:hover { color: #14233A; }
 QLineEdit, QTextEdit, QComboBox, QTableWidget { background: white; border: 1px solid #CFD9E3; border-radius: 5px; padding: 7px; }
+QLineEdit#modelExportFlatEdit { padding: 0px 7px; }
 QTableWidget { background: #FFFFFF; alternate-background-color: #F7FAFC; gridline-color: #E1E8F0; selection-background-color: #DCEEFF; selection-color: #0D2B49; }
 QTableWidget::item { padding: 6px; border-bottom: 1px solid #E8EDF2; }
 QTableWidget::item:hover { background: #EEF6FF; }

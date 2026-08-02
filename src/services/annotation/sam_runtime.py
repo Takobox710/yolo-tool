@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from src.services.annotation.sam_assist import sam_geometry_from_mask
+from src.services.annotation.sam_onnx_canvas import Sam2OnnxCanvasRuntime
 
 
 class _Sam3CanvasRuntime:
@@ -80,6 +81,7 @@ class SamAssistRuntime:
         self.model = None
         self.predictor = None
         self.sam3_runtime: _Sam3CanvasRuntime | None = None
+        self.sam2_onnx_runtime: Sam2OnnxCanvasRuntime | None = None
         self.runtime_kind = ""
         self.device = ""
         self.model_generation = 0
@@ -94,23 +96,31 @@ class SamAssistRuntime:
         runtime_kind: str = "sam2",
     ) -> dict[str, Any]:
         checkpoint = Path(checkpoint_path)
-        if not checkpoint.is_file():
-            raise FileNotFoundError(f"SAM 模型文件不存在：{checkpoint}")
         backend = str(runtime_kind or "sam2").strip().lower()
-        if backend not in {"sam2", "sam3"}:
+        if backend not in {"sam2", "sam2_onnx", "sam3"}:
             raise ValueError("当前 SAM 模型无法从文件名确定可用运行后端。")
+        if backend == "sam2_onnx" and not checkpoint.is_dir():
+            raise FileNotFoundError(f"SAM2 ONNX 模型目录不存在：{checkpoint}")
+        if backend != "sam2_onnx" and not checkpoint.is_file():
+            raise FileNotFoundError(f"SAM 模型文件不存在：{checkpoint}")
         if backend == "sam2" and not str(config_name).strip():
             raise ValueError("缺少 SAM 模型配置。")
 
         self.release_model()
-        import torch
-
         self.runtime_kind = backend
-        if backend == "sam3":
+        if backend == "sam2_onnx":
+            self.sam2_onnx_runtime = Sam2OnnxCanvasRuntime()
+            self.sam2_onnx_runtime.load_model(checkpoint)
+            self.device = "onnx-cpu"
+        elif backend == "sam3":
+            import torch
+
             self.sam3_runtime = _Sam3CanvasRuntime()
             self.sam3_runtime.load_model(checkpoint)
             self.device = "cuda"
         else:
+            import torch
+
             from sam2.build_sam import build_sam2
             from sam2.sam2_image_predictor import SAM2ImagePredictor
 
@@ -144,6 +154,18 @@ class SamAssistRuntime:
             if self.sam3_runtime is None:
                 raise RuntimeError("SAM 3 模型尚未加载。")
             self.sam3_runtime.set_image(path)
+            self.image_generation = int(image_generation)
+            self.image_path = str(path.resolve())
+            return {
+                "state": "image_ready",
+                "model_generation": self.model_generation,
+                "image_generation": self.image_generation,
+                "image_path": self.image_path,
+            }
+        if self.runtime_kind == "sam2_onnx":
+            if self.sam2_onnx_runtime is None:
+                raise RuntimeError("SAM2 ONNX 模型尚未加载。")
+            self.sam2_onnx_runtime.set_image(path)
             self.image_generation = int(image_generation)
             self.image_path = str(path.resolve())
             return {
@@ -192,6 +214,14 @@ class SamAssistRuntime:
                 float(y),
                 multimask_output=bool(multimask_output),
             )
+        elif self.runtime_kind == "sam2_onnx":
+            if self.sam2_onnx_runtime is None:
+                raise RuntimeError("SAM2 ONNX 模型尚未加载。")
+            masks, scores = self.sam2_onnx_runtime.predict_point(
+                float(x),
+                float(y),
+                multimask_output=bool(multimask_output),
+            )
         else:
             import numpy as np
             import torch
@@ -230,6 +260,9 @@ class SamAssistRuntime:
         if self.sam3_runtime is not None:
             self.sam3_runtime.close()
         self.sam3_runtime = None
+        if self.sam2_onnx_runtime is not None:
+            self.sam2_onnx_runtime.close()
+        self.sam2_onnx_runtime = None
         self.runtime_kind = ""
         self.model_generation = 0
         self.image_generation = 0
@@ -249,7 +282,9 @@ class SamAssistRuntime:
     def _require_model(self, model_generation: int) -> None:
         if self.runtime_kind == "sam3" and self.sam3_runtime is None:
             raise RuntimeError("SAM 模型尚未加载。")
-        if self.runtime_kind != "sam3" and self.predictor is None:
+        if self.runtime_kind == "sam2_onnx" and self.sam2_onnx_runtime is None:
+            raise RuntimeError("SAM2 ONNX 模型尚未加载。")
+        if self.runtime_kind == "sam2" and self.predictor is None:
             raise RuntimeError("SAM 模型尚未加载。")
         if int(model_generation) != self.model_generation:
             raise RuntimeError("SAM 模型请求已过期。")

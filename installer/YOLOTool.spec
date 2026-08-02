@@ -48,9 +48,9 @@ BASE_EXCLUDES = [
     "torch.distributed.rpc._testing",
     "torch.distributed.rpc.examples",
     "torch._numpy.testing",
-    # TensorRT remains in the additive LZMA2 archive.
+    # TensorRT and the optional export backends remain in the additive archive.
     "tensorrt",
-    "onnxruntime-gpu",
+    "nncf",
 ]
 
 mode = os.environ.get("YOLO_TOOL_BUILD_MODE", "release").strip().lower()
@@ -58,6 +58,7 @@ is_dev = mode == "dev"
 is_program_only = os.environ.get("YOLO_TOOL_PROGRAM_ONLY", "0") == "1"
 build_variant = os.environ.get("YOLO_TOOL_BUILD_VARIANT", "gpu").strip().lower()
 is_cpu_variant = build_variant == "cpu"
+runtime_distribution = "onnxruntime" if is_cpu_variant else "onnxruntime-gpu"
 name = "YOLOTool-dev" if is_dev else "YOLOTool"
 
 PY7ZR_PACKAGES = (
@@ -102,11 +103,14 @@ if is_program_only:
         "openvino",
         "ncnn",
         "pnnx",
+        "nncf",
         "matplotlib",
         "psutil",
         "py7zr",
     ]
 else:
+    if is_cpu_variant:
+        excludes = [item for item in excludes if item != "nncf"]
     RUNTIME_DATA_EXCLUDES = [
         "**/test/**",
         "**/tests/**",
@@ -135,7 +139,7 @@ else:
         *PY7ZR_PACKAGES,
     ]
     if is_cpu_variant:
-        runtime_packages += ["openvino", "ncnn", "pnnx"]
+        runtime_packages += ["openvino", "ncnn", "pnnx", "nncf"]
 
     binaries = []
     for package in runtime_packages:
@@ -158,7 +162,7 @@ else:
         *PY7ZR_PACKAGES,
     ]
     if is_cpu_variant:
-        import_packages += ["openvino", "ncnn", "pnnx"]
+        import_packages += ["openvino", "ncnn", "pnnx", "nncf"]
     for package in import_packages:
         hiddenimports += collect_submodules(package, on_error="ignore")
         datas += collect_data_files(package, excludes=RUNTIME_DATA_EXCLUDES)
@@ -171,14 +175,14 @@ else:
     # Keep the small dist-info directories used by importlib.metadata in frozen builds.
     distributions = [
         "onnx",
-        "onnxruntime",
+        runtime_distribution,
         "opencv-python",
         "Pillow",
         "psutil",
         "ultralytics",
     ]
     if is_cpu_variant:
-        distributions += ["openvino", "openvino-telemetry", "ncnn", "pnnx"]
+        distributions += ["openvino", "openvino-telemetry", "ncnn", "pnnx", "nncf"]
     for distribution in distributions:
         datas += copy_metadata(distribution)
     if not is_dev:

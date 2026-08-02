@@ -24,7 +24,7 @@ pyside6 = ">=6.10.0, <7"
 pillow = ">=12.2.0, <13"
 ultralytics = ">=8.4.80, <9"
 opencv-python = ">=4.13.0.92, <5"
-numpy = ">=2, <3"
+numpy = ">=2, <2.3"
 pyyaml = ">=6.0.3, <7"
 scikit-learn = ">=1.9.0, <2"
 psutil = ">=7.2.2, <8"
@@ -47,6 +47,7 @@ einops = ">=0.8, <1"
 pycocotools = ">=2.0.7, <3"
 tqdm = ">=4.69.0, <5"
 portalocker = ">=3.2.0, <4"
+nncf = ">=2.14.0, <3"
 
 [feature.cpu.pypi-dependencies]
 torch = { version = "*", index = "https://download.pytorch.org/whl/cpu" }
@@ -58,18 +59,17 @@ torch = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 torchvision = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 
-[feature.release-base.pypi-dependencies]
-onnxruntime = ">=1.27.0, <2"
-
 [feature.release-cpu.pypi-dependencies]
 onnxruntime = ">=1.27.0, <2"
+nncf = ">=2.14.0, <3"
 openvino = ">=2026.2.1, <2027"
 openvino-telemetry = ">=2025.2.0, <2027"
 ncnn = ">=1.0.20260526"
 pnnx = ">=20260526"
 
-[feature.export-full.pypi-dependencies]
+[feature.release-gpu.pypi-dependencies]
 onnxruntime-gpu = ">=1.27.0, <2"
+nncf = ">=2.14.0, <3"
 openvino = ">=2026.2.1, <2027"
 openvino-telemetry = ">=2025.2.0, <2027"
 ncnn = ">=1.0.20260526"
@@ -80,8 +80,6 @@ tensorrt-cu13-libs = { version = "==11.1.0.106", index = "https://pypi.nvidia.co
 tensorrt-cu13-bindings = { version = "==11.1.0.106", index = "https://pypi.nvidia.com" }
 
 [environments]
-default = ["gpu", "export-full"]
-release-base = ["gpu", "release-base"]
+default = ["gpu", "release-gpu"]
+release-gpu = ["gpu", "release-gpu"]
 release-cpu = ["cpu", "release-cpu"]
-export-full = ["gpu", "export-full"]
-

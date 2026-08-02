@@ -76,16 +76,21 @@
 
 ## 模型格式转换
 
-- 数据处理页新增“模型格式转换”工具，支持从 Ultralytics YOLO `.pt` 模型导出 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN，并支持 SAM2/SAM2.1 checkpoint 导出 SAM2 ONNX。
-- 默认扫描当前项目 `result/**/weights/*.pt` 和当前项目/程序根目录 `data/models/` 中可识别的 SAM2/SAM2.1 checkpoint，也允许浏览选择其他 `.pt` 文件；普通基础 YOLO 模型目录不自动出现在转换列表中。
-- `SAM2 ONNX` 只接受 SAM 2/2.1 checkpoint（例如 `sam2.1_hiera_base_plus.pt`），固定 batch=1、输入 1024、单点提示，生成包含 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json` 的目录；SAM 1、SAM3 和未知自定义 SAM 名称仍需使用对应专用流程。
-- 源模型和输出目录放在同一行，目标格式、静态方形输入尺寸 `imgsz` 放在下一行；默认格式为 ONNX、尺寸为 `640`、简化开启。
-- 默认输出根目录为 `data/models/model_exports/`，每个模型使用独立子目录，YOLO 产物名分别为 `.onnx`、`.torchscript`、`_openvino_model/`、`.engine` 和 `_ncnn_model/`，SAM2 产物目录名为 `_sam2_onnx/`。
+- 数据处理页新增“模型格式转换”工具，保留 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN 五种格式入口；不再显示独立的 `SAM2 ONNX` 格式项，选择 ONNX 后按文件名识别 YOLO 或 SAM2/SAM2.1 checkpoint。
+- 默认只扫描当前项目 `result/**/weights/*.pt`；`data/models/` 中的基础模型和 SAM checkpoint 不主动出现在转换列表中，仍可通过浏览选择其他 `.pt` 文件。
+- ONNX + YOLO 支持 FP32/FP16/INT8、图简化、动态 Batch/高度/宽度、NMS、opset、INT8 校准和量化后验证；ONNX + SAM2/SAM2.1 支持三种精度、图简化、校准和验证，但固定 batch=1、输入 1024、单点提示并隐藏动态轴和 NMS。
+- TorchScript 支持 FP32/FP16、batch、统一动态输入、NMS 和 TorchScript 优化；OpenVINO 支持 FP32/FP16/INT8、batch、统一动态输入、NMS 和 NNCF 校准；TensorRT 支持三种精度、batch、统一动态输入、NMS、中间 ONNX 简化、workspace 和校准；NCNN 仅支持 FP32/FP16 与 batch。
+- TorchScript 优化要求 CPU，不能与 FP16 GPU 导出同时启用；TensorRT 动态输入或动态输入加 NMS 时 batch 必须大于 1，避免触发 Ultralytics 导出器的形状约束。
+- INT8 配置区只在选择 INT8 后显示，校准数据统一接受 `dataset.yaml` 或图片目录，并按校准样本上限取样；页面可按需下载并缓存 COCO128 通用校准集，也可继续选择项目自定义图片。SAM2/SAM2.1 ONNX 当前只提供 FP32/FP16，因 ORT 静态 INT8 在真实点提示下会破坏掩膜质量而不显示 INT8；YOLO、OpenVINO 和 TensorRT 仍按各自后端提供 INT8。
+- 默认值为 FP32、batch=1、图简化开启、动态轴关闭、NMS 关闭、校准样本 300、验证样本 16，NMS 默认 `conf=0.25`、`iou=0.45`、`max_det=300`。
+- 默认输出根目录为 `data/models/model_exports/`，每个模型使用独立子目录。YOLO 精度产物名为 `model_fp32.onnx`、`model_fp16.onnx`、`model_int8.onnx` 等；SAM2 产物目录名为 `model_sam2_onnx_fp32/`、`model_sam2_onnx_fp16/` 或 `model_sam2_onnx_int8/`。
+- 模型格式转换页默认采用 ONNX 基线的 `3:2` 等高双卡片布局；当基础配置第三行的格式选项空间不足时，左侧基础配置卡片自适应扩大，最大不超过 `2:1`。`基础配置` 固定放置源模型、输出目录、目标格式和导出精度；`推理参数` 固定放置输入尺寸、Batch、Conf、IoU 和最大检测数。所有格式复用同一组固定控件，不支持的公共字段保留位置并禁用，最终不会传入导出命令。两卡片等高排列，`基础配置` 被较高卡片拉伸时，额外纵向空间按标题、各配置行与上下边框之间的空隙平均分配，而不是全部堆在卡片底部。
+- 两张公共配置卡片的固定字段下方直接承载按格式变化的专属配置。基础配置卡片继续放置格式选项、NMS、类别无关和动态输入；ONNX 下简化、导出 NMS、类别无关位于同一行，TorchScript 下导出 NMS、类别无关、TorchScript 优化、动态输入位于同一行，TensorRT 下导出 NMS、简化 ONNX、类别无关、动态输入位于同一行。OpenVINO 的动态输入也放在该基础配置行；推理参数卡片在最大检测数右侧放置 ONNX opset 或 TensorRT workspace，ONNX 和 NCNN 的动态输入保留原位置，并继续放置 INT8 校准与验证等选项。ONNX、TorchScript、OpenVINO、TensorRT 按各自能力显示对应字段，NCNN 没有专属项时只保留两张公共卡片。配置区统一滚动，预览、转换、停止、打开目录和附加包操作保持独立可达；切换格式时在当前会话内保留各格式专属字段。
 - “预览转换”显示源模型、目标产物、运行环境、能力状态和覆盖风险；目标已存在时必须在执行前确认，只有新产物完整生成后才替换旧结果。
 - 转换过程提供结构化实时日志、停止和打开结果文件夹；运行期间禁用模型、格式、参数、环境安装和开始操作，程序退出时复用 `export_handle` 停止子进程。
-- YOLO 的 ONNX、TorchScript 与 SAM2 ONNX 使用基础安装环境；SAM2 ONNX 导出依赖 PyTorch、SAM2、ONNX、ONNXScript 和 ONNX Runtime。GPU 发布版的 OpenVINO、TensorRT 和 NCNN 通过模型转换附加包提供，CPU 一体式安装器直接内置 OpenVINO、NCNN、PNNX，TensorRT 始终不可用；开发态 Pixi 环境按当前 GPU/CPU 环境组合提供对应能力。
-- GPU 模型转换附加包发布名为 `YOLOTool_ExtraEnv_<版本>.7z`，包含 OpenVINO、NCNN/PNNX 和 TensorRT 运行库，同时兼容同结构 `.zip`，不执行第三方安装器；CPU 发布不生成或安装 ExtraEnv，已安装旧版本时 GPU 必须先确认替换。
+- YOLO 的 ONNX、TorchScript 与 SAM2 ONNX 使用基础安装环境；SAM2 ONNX 导出依赖 PyTorch、SAM2、ONNX、ONNXSlim、ONNXScript 和 ONNX Runtime。OpenVINO INT8 额外依赖 NNCF。GPU 发布版由 `release-gpu` 提供 GPU ONNX Runtime，OpenVINO、NNCF、TensorRT 和 NCNN 通过模型转换附加包提供；CPU 一体式安装器直接内置 OpenVINO、NNCF、NCNN、PNNX，TensorRT 始终不可用；开发态默认环境复用 `release-gpu` 的完整能力。
+- GPU 模型转换附加包发布名为 `YOLOTool_ExtraEnv_<版本>.7z`，包含 OpenVINO、NNCF、NCNN/PNNX 和 TensorRT 运行库，同时兼容同结构 `.zip`，不执行第三方安装器；CPU 发布不生成或安装 ExtraEnv，已安装旧版本时 GPU 必须先确认替换。
 - 附加包安装显示阶段进度，拒绝路径穿越、绝对路径、符号链接、错误平台、协议不匹配、缺失文件和未登记文件；7-Zip/Zip 解压错误会使安装失败并继续使用旧版本，成功后只保留当前版本和一个上一版本。
 - 附加环境安装到当前程序目录的 `_internal/extensions/model-export-runtime/`，基础环境升级时保留该目录；旧版本位于 `%LOCALAPPDATA%/YOLOTool/` 时在升级过程中迁移到新位置。
 - GPU 未安装扩展时选择 OpenVINO、TensorRT 或 NCNN 会明确提示缺少模型转换环境包；无 NVIDIA GPU 时 OpenVINO 和 NCNN 仍可用，TensorRT 显示硬件不可用。CPU 冻结环境检测到内置 OpenVINO/NCNN/PNNX 时直接显示内置能力，TensorRT 明确提示 CPU 版不包含该后端。
-- 第一版固定 FP32、静态输入、batch 1、无内置 NMS，不开放 FP16、INT8、动态尺寸和校准流程；SAM2 ONNX 额外固定 1024 输入和单点提示。TensorRT `.engine` 受 GPU、驱动和 TensorRT 版本约束，不保证跨机器通用。
+- TensorRT `.engine` 受 GPU、驱动和 TensorRT 版本约束，不保证跨机器通用；TorchScript FP16 在无 GPU 时不可用，TensorRT 在无 NVIDIA GPU 时不可用。

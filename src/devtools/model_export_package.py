@@ -8,6 +8,12 @@ import time
 from importlib import metadata
 from pathlib import Path, PurePosixPath
 
+from src.devtools.runtime_package_boundaries import (
+    GPU_EXTRA_DISTRIBUTIONS,
+    distribution_relative_files,
+    safe_distribution_path,
+)
+
 from src.services.model_export import (
     EXPORT_PROTOCOL_VERSION,
     EXTENSION_PACKAGE_ID,
@@ -15,16 +21,10 @@ from src.services.model_export import (
 )
 
 
-OPTIONAL_DISTRIBUTIONS = (
-    "openvino",
-    "openvino-telemetry",
-    "ncnn",
-    "pnnx",
-    "tensorrt",
-    "tensorrt-cu13",
-    "tensorrt-cu13-libs",
-    "tensorrt-cu13-bindings",
-)
+OPTIONAL_DISTRIBUTIONS = GPU_EXTRA_DISTRIBUTIONS
+EXTRA_ARCHIVE_VOLUME_BYTES = 1_073_700_000
+EXTRA_ARCHIVE_VOLUME_COUNT = 2
+MAX_ARCHIVE_VOLUME_BYTES = 1_073_741_824
 
 
 def _relative_files(root: Path) -> list[str]:
@@ -48,10 +48,7 @@ def _print_elapsed(label: str, started: float) -> None:
 
 
 def _safe_distribution_path(value: object) -> Path | None:
-    path = PurePosixPath(str(value).replace("\\", "/"))
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-        return None
-    return Path(*path.parts)
+    return safe_distribution_path(value)
 
 
 def collect_optional_distributions(
@@ -67,11 +64,8 @@ def collect_optional_distributions(
         except metadata.PackageNotFoundError as exc:
             raise RuntimeError(f"模型转换环境缺少分发包：{name}") from exc
         versions[name] = distribution.version
-        for item in distribution.files or ():
-            relative = _safe_distribution_path(item)
-            if relative is None:
-                continue
-            source = Path(distribution.locate_file(item))
+        for relative in sorted(distribution_relative_files(distribution)):
+            source = Path(distribution.locate_file(relative))
             if not source.is_file():
                 continue
             target = package_root / relative
@@ -85,26 +79,66 @@ def collect_optional_distributions(
     return versions
 
 
-def _build_native_archive(staging_root: Path, archive_path: Path) -> None:
+def _validate_no_base_overlap(
+    staging_root: Path,
+    base_staging_root: Path,
+) -> None:
+    manifest_path = Path(base_staging_root) / "base-package-manifest.json"
+    if not manifest_path.is_file():
+        raise RuntimeError(f"基础包缺少清单，无法校验扩展边界：{manifest_path}")
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    base_files = {
+        PurePosixPath(str(value)).relative_to("_internal").as_posix()
+        for value in payload.get("files", [])
+        if PurePosixPath(str(value)).parts
+        and PurePosixPath(str(value)).parts[0] == "_internal"
+    }
+    extension_files = {
+        PurePosixPath(relative).as_posix()
+        for relative in _relative_files(Path(staging_root) / "packages")
+    }
+    overlap = sorted(base_files & extension_files)
+    if overlap:
+        preview = ", ".join(overlap[:8])
+        suffix = " ..." if len(overlap) > 8 else ""
+        raise RuntimeError(f"基础包与附加包存在重复文件：{preview}{suffix}")
+
+
+def _build_native_archive(
+    staging_root: Path,
+    archive_path: Path,
+    *,
+    split: bool = False,
+) -> Path:
     seven_zip = shutil.which("7z") or shutil.which("7z.exe")
     if not seven_zip:
         raise RuntimeError("未找到 Pixi 提供的 7z 命令，无法构建模型转换附加包。")
     archive_started = time.perf_counter()
     print("[Extra] 正在使用 7-Zip 压缩，下面显示实时进度：", flush=True)
-    completed = subprocess.run(
+    archive_path.unlink(missing_ok=True)
+    for volume_path in archive_path.parent.glob(f"{archive_path.name}.[0-9][0-9][0-9]"):
+        volume_path.unlink(missing_ok=True)
+    command = [
+        seven_zip,
+        "a",
+        "-t7z",
+        str(archive_path),
+        "*",
+    ]
+    if split:
+        command.append(f"-v{EXTRA_ARCHIVE_VOLUME_BYTES}b")
+    command.extend(
         [
-            seven_zip,
-            "a",
-            "-t7z",
-            str(archive_path),
-            "*",
             "-m0=lzma2",
             "-mx=5",
             "-ms=off",
             "-mmt=on",
             "-bsp1",
             "-bb0",
-        ],
+        ]
+    )
+    completed = subprocess.run(
+        command,
         cwd=staging_root,
         check=False,
     )
@@ -112,11 +146,39 @@ def _build_native_archive(staging_root: Path, archive_path: Path) -> None:
         raise RuntimeError(
             f"7z 模型转换附加包构建失败，退出码：{completed.returncode}"
         )
+    if split:
+        volume_paths = sorted(
+            archive_path.parent.glob(f"{archive_path.name}.[0-9][0-9][0-9]")
+        )
+        if not volume_paths or len(volume_paths) > EXTRA_ARCHIVE_VOLUME_COUNT:
+            raise RuntimeError(
+                f"附加环境包最多允许生成 {EXTRA_ARCHIVE_VOLUME_COUNT} 个分卷，实际生成 {len(volume_paths)} 个。"
+            )
+        if any(path.stat().st_size >= MAX_ARCHIVE_VOLUME_BYTES for path in volume_paths):
+            raise RuntimeError("附加环境包分卷必须严格小于 1 GiB。")
+        first_volume_path = archive_path.with_name(f"{archive_path.name}.001")
+        if not first_volume_path.is_file():
+            raise RuntimeError("附加环境包分卷缺少首卷 .001。")
+        _print_elapsed("[Extra] 7-Zip 分卷压缩完成", archive_started)
+        for volume_path in volume_paths:
+            print(
+                f"[Extra] 分卷：{volume_path.name} ({volume_path.stat().st_size} bytes)",
+                flush=True,
+            )
+        return first_volume_path
+    if not archive_path.is_file():
+        raise RuntimeError("附加环境包单卷归档未生成。")
     _print_elapsed("[Extra] 7-Zip 压缩完成", archive_started)
-    print(f"[Extra] 归档路径：{archive_path}", flush=True)
+    print(f"[Extra] 单卷归档：{archive_path}", flush=True)
+    return archive_path
 
 
-def build_model_export_layer(staging_root: Path, *, version: str) -> Path:
+def build_model_export_layer(
+    staging_root: Path,
+    *,
+    version: str,
+    base_staging_root: Path | None = None,
+) -> Path:
     staging_root = Path(staging_root).resolve()
     if staging_root.exists():
         shutil.rmtree(staging_root)
@@ -125,6 +187,8 @@ def build_model_export_layer(staging_root: Path, *, version: str) -> Path:
     step_started = time.perf_counter()
     versions = collect_optional_distributions(package_root)
     _print_elapsed("[Extra] 运行库文件复制完成", step_started)
+    if base_staging_root is not None:
+        _validate_no_base_overlap(staging_root, Path(base_staging_root).resolve())
     step_started = time.perf_counter()
     files = [f"packages/{relative}" for relative in _relative_files(package_root)]
     _print_elapsed("[Extra] 文件清单生成完成", step_started)
@@ -161,6 +225,8 @@ def build_model_export_archive(
     output_dir: Path,
     *,
     version: str,
+    base_staging_root: Path | None = None,
+    split: bool = False,
 ) -> Path:
     staging_root = Path(staging_root).resolve()
     output_dir = Path(output_dir).resolve()
@@ -168,11 +234,13 @@ def build_model_export_archive(
     archive_path = output_dir / f"YOLOTool_ExtraEnv_{version}.7z"
     staging_started = time.perf_counter()
     print("[Extra] 正在准备模型转换运行库 staging...", flush=True)
-    build_model_export_layer(staging_root, version=version)
+    build_model_export_layer(
+        staging_root,
+        version=version,
+        base_staging_root=base_staging_root,
+    )
     _print_elapsed("[Extra] staging 构建完成", staging_started)
-    archive_path.unlink(missing_ok=True)
-    _build_native_archive(staging_root, archive_path)
-    return archive_path
+    return _build_native_archive(staging_root, archive_path, split=split)
 
 
 def main() -> None:
@@ -180,12 +248,16 @@ def main() -> None:
     parser.add_argument("--staging-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--base-staging", type=Path)
+    parser.add_argument("--split", action="store_true")
     args = parser.parse_args()
     print(
         build_model_export_archive(
             args.staging_root,
             args.output_dir,
             version=args.version,
+            base_staging_root=args.base_staging,
+            split=args.split,
         )
     )
 

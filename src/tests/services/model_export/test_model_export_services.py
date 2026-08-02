@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,11 +23,11 @@ def test_format_mapping_targets_and_model_scan(tmp_path):
     best.write_bytes(b"best")
 
     assert resolve_export_format("TensorRT").argument == "engine"
-    assert resolve_export_format("SAM2 ONNX").argument == "sam2_onnx"
+    assert resolve_export_format("SAM2 ONNX").argument == "onnx"
     assert not resolve_export_format("OpenVINO").built_in
     assert not resolve_export_format("NCNN").built_in
-    assert export_artifact_path(base, tmp_path, "OpenVINO").name == "base_openvino_model"
-    assert export_artifact_path(base, tmp_path, "SAM2 ONNX").name == "base_sam2_onnx"
+    assert export_artifact_path(base, tmp_path, "OpenVINO").name == "base_fp32_openvino_model"
+    assert export_artifact_path(base, tmp_path, "SAM2 ONNX").name == "base_fp32.onnx"
     assert find_export_model_paths(tmp_path, tmp_path) == [best.resolve()]
     assert find_export_model_paths(tmp_path, tmp_path, include_sam_models=True) == [
         best.resolve(),
@@ -51,6 +52,7 @@ def test_build_export_command_selects_builtin_or_extension(tmp_path):
             output_dir=config.output_dir,
             export_format="ncnn",
             imgsz=640,
+            simplify=False,
         ),
         runtime_executable=tmp_path / "ModelExportRuntime.exe",
     )
@@ -84,6 +86,22 @@ def test_tensorrt_capability_does_not_import_backend(monkeypatch):
     assert imported == []
 
 
+def test_tensorrt_capability_rejects_missing_gpu_before_dependency_probe(monkeypatch):
+    from src.services.model_export import runtime as runtime_service
+
+    monkeypatch.setattr(runtime_service, "cuda_available", lambda: False)
+    monkeypatch.setattr(
+        runtime_service,
+        "_modules_available",
+        lambda _modules: (_ for _ in ()).throw(AssertionError("probe should not run")),
+    )
+
+    capability = runtime_service.export_capability("engine", frozen=False)
+
+    assert capability.available is False
+    assert "NVIDIA GPU" in capability.reason
+
+
 def test_cpu_capability_uses_builtins_and_rejects_tensorrt(monkeypatch):
     from src.services.model_export import runtime as runtime_service
 
@@ -101,6 +119,28 @@ def test_cpu_capability_uses_builtins_and_rejects_tensorrt(monkeypatch):
     assert "不包含 TensorRT" in tensorrt.reason
 
 
+def test_frozen_openvino_int8_requires_nncf_in_extension_manifest(monkeypatch):
+    from src.services.model_export import runtime as runtime_service
+
+    monkeypatch.setattr(runtime_service, "installed_variant", lambda: "gpu")
+    monkeypatch.setattr(
+        runtime_service,
+        "load_installed_extension",
+        lambda _root=None: SimpleNamespace(
+            version="runtime-1",
+            supported_formats=("openvino", "engine", "ncnn"),
+            manifest={"dependencies": {"openvino": "2026.2.1"}},
+        ),
+    )
+
+    capability = runtime_service.export_capability(
+        "openvino", precision="int8", frozen=True
+    )
+
+    assert capability.available is False
+    assert "NNCF" in capability.reason
+
+
 def test_export_uses_staging_and_replaces_only_after_success(tmp_path):
     from src.services.model_export import export_model_to_directory
 
@@ -108,7 +148,7 @@ def test_export_uses_staging_and_replaces_only_after_success(tmp_path):
     source.write_bytes(b"weights")
     output = tmp_path / "exports"
     output.mkdir()
-    target = output / "model.onnx"
+    target = output / "model_fp32.onnx"
     target.write_bytes(b"old")
 
     class FakeYOLO:
@@ -143,7 +183,7 @@ def test_export_failure_preserves_existing_target(tmp_path):
     source.write_bytes(b"weights")
     output = tmp_path / "exports"
     output.mkdir()
-    target = output / "model.torchscript"
+    target = output / "model_fp32.torchscript"
     target.write_bytes(b"old")
 
     class BrokenYOLO:
@@ -168,30 +208,41 @@ def test_export_failure_preserves_existing_target(tmp_path):
     assert not list(output.glob(".yolo-export-*"))
 
 
-def test_sam_checkpoint_is_rejected_before_yolo_loading(tmp_path):
+def test_sam2_checkpoint_routes_to_sam_exporter_before_yolo_loading(monkeypatch, tmp_path):
     from src.services.model_export import export_model_to_directory
+    from src.services.model_export import sam_onnx
 
     source = tmp_path / "sam2.1_hiera_base_plus.pt"
     source.write_bytes(b"sam checkpoint")
     called = False
+
+    expected = tmp_path / "exports" / "sam2"
+    received = {}
+
+    def fake_sam_export(options, progress=None):
+        received.update(options)
+        return expected
+
+    monkeypatch.setattr(sam_onnx, "export_sam2_model_to_directory", fake_sam_export)
 
     def yolo_factory(_model):
         nonlocal called
         called = True
         raise AssertionError("SAM checkpoint must not be passed to YOLO")
 
-    with pytest.raises(ValueError, match="不是 Ultralytics YOLO 权重"):
-        export_model_to_directory(
-            {
-                "model": str(source),
-                "format": "onnx",
-                "imgsz": 640,
-                "output_dir": str(tmp_path / "exports"),
-            },
-            yolo_factory=yolo_factory,
-        )
+    result = export_model_to_directory(
+        {
+            "model": str(source),
+            "format": "onnx",
+            "imgsz": 640,
+            "output_dir": str(tmp_path / "exports"),
+        },
+        yolo_factory=yolo_factory,
+    )
 
+    assert result == expected
     assert called is False
+    assert received["format"] == "onnx"
 
 
 def test_sam2_format_routes_to_sam_exporter(monkeypatch, tmp_path):
@@ -235,7 +286,7 @@ def test_partial_move_failure_restores_existing_target(monkeypatch, tmp_path):
     source.write_bytes(b"weights")
     output = tmp_path / "exports"
     output.mkdir()
-    target = output / "model.onnx"
+    target = output / "model_fp32.onnx"
     target.write_bytes(b"old")
 
     class FakeYOLO:

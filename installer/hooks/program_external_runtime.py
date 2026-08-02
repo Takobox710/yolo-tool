@@ -35,6 +35,7 @@ def _activate_external_runtime() -> None:
         runtime_root / "openvino" / "libs",
         runtime_root / "ncnn.libs",
         runtime_root / "pnnx",
+        runtime_root / "nncf",
     ]
     dll_paths = [path for path in dll_paths if path.is_dir()]
     for path in dll_paths:

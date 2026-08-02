@@ -6,7 +6,7 @@ Windows 冻结程序使用 PyInstaller `onedir`，GPU 与 CPU 分别发布。目
 | --- | --- | --- |
 | `YOLOTool_Setup_<程序版本>.exe` | 内嵌图标资源的 `YOLOTool.exe`、程序清单和统一安装逻辑 | 普通功能更新 |
 | `YOLOTool_BaseEnv_<基础包版本>.7z` | `_internal/`、CPU ONNX Runtime、SAM 2/2.1 Base+ 与 SAM 3 推理代码/依赖、基础运行时清单和官方模型 | 基础依赖或官方模型变化 |
-| `YOLOTool_ExtraEnv_<附加包版本>.7z` | OpenVINO、NCNN/PNNX 和 TensorRT 模型转换运行库 | 模型转换后端或扩展协议变化 |
+| `YOLOTool_ExtraEnv_<附加包版本>.7z` | OpenVINO、NNCF、NCNN/PNNX 和 TensorRT 模型转换运行库 | 模型转换后端或扩展协议变化 |
 
 CPU 变体只发布 `YOLOTool_CPU_Setup_<版本>.exe` 一体式安装包。CPU 安装包使用 CPU Torch、CPU `onnxruntime`，并直接携带 OpenVINO、OpenVINO Telemetry、NCNN、PNNX 的完整运行时 staging、模型、清单和 metadata；CPU 版不生成 BaseEnv 或 ExtraEnv 压缩包，也不携带 CUDA、TensorRT、GPU ONNX Runtime 或 NVIDIA CUDA DLL。CPU 安装器默认目录为 `YOLOTool_CPU`，并只接受 metadata 中 `variant=cpu` 的一体式安装资源。
 
@@ -18,16 +18,15 @@ CPU 变体只发布 `YOLOTool_CPU_Setup_<版本>.exe` 一体式安装包。CPU �
 
 ## Pixi 环境
 
-完整发布的冻结顺序是：先生成完整 `dist/YOLOTool` 供基础环境包提取 `_internal`，基础包归档完成后再强制清理并生成 `-ProgramOnly` 的 `dist/packages/Program/YOLOTool.exe`。Inno Setup 只读取后者，因此程序安装器不会重复携带 Python、Torch、CUDA 或其他基础运行库。
+完整发布的冻结顺序是：先生成完整 `dist/YOLOTool` 供基础环境包提取 `_internal`，基础包归档完成后再强制清理并生成 `-ProgramOnly` 的 `dist/packages/Program/YOLOTool.exe`。GPU 基础包携带 `sam2.1_hiera_base_plus.pt`，CPU 一体式运行时携带更小的 `sam2.1_hiera_tiny.pt`；Inno Setup 只读取后者，因此程序安装器不会重复携带 Python、Torch、CUDA 或其他基础运行库。
 
-- `release-base`：构建 GPU 主程序和基础包，包含 `onnx`、`onnxslim`、`onnxscript`、CPU `onnxruntime`、SAM 2/2.1 Base+ 及其基础依赖和预编译 CUDA 后处理扩展，不包含 OpenVINO、NCNN、PNNX、TensorRT 和 GPU ONNX Runtime。
-- `cpu` / `release-cpu`：构建 CPU 一体式安装器，使用 CPU Torch、CPU `onnxruntime`，并内置 OpenVINO、NCNN、PNNX；CPU 环境的锁定依赖和冻结内容通过 `src.devtools.cpu_package_guard` 检查。
-- `export-full`：开发态及附加包收集环境，使用 `onnxruntime-gpu`，并提供 OpenVINO、NCNN、PNNX 和 TensorRT CUDA 13。
-- 默认开发环境组合完整导出依赖，因此 `pixi run app` 可直接测试五种 YOLO 格式和 SAM2 ONNX；CPU 发布使用 `pixi run -e release-cpu`，`onnxruntime` 与 `onnxruntime-gpu` 不进入同一发布环境。
+- `release-gpu`：构建 GPU 主程序、基础包和附加包，使用 GPU `onnxruntime-gpu`。完整冻结环境包含全部导出依赖，基础包构建阶段会过滤 OpenVINO、NNCF、NCNN、PNNX、TensorRT 及其依赖。
+- `cpu` / `release-cpu`：构建 CPU 一体式安装器，使用 CPU Torch、CPU `onnxruntime`，并内置 OpenVINO、NNCF、NCNN、PNNX；CPU 环境的锁定依赖和冻结内容通过 `src.devtools.cpu_package_guard` 检查。
+- 默认开发环境组合 `release-gpu` 的完整导出依赖，因此 `pixi run app` 可直接测试五种格式、YOLO/SAM2 ONNX 精度转换和 INT8 校准；CPU 发布使用 `pixi run -e release-cpu`，`onnxruntime` 与 `onnxruntime-gpu` 不进入同一环境。
 
-附加包按 Python distribution 文件清单增量收集，只复制 `openvino`、`openvino-telemetry`、`ncnn`、`pnnx`、`tensorrt`、`tensorrt-cu13`、`tensorrt-cu13-libs` 和 `tensorrt-cu13-bindings`，不复制 Python、Torch、CUDA、Ultralytics、ONNX、ONNX Runtime、OpenCV 或 PySide6，也不使用宽泛的 `collect_all(...)`。附加包清单支持 `openvino`、`engine` 和 `ncnn` 三种扩展格式。
+附加包按共享的 Python distribution 文件清单增量收集，只复制 `openvino`、`openvino-telemetry`、`nncf` 及其运行时依赖、`ncnn`、`pnnx`、`tensorrt`、`tensorrt-cu13`、`tensorrt-cu13-libs` 和 `tensorrt-cu13-bindings`，不复制 Python、Torch、CUDA、Ultralytics、ONNX、ONNX Runtime、OpenCV 或 PySide6，也不使用宽泛的 `collect_all(...)`。GPU BaseEnv 使用同一清单过滤扩展文件，并在构建 ExtraEnv 时拒绝与基础包重复的文件；附加包清单支持 `openvino`、`engine` 和 `ncnn` 三种扩展格式。
 
-`installer/` 中的脚本保持按发布层次拆分：`build_windows.ps1` 负责冻结程序，`build_base_runtime_models.ps1` 负责基础包，`build_model_export_runtime.ps1` 只负责 GPU 的 OpenVINO/NCNN/TensorRT 附加包，`package_windows.ps1` 负责编排和生成安装器。所有脚本支持 `-Variant GPU|CPU`，默认仍为 GPU；CPU 传入 `-BuildModelExportRuntime` 会直接失败。完整 GPU 发布使用 `-BuildBaseRuntimeModels -BuildModelExportRuntime`，CPU 正式发布使用 `-Variant CPU -BuildBaseRuntimeModels`，程序更新则省略环境构建开关并复用同一变体的环境包。基础包和附加包都不生成或读取 `.cache.json`，每次完整发布都会重新构建 staging 和归档。基础包生成基础环境清单时只登记 `_internal` 和模型路径，不读取大型运行时文件内容；伴随包 catalog 记录包内 manifest 提供的版本和运行时协议，不记录一次性压缩产物的 SHA-256 或压缩大小。版本文本文件分别表达基础包、附加包和运行时协议版本，不能合并为单一版本号。PyInstaller 自定义 hook 只保留 Torch、SAM2 收集 hook 和程序-only 外置运行时 hook。
+`installer/` 中的脚本保持按发布层次拆分：`build_windows.ps1` 负责冻结程序，`build_base_runtime_models.ps1` 负责基础包，`build_model_export_runtime.ps1` 负责 GPU 的 OpenVINO/NNCF/NCNN/TensorRT 附加包，`package_windows.ps1` 负责编排和生成安装器。所有脚本支持 `-Variant GPU|CPU`，默认仍为 GPU；CPU 传入 `-BuildModelExportRuntime` 会直接失败。完整 GPU 发布使用 `-BuildBaseRuntimeModels -BuildModelExportRuntime`，CPU 正式发布使用 `-Variant CPU -BuildBaseRuntimeModels`，程序更新则省略环境构建开关并复用同一变体的环境包。基础包和附加包都不生成或读取 `.cache.json`，每次完整发布都会重新构建 staging 和归档。基础包生成基础环境清单时只登记 `_internal` 和模型路径，不读取大型运行时文件内容；伴随包 catalog 记录包内 manifest 提供的版本和运行时协议，不记录一次性压缩产物的 SHA-256 或压缩大小。版本文本文件分别表达基础包、附加包和运行时协议版本，不能合并为单一版本号。PyInstaller 自定义 hook 只保留 Torch、SAM2 收集 hook 和程序-only 外置运行时 hook。
 
 打包窗口会显示中文阶段提示和每个阶段耗时。PyInstaller 阶段显示构建开始、完成和耗时，但 PyInstaller 本身不提供稳定的总百分比接口；GPU 基础包和附加包进入原生 7-Zip 压缩后会显示实时压缩百分比和压缩耗时，使用 `mx=5`、非固实 LZMA2 和 `-mmt=on`。CPU 阶段显示运行时 staging 构建，不执行归档压缩。
 
@@ -51,7 +50,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode 
 
 开发快包输出到 `dist/YOLOTool-dev/`，用于本地验证 GUI 和隐藏 CLI，不作为用户安装发布物。完整冻结输出会同时写入根目录 `release-manifest.json` 和 `runtime-manifest.json`，因此可直接启动；运行时清单只用于安装器 `--runtime-probe` 和诊断流程，GUI 启动不再因清单或版本不匹配强制退出。`-ProgramOnly` 输出仍需要已有基础环境才能提供完整功能，但安装器允许在缺少新基础包时保留旧环境完成程序更新。
 
-SAM 智能辅助标注复用基础包 v3 的 SAM 2/2.1 代码、配置、Torch/CUDA、OpenCV、Pillow 和 `data/models/sam2.1_hiera_base_plus.pt`；模型目录会识别全部 `sam` 前缀权重，未知自定义名称只显示、不猜测配置。SAM 3 官方代码固定在提交 `6dbb02bd38288df755dfa1378000a861e65b84f6`，以 Windows 推理专用 vendor wheel 和许可证随基础包发布；同一 runtime 同时提供文本预标注和启用实例交互的 CUDA 画布单点预测。wheel 放宽 NumPy 元数据以兼容项目 NumPy 2.x，并使用 OpenCV fallback 替代 Triton，明确不包含 Flash Attention、Triton 或训练依赖。官方 `sam3.pt` checkpoint 不打包、不进 git，由用户自行放入 `data/models/`；它可在 CUDA 下用于画布点提示辅助标注和 AI 文本预标注。GUI 通过 `YOLOTool.exe --sam-assist-runtime` 与 `YOLOTool.exe --yolo-ai-runtime` 启动交互式隐藏子进程；程序层必须包含对应 CLI 分发代码以及由 `src/assets.qrc` 编译进 `assets_rc.py` 的 `sam_assist.svg`。
+SAM 智能辅助标注复用基础包 v3 的 SAM 2/2.1 代码、配置、Torch/CUDA、OpenCV、Pillow；GPU 基础包携带 `data/models/sam2.1_hiera_base_plus.pt`，CPU 一体式运行时携带 `data/models/sam2.1_hiera_tiny.pt`。模型目录会识别全部 `sam` 前缀权重，未知自定义名称只显示、不猜测配置。SAM 3 官方代码固定在提交 `6dbb02bd38288df755dfa1378000a861e65b84f6`，以 Windows 推理专用 vendor wheel 和许可证随基础包发布；同一 runtime 同时提供文本预标注和启用实例交互的 CUDA 画布单点预测。wheel 放宽 NumPy 元数据以兼容项目 NumPy 2.x，并使用 OpenCV fallback 替代 Triton，明确不包含 Flash Attention、Triton 或训练依赖。官方 `sam3.pt` checkpoint 不打包、不进 git，由用户自行放入 `data/models/`；它可在 CUDA 下用于画布点提示辅助标注和 AI 文本预标注。GUI 通过 `YOLOTool.exe --sam-assist-runtime` 与 `YOLOTool.exe --yolo-ai-runtime` 启动交互式隐藏子进程；程序层必须包含对应 CLI 分发代码以及由 `src/assets.qrc` 编译进 `assets_rc.py` 的 `sam_assist.svg`。
 
 冻结程序包含系统设置页的 GitHub Release 检查逻辑，不新增运行时依赖；用户需要能访问 `api.github.com` 才能获得版本检查结果。检查失败不会影响程序启动、训练或验证。更新窗口将选中的资源下载到 Windows Shell 解析出的真实 `Downloads` 文件夹；环境包更新通过 Release 文件名版本与本机安装清单或 `package-info.ini` 版本比较，Release 始终携带同版本环境包时不会误报更新。源码开发态使用 `installer/base-runtime-models-version.txt` 和 `installer/model-export-runtime-version.txt` 作为当前环境包版本；基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，不触发“环境包也有更新”；仅当已安装附加包的版本低于 Release 时才触发附加包更新提示。程序与更高版本基础包同时需要更新时默认选择两者，仅程序更新时默认选择程序包，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时显示红色重装提醒，基础包单独留下时在进度条下方显示不可安装的红色提醒。附加环境包在仅勾选附加包、同时勾选程序包或三项全部勾选时，按是否已有附加包显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换。已有安装但缺少更新基础包时，安装器保留旧环境并警告版本不匹配或环境不完整，继续完成程序更新；首次安装缺少基础包时在组件页直接阻止提交，安装提交阶段不会生成没有运行环境的程序-only 首次安装。附加包可以在程序内热安装或替换。下载按钮右侧提供暂停和停止，下载期间可隐藏窗口且后台任务继续，重新打开时复用原窗口；安装器启动失败会在窗口中显示为可恢复错误。
 
@@ -65,9 +64,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_model_export_runti
 根目录提供两个双击入口：
 
 - `打包更新程序.bat`：使用 PowerShell 7 直接调用 GPU `package_windows.ps1`，复用 `installer/output/` 中已有的 GPU 基础环境包，只重建程序-only 冻结文件、companion catalog 和程序安装器；已有附加包会登记到 catalog，但不会重建环境包。
-- `打包程序.bat`：使用 PowerShell 7，输入 `C` 构建 CPU 一体式完整安装包，输入 `G` 构建 GPU 完整发布，直接回车构建 GPU 程序和基础环境。CPU 不生成 BaseEnv/ExtraEnv 压缩包。
+- `打包程序.bat`：使用 PowerShell 7 打开 1 至 9 的数字菜单，依次提供 GPU+CPU 全量发布、GPU 全量发布、GPU BaseEnv 单卷/分卷、GPU ExtraEnv 单卷/分卷、GPU 程序安装器、CPU 全量发布和本地开发快包。按数字后立即启动流程；全量发布与环境归档使用 `-Clean`，程序安装器和开发快包保持现有默认行为。CPU 不生成 BaseEnv/ExtraEnv 压缩包。
 
-两个 BAT 均使用纯 ASCII 内容、CRLF 换行，并通过 PowerShell 7 的 `pwsh.exe` 执行，避免调用 Windows PowerShell 5.1。
+`打包程序.bat` 是纯 ASCII 的 PowerShell 7 启动包装，中文菜单由 `installer/packaging_menu.ps1` 输出并通过按键读取，避免让 `cmd.exe` 直接解析中文和括号；`打包更新程序.bat` 保持原有内容。菜单脚本使用 UTF-8 编码，两个入口均通过 PowerShell 7 的 `pwsh.exe` 执行，避免调用 Windows PowerShell 5.1。
 
 完整发布对应的 PowerShell 命令为：
 
@@ -81,9 +80,9 @@ CPU 正式发布命令为：
 pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Variant CPU -BuildBaseRuntimeModels -Clean
 ```
 
-GPU 程序更新入口要求当前版本基础包已经存在，否则会明确报错并停止；附加包不存在时仍可生成程序安装器。CPU 程序更新可复用已有 CPU 安装目录中的一体式运行时，不下载或生成外部环境包。PowerShell 下也可单独使用 `-SkipBaseRuntimeModels` 或 `-SkipModelExportRuntime`。默认完整命令每次重新复制、生成清单并压缩 GPU 环境包 staging；CPU 只重新生成 staging 并由 Inno Setup 内嵌。`-Clean` 用于强制完整重建，并清理对应的冻结输出、staging 和归档。GPU 压缩参数使用基础包和附加包原生 7-Zip `mx=5`、非固实 LZMA2 与 `-mmt=on`；GPU 基础包仅在显式 `-SplitBaseArchive` 时分卷。旧 `Full`、`AppUpdate`、`RuntimeFull` 参数保留一个过渡周期，输出弃用警告后转发到 `Program`。
+GPU 程序更新入口要求当前版本基础包已经存在，否则会明确报错并停止；附加包不存在时仍可生成程序安装器。CPU 程序更新可复用已有 CPU 安装目录中的一体式运行时，不下载或生成外部环境包。PowerShell 下也可单独使用 `-SkipBaseRuntimeModels` 或 `-SkipModelExportRuntime`。默认完整命令每次重新复制、生成清单并压缩 GPU 环境包 staging；CPU 只重新生成 staging 并由 Inno Setup 内嵌。`-Clean` 用于强制完整重建，并清理对应的冻结输出、staging 和归档。GPU 压缩参数使用基础包和附加包原生 7-Zip `mx=5`、非固实 LZMA2 与 `-mmt=on`；基础包和附加包分别通过 `-SplitBaseArchive`、`-SplitArchive` 启用分卷，统一使用 `-v1073700000b`，每卷严格小于 `1 GiB`，最多生成 `.001/.002`。旧 `Full`、`AppUpdate`、`RuntimeFull` 参数保留一个过渡周期，输出弃用警告后转发到 `Program`。
 
-`installer/base-runtime-models-version.txt`、`runtime-version.txt` 和 `model-export-runtime-version.txt` 分别控制基础包、运行时兼容协议和附加包版本。当前基础包为 `v3`、附加包为 `v2`，运行时协议仍为 `runtime-2`；默认基础包为单个 `.7z`，特殊分卷模式下才要求同一目录、同一版本和连续的 `.001/.002` 后缀，只有对应内容变化时才提升版本。
+`installer/base-runtime-models-version.txt`、`runtime-version.txt` 和 `model-export-runtime-version.txt` 分别控制基础包、运行时兼容协议和附加包版本。当前基础包为 `v3`、附加包为 `v2`，运行时协议仍为 `runtime-2`；默认两个 GPU 环境包均为单个 `.7z`，分卷模式下要求同一目录、同一版本和连续的 `.001/.002` 后缀，只有对应内容变化时才提升版本。
 
 ## 安装流程
 
@@ -144,4 +143,4 @@ GPU 安装器在压缩包校验页结束后使用普通百分比进度条显示�
 - 覆盖首次安装、仅程序升级、强制基础包升级、主动重装、确认降级、并行实例与卸载保留数据。
 - 使用 detect 与 OBB 模型完成五格式烟雾导出，并使用 SAM2.1 Base+ 完成双文件 ONNX 烟雾导出；GPU 版 TensorRT 仅在兼容 NVIDIA CUDA 13 发布机验证，CPU 版验证 ONNX、TorchScript、OpenVINO 和 NCNN，并确认 TensorRT 不可用。
 
-Inno Setup 要求 6.4 或更高版本。简体中文语言资源固定在 `installer/languages/ChineseSimplified.isl`，构建机无需额外安装语言包。
+Inno Setup 要求 7.0.2 或更高版本。`installer/package_windows.ps1` 会搜索 Inno Setup 7 的标准/自定义安装目录和注册表路径；不再使用 Inno Setup 6 编译器。简体中文语言资源固定在 `installer/languages/ChineseSimplified.isl`，构建机无需额外安装语言包。

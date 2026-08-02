@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import zipfile
+from importlib import metadata
 from pathlib import Path
 
 from src.services.runtime.release_manifest import MANIFEST_SCHEMA_VERSION, ReleaseManifestError
@@ -17,21 +18,50 @@ from src.devtools.package_files import (
     relative_files,
     write_json,
 )
+from src.devtools.runtime_package_boundaries import (
+    distribution_path_roots,
+    extension_distribution_paths,
+    is_excluded_relative_path,
+)
 
 
 BASE_PACKAGE_SCHEMA_VERSION = 1
 BASE_PACKAGE_ID = "yolo-tool-base-runtime-models"
 BASE_MANIFEST_NAME = "base-package-manifest.json"
 MANAGED_MODELS_NAME = "managed-models.json"
-BASE_MODEL_NAMES = (
+GPU_BASE_MODEL_NAMES = (
     "yolo11s.pt",
     "yolo26n.pt",
     "yolov8n.pt",
     "sam2.1_hiera_base_plus.pt",
 )
+CPU_BASE_MODEL_NAMES = (
+    "yolo11s.pt",
+    "yolo26n.pt",
+    "yolov8n.pt",
+    "sam2.1_hiera_tiny.pt",
+)
+# Keep the historical export pointing at the GPU release list.
+BASE_MODEL_NAMES = GPU_BASE_MODEL_NAMES
 STDLIB_ARCHIVE_NAME = "python_stdlib.zip"
 BASE_ARCHIVE_VOLUME_BYTES = 1_073_700_000
 BASE_ARCHIVE_VOLUME_COUNT = 2
+
+
+def base_model_names_for_variant(variant: str) -> tuple[str, ...]:
+    return CPU_BASE_MODEL_NAMES if normalize_variant(variant) == "cpu" else GPU_BASE_MODEL_NAMES
+
+
+def _gpu_extension_exclusions(variant: str) -> tuple[set[Path], set[str]]:
+    if variant != "gpu":
+        return set(), set()
+    try:
+        paths = extension_distribution_paths()
+    except metadata.PackageNotFoundError as exc:
+        raise ReleaseManifestError(
+            f"GPU 打包环境缺少模型转换分发包：{exc.name}"
+        ) from exc
+    return paths, distribution_path_roots(paths)
 
 
 def build_standard_library_archive(destination: Path) -> None:
@@ -66,16 +96,27 @@ def build_base_runtime_layer(
     if staging_root.exists():
         shutil.rmtree(staging_root)
     staging_root.mkdir(parents=True)
+    extension_paths, extension_roots = _gpu_extension_exclusions(variant)
 
     staging_started = time.perf_counter()
     step_started = time.perf_counter()
     print("[Base] 正在复制冻结运行时文件...", flush=True)
-    copy_tree(runtime_root, staging_root / "_internal")
+    copy_tree(
+        runtime_root,
+        staging_root / "_internal",
+        exclude_paths=extension_paths,
+        exclude_roots=extension_roots,
+    )
     print_elapsed("[Base] 冻结运行时复制完成", step_started, perf_counter=time.perf_counter)
     if (runtime_root / "base_library.zip").is_file():
         step_started = time.perf_counter()
         print("[Base] 正在复制第三方 Python 源码...", flush=True)
-        copy_third_party_python_sources(staging_root / "_internal", sys_prefix=Path(sys.prefix))
+        copy_third_party_python_sources(
+            staging_root / "_internal",
+            sys_prefix=Path(sys.prefix),
+            exclude_paths=extension_paths,
+            exclude_roots=extension_roots,
+        )
         print_elapsed("[Base] 第三方 Python 源码复制完成", step_started, perf_counter=time.perf_counter)
         step_started = time.perf_counter()
         print("[Base] 正在生成 Python 标准库压缩包...", flush=True)
@@ -90,7 +131,7 @@ def build_base_runtime_layer(
     target_models.mkdir(parents=True, exist_ok=True)
     step_started = time.perf_counter()
     print("[Base] 正在复制基础模型...", flush=True)
-    for model_name in BASE_MODEL_NAMES:
+    for model_name in base_model_names_for_variant(variant):
         model_path = model_source / model_name
         if not model_path.is_file():
             raise ReleaseManifestError(f"基础模型包缺少 data/models/{model_name}")
@@ -100,6 +141,19 @@ def build_base_runtime_layer(
     step_started = time.perf_counter()
     print("[Base] 正在生成文件清单...", flush=True)
     runtime_files = relative_files(staging_root / "_internal")
+    overlap = [
+        relative
+        for relative in runtime_files
+        if is_excluded_relative_path(
+            Path(relative),
+            excluded_paths=extension_paths,
+            excluded_roots=extension_roots,
+        )
+    ]
+    if overlap:
+        preview = ", ".join(overlap[:8])
+        suffix = " ..." if len(overlap) > 8 else ""
+        raise ReleaseManifestError(f"基础包仍包含附加环境文件：{preview}{suffix}")
     write_json(
         staging_root / "runtime-manifest.json",
         {
@@ -217,6 +271,8 @@ def build_base_runtime_archive(
 __all__ = [
     "BASE_MANIFEST_NAME",
     "BASE_MODEL_NAMES",
+    "CPU_BASE_MODEL_NAMES",
+    "GPU_BASE_MODEL_NAMES",
     "BASE_PACKAGE_ID",
     "BASE_PACKAGE_SCHEMA_VERSION",
     "BASE_ARCHIVE_VOLUME_BYTES",
@@ -226,4 +282,5 @@ __all__ = [
     "build_base_runtime_archive",
     "build_base_runtime_layer",
     "build_standard_library_archive",
+    "base_model_names_for_variant",
 ]

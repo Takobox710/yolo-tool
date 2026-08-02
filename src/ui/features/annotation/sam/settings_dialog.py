@@ -253,9 +253,9 @@ class SamAdvancedSettingsDialog(QDialog):
         )
         if selected_model is None:
             return
-        QDesktopServices.openUrl(
-            QUrl.fromLocalFile(str(selected_model.checkpoint_path.parent.resolve()))
-        )
+        target = selected_model.checkpoint_path
+        folder = target if target.is_dir() else target.parent
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder.resolve())))
 
     def set_values(self, values: dict[str, Any]) -> None:
         multimask = bool(values.get("multimask_output", False))

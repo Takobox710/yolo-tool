@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from src.services.runtime.release_manifest import ReleaseManifestError
+from src.devtools.runtime_package_boundaries import is_excluded_relative_path
 
 
 THIRD_PARTY_SOURCE_EXCLUDE_ROOTS = frozenset(
@@ -53,10 +54,29 @@ def copy_file(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
-def copy_tree(source: Path, destination: Path) -> None:
+def copy_tree(
+    source: Path,
+    destination: Path,
+    *,
+    exclude_paths: set[Path] | frozenset[Path] = frozenset(),
+    exclude_roots: set[str] | frozenset[str] = frozenset(),
+) -> None:
     if not source.is_dir():
         raise ReleaseManifestError(f"打包源目录不存在: {source}")
-    shutil.copytree(source, destination, dirs_exist_ok=True)
+    if not exclude_paths and not exclude_roots:
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+        return
+    for item in sorted(source.rglob("*")):
+        if not item.is_file():
+            continue
+        relative = item.relative_to(source)
+        if is_excluded_relative_path(
+            relative,
+            excluded_paths=exclude_paths,
+            excluded_roots=exclude_roots,
+        ):
+            continue
+        copy_file(item, destination / relative)
 
 
 def relative_files(root: Path) -> list[str]:
@@ -91,14 +111,20 @@ def write_package_info(
         config.write(handle)
 
 
-def copy_third_party_python_sources(runtime_root: Path, *, sys_prefix: Path) -> None:
+def copy_third_party_python_sources(
+    runtime_root: Path,
+    *,
+    sys_prefix: Path,
+    exclude_paths: set[Path] | frozenset[Path] = frozenset(),
+    exclude_roots: set[str] | frozenset[str] = frozenset(),
+) -> None:
     """Restore pure package files that PyInstaller normally embeds in PYZ."""
     site_packages = Path(sys_prefix) / "Lib" / "site-packages"
     if not site_packages.is_dir():
         raise ReleaseManifestError(f"第三方包目录不存在: {site_packages}")
     skip_parts = THIRD_PARTY_SOURCE_EXCLUDE_PARTS | {"__pycache__"}
     robocopy = shutil.which("robocopy") if os.name == "nt" else None
-    if robocopy:
+    if robocopy and not exclude_paths and not exclude_roots:
         completed = subprocess.run(
             [
                 robocopy, str(site_packages), str(runtime_root), "*.py", "/S",
@@ -118,6 +144,12 @@ def copy_third_party_python_sources(runtime_root: Path, *, sys_prefix: Path) -> 
     for source in sorted(site_packages.rglob("*.py")):
         relative = source.relative_to(site_packages)
         if should_skip_third_party_source(relative):
+            continue
+        if is_excluded_relative_path(
+            relative,
+            excluded_paths=exclude_paths,
+            excluded_roots=exclude_roots,
+        ):
             continue
         destination = runtime_root / relative
         destination.parent.mkdir(parents=True, exist_ok=True)

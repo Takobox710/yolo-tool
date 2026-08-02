@@ -27,7 +27,7 @@ $env:YOLO_TOOL_PROGRAM_ONLY = if ($ProgramOnly) { "1" } else { "0" }
 $PreviousBuildVariant = $env:YOLO_TOOL_BUILD_VARIANT
 $env:YOLO_TOOL_BUILD_VARIANT = $Variant.ToLowerInvariant()
 
-$RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-base" }
+$RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-gpu" }
 
 $AppName = if ($Mode -eq "dev") {
     "YOLOTool-dev"
@@ -127,9 +127,13 @@ if ($ProgramOnly) {
     $BaseModelNames = @(
         "yolo11s.pt",
         "yolo26n.pt",
-        "yolov8n.pt",
-        "sam2.1_hiera_base_plus.pt"
+        "yolov8n.pt"
     )
+    $BaseModelNames += if ($Variant -eq "CPU") {
+        "sam2.1_hiera_tiny.pt"
+    } else {
+        "sam2.1_hiera_base_plus.pt"
+    }
     $SourceModelFiles = @()
     if (Test-Path -LiteralPath $SourceModelsDir) {
         foreach ($ModelName in $BaseModelNames) {

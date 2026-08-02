@@ -49,6 +49,11 @@ PACKAGE_SPECS: dict[str, dict[str, tuple[str, ...] | str]] = {
         "distributions": ("tensorrt",),
         "version_attribute": "__version__",
     },
+    "NNCF": {
+        "module": "nncf",
+        "distributions": ("nncf",),
+        "version_attribute": "__version__",
+    },
 }
 
 

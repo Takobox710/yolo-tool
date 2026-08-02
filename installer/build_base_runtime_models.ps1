@@ -64,7 +64,7 @@ if ($NoArchive) {
     }
     $PackageArgs += "--staging-only"
 }
-& pixi run -e $(if ($Variant -eq "CPU") { "release-cpu" } else { "release-base" }) python @PackageArgs
+& pixi run -e $(if ($Variant -eq "CPU") { "release-cpu" } else { "release-gpu" }) python @PackageArgs
 if ($LASTEXITCODE -ne 0) {
     throw "基础环境和模型归档构建失败，退出码：$LASTEXITCODE"
 }

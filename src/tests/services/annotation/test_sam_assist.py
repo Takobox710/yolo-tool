@@ -56,6 +56,104 @@ def test_sam_model_catalog_simplifies_known_sam_versions_and_sizes(tmp_path):
         assert spec.display_name == display_name
 
 
+def test_sam_model_catalog_discovers_onnx_export_directory(tmp_path):
+    import json
+
+    from src.services.annotation.sam_assist import (
+        find_sam_model_specs,
+        sam_model_spec_from_path,
+    )
+
+    export = (
+        tmp_path
+        / "data"
+        / "models"
+        / "model_exports"
+        / "sam2.1_hiera_tiny_sam2_onnx_int8"
+    )
+    export.mkdir(parents=True)
+    (export / "image_encoder.onnx").write_bytes(b"encoder")
+    (export / "mask_decoder.onnx").write_bytes(b"decoder")
+    (export / "metadata.json").write_text(
+        json.dumps(
+            {
+                "model_kind": "sam2",
+                "precision": "int8",
+                "source_model": "sam2.1_hiera_tiny.pt",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    spec = sam_model_spec_from_path(export)
+    assert spec is not None
+    assert spec.runtime_kind == "sam2_onnx"
+    assert spec.supports_assist is True
+    assert spec.display_name == "sam2.1_hiera_tiny · ONNX INT8"
+    assert find_sam_model_specs(tmp_path, tmp_path)[0] == spec
+
+
+def test_sam2_onnx_runtime_uses_original_image_coordinates(tmp_path, monkeypatch):
+    import numpy as np
+    from PIL import Image
+
+    from src.services.annotation.sam_onnx_canvas import Sam2OnnxCanvasRuntime
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "image_encoder.onnx").write_bytes(b"encoder")
+    (model_dir / "mask_decoder.onnx").write_bytes(b"decoder")
+    image = tmp_path / "image.png"
+    Image.new("RGB", (512, 256), color="white").save(image)
+
+    class FakeInput:
+        def __init__(self, name):
+            self.name = name
+
+    class FakeSession:
+        def __init__(self, path, providers):
+            self.path = str(path)
+            self.calls = []
+
+        def get_inputs(self):
+            if self.path.endswith("image_encoder.onnx"):
+                return [FakeInput("image")]
+            return [
+                FakeInput("image_embed"),
+                FakeInput("high_res_0"),
+                FakeInput("high_res_1"),
+                FakeInput("point_coords"),
+                FakeInput("point_labels"),
+            ]
+
+        def run(self, _outputs, values):
+            self.calls.append(values)
+            if self.path.endswith("image_encoder.onnx"):
+                return [
+                    np.zeros((1, 256, 64, 64), dtype=np.float32),
+                    np.zeros((1, 32, 256, 256), dtype=np.float32),
+                    np.zeros((1, 64, 128, 128), dtype=np.float32),
+                ]
+            mask = np.full((1, 3, 1024, 1024), -1.0, dtype=np.float32)
+            mask[:, :, 400:600, 300:500] = 1.0
+            return [mask, np.asarray([[0.1, 0.9, 0.2]], dtype=np.float32)]
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "onnxruntime",
+        type("Ort", (), {"InferenceSession": FakeSession}),
+    )
+    runtime = Sam2OnnxCanvasRuntime()
+    runtime.load_model(model_dir)
+    runtime.set_image(image)
+    masks, scores = runtime.predict_point(128, 64, multimask_output=False)
+
+    assert masks.shape == (3, 256, 512)
+    np.testing.assert_allclose(scores, [0.1, 0.9, 0.2], rtol=1e-6, atol=1e-6)
+    point = runtime.decoder.calls[0]["point_coords"]
+    np.testing.assert_allclose(point, [[[256.0, 256.0]]])
+
+
 def test_sam3_canvas_runtime_forwards_point_prompt(monkeypatch):
     from src.services.annotation.sam_runtime import _Sam3CanvasRuntime
 

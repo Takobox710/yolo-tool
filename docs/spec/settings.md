@@ -24,6 +24,7 @@
 - 首次安装、基础环境缺失或版本不兼容时，优先提供匹配的本体环境和模型 `.7z`；首次安装缺少基础包时安装器阻止继续；已有安装缺少新基础包时允许只更新程序、保留旧环境并警告部分功能可能无法使用。基础包安装后的运行环境版本不匹配或自检未通过时也只显示警告并继续安装，不恢复旧版本。
 - GPU 模型转换附加环境始终可选。系统设置页支持点击选择或拖入附加包，安装到当前程序目录 `_internal/extensions/model-export-runtime/`；CPU 版不显示此控件，手动导入 GPU 附加包时拒绝安装。旧版本位于 `%LOCALAPPDATA%/YOLOTool/` 时自动迁移，同盘原子移动，跨盘复制完成后删除旧目录。仅勾选 GPU 附加包，或同时勾选程序安装包和附加包时，都会根据是否已有附加包分别显示自动安装或下载替换提示；三项全部勾选时会合并显示基础包重装和附加包替换状态；已有附加包时下载前需要确认替换。
 - GPU 安装器组件页只快速检查默认单卷 `YOLOTool_BaseEnv_<版本>.7z` 或特殊分卷首卷 `.7z.001`，以及 `YOLOTool_ExtraEnv_<版本>.7z` 版本化名称，不绑定压缩大小或归档 SHA-256；特殊分卷缺少 `.002` 时视为不可用，metadata 中 `variant` 不匹配时同样拒绝。CPU 安装器不检查外部 BaseEnv/ExtraEnv，而是把 CPU 基础运行时 staging 直接内嵌到 `YOLOTool_CPU_Setup_<版本>.exe`；CPU Release 更新也只下载 CPU Setup。软件内 GPU 附加包安装优先由基础包携带的原生 7-Zip 完成并使用 CRC，安装清单隐藏在 `_internal/yolotool_metadata/`。
+- GPU BaseEnv 只包含 `release-gpu` 的基础运行库、GPU `onnxruntime-gpu`、模型和 SAM 资源；OpenVINO、NNCF、NCNN、PNNX、TensorRT 及其依赖由 ExtraEnv 单独提供。CPU 一体式运行时继续使用独立的 CPU `onnxruntime`，两个变体不能混用。
 - 安装成功页在右侧“启动 YOLOTool”选项下方提供“安装完成后删除本次使用的安装包和环境包”，勾选后延迟删除本次使用的安装器、基础环境包和附加环境包。
 - 安装开始前由 Inno Setup 的 Windows Restart Manager 注册当前安装目录中的 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不弹出是否停止应用的询问页，其他安装目录的实例不受影响；自动关闭不负责恢复未保存的程序状态。
 
@@ -48,6 +49,12 @@
 - 页面设置变更由 `WorkbenchContext.save_settings()` 比较快照后持久化，并只广播实际变化字段；项目切换时递增 generation，使旧页面的后台结果失效。
 
 ## 设置项行为
+
+- `model_export` 保存模型导出页的完整配置：`format`、`precision`、`batch`、`imgsz`、`simplify`、`dynamic_batch`、`dynamic_height`、`dynamic_width`、`nms`、`nms_conf`、`nms_iou`、`nms_max_det`、`agnostic_nms`、`opset`、`workspace`、`optimize`、`calibration_data`、`calibration_samples`、`validate_quantized` 和 `validation_samples`。
+- 模型格式转换页的公共字段始终共享当前设置；格式专属字段切换时在页面内按格式缓存未提交值，当前选中格式仍实时写入上述 `model_export` 字段。应用重启后恢复当前选中格式的持久化配置。
+- `format` 的用户入口只有 `onnx`、`torchscript`、`openvino`、`engine`（TensorRT）和 `ncnn`；旧值 `sam2_onnx` / `SAM2 ONNX` 读取时迁移为 `onnx`。选择 ONNX 后由可识别的 checkpoint 文件名区分 YOLO 与 SAM2/SAM2.1，SAM2 固定 1024、batch=1、单点提示。
+- `precision` 统一使用 `fp32`、`fp16`、`int8`；旧 `quantize=32/16/8` 读取时迁移。INT8 字段只在选中 INT8 且后端支持校准时参与页面配置，校准路径可为 `dataset.yaml`、图片目录或图片列表，样本数量是上限；通用校准集下载到应用运行时缓存，不写入项目设置之外的模型产物。
+- 无效后端字段不写入导出命令：TorchScript 不接收 INT8/图简化，OpenVINO 不接收图简化，TensorRT 不接收 ONNX `opset`，NCNN 不接收 INT8、动态轴、NMS 或图简化；旧 `simplify` 字段仍保留并按能力归一化。
 
 - `annotation.sam_assist` 按项目保存画布辅助模型文件名及四项高级参数：`multimask_output=false`、`minimum_score=0.0`、`minimum_area=4`、`polygon_simplification_ratio=0.002`（可调范围 `0.0~0.015`）；启用状态不保存。旧设置缺少字段时按默认值补齐，非法类型只回退对应字段。
 - 标注页保存 `annotation.load_yolo_when_labelme_missing`，默认关闭；开启后无 Labelme JSON 时自动读取同名 YOLO 标注显示，任务类别探测始终独立执行。任务设置同时保存 `task.mode_selected`，用于区分全局任务类型与初始化时的`未选择`占位状态。

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from src.bootstrap.cli_common import _emit_structured, _parse_key_values
 
@@ -11,12 +12,13 @@ def _run_export_cli_impl(argv: list[str]) -> int:
     if not options.get("model"):
         raise SystemExit("Missing model=... for export")
     from src.services.ultralytics_compat import ensure_cv2_highgui_compat
-    from src.services.model_export import export_model_to_directory
+    from src.services.model_export import export_model_to_directory, model_kind_from_path
 
     ensure_cv2_highgui_compat()
     try:
         yolo_factory = None
-        if str(options.get("format") or "").strip().lower() != "sam2_onnx":
+        model_kind = model_kind_from_path(Path(str(options.get("model"))))
+        if model_kind != "sam2":
             from ultralytics import YOLO
 
             yolo_factory = YOLO
@@ -44,6 +46,7 @@ def _run_export_probe_cli_impl(argv: list[str]) -> int:
         "ncnn": "ncnn",
         "pnnx": "pnnx",
         "tensorrt": "tensorrt",
+        "nncf": "nncf",
     }
     versions: dict[str, str] = {}
     missing: list[str] = []

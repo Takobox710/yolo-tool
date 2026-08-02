@@ -126,6 +126,23 @@ class ModelExportSettings:
     format: str
     imgsz: int
     simplify: bool
+    precision: str
+    batch: int
+    dynamic_batch: bool
+    dynamic_height: bool
+    dynamic_width: bool
+    nms: bool
+    nms_conf: float
+    nms_iou: float
+    nms_max_det: int
+    agnostic_nms: bool
+    opset: int | None
+    workspace: float | None
+    optimize: bool
+    calibration_data: str
+    calibration_samples: int
+    validate_quantized: bool
+    validation_samples: int
 
 
 @dataclass(slots=True)

@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 def test_collector_copies_only_safe_distribution_files(monkeypatch, tmp_path):
     from src.devtools import model_export_package
@@ -95,3 +97,84 @@ def test_model_export_archive_always_rebuilds_without_cache(monkeypatch, tmp_pat
     )
     assert not marker.exists()
     assert not cache_path.exists()
+
+
+def test_model_export_archive_can_use_split_volumes(monkeypatch, tmp_path):
+    from src.devtools import model_export_package
+
+    source = tmp_path / "source"
+    (source / "backend").mkdir(parents=True)
+    (source / "backend" / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    class FakeDistribution:
+        version = "1.0"
+        files = [Path("backend/__init__.py")]
+
+        @staticmethod
+        def locate_file(item):
+            return source / item
+
+    monkeypatch.setattr(model_export_package, "OPTIONAL_DISTRIBUTIONS", ("optional",))
+    monkeypatch.setattr(
+        model_export_package.metadata,
+        "distribution",
+        lambda _name: FakeDistribution(),
+    )
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        archive_path = Path(command[3])
+        archive_path.with_name(f"{archive_path.name}.001").write_bytes(b"part 1")
+        archive_path.with_name(f"{archive_path.name}.002").write_bytes(b"part 2")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(model_export_package.shutil, "which", lambda _name: "7z.exe")
+    monkeypatch.setattr(model_export_package.subprocess, "run", fake_run)
+
+    archive_path = model_export_package.build_model_export_archive(
+        tmp_path / "staging",
+        tmp_path / "output",
+        version="v1",
+        split=True,
+    )
+
+    assert archive_path.name == "YOLOTool_ExtraEnv_v1.7z.001"
+    assert "-v1073700000b" in commands[0]
+    assert (tmp_path / "output" / "YOLOTool_ExtraEnv_v1.7z.002").is_file()
+
+
+def test_model_export_layer_rejects_files_already_owned_by_base(monkeypatch, tmp_path):
+    from src.devtools import model_export_package
+
+    source = tmp_path / "source"
+    (source / "backend").mkdir(parents=True)
+    (source / "backend" / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    class FakeDistribution:
+        version = "1.0"
+        files = [Path("backend/__init__.py")]
+
+        @staticmethod
+        def locate_file(item):
+            return source / item
+
+    monkeypatch.setattr(model_export_package, "OPTIONAL_DISTRIBUTIONS", ("optional",))
+    monkeypatch.setattr(
+        model_export_package.metadata,
+        "distribution",
+        lambda _name: FakeDistribution(),
+    )
+    base_staging = tmp_path / "base"
+    base_staging.mkdir()
+    (base_staging / "base-package-manifest.json").write_text(
+        '{"files": ["_internal/backend/__init__.py"]}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="重复文件"):
+        model_export_package.build_model_export_layer(
+            tmp_path / "extension",
+            version="v1",
+            base_staging_root=base_staging,
+        )

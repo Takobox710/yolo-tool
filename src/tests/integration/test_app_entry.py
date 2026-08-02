@@ -149,6 +149,8 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_PACKAGE_SCRIPT.exists()
     assert PACKAGING_FULL_BAT.exists()
     assert PACKAGING_PROGRAM_ONLY_BAT.exists()
+    packaging_menu = Path("installer/packaging_menu.ps1")
+    assert packaging_menu.exists()
     assert INSTALLER_ISS.exists()
     assert PACKAGING_DOC.exists()
     assert ICON_PNG.exists()
@@ -161,6 +163,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     program_only_bat_bytes = PACKAGING_PROGRAM_ONLY_BAT.read_bytes()
     full_bat = full_bat_bytes.decode("ascii")
     program_only_bat = program_only_bat_bytes.decode("ascii")
+    menu_script = packaging_menu.read_text(encoding="utf-8")
     iss = INSTALLER_ISS.read_text(encoding="utf-8")
     doc = PACKAGING_DOC.read_text(encoding="utf-8")
 
@@ -193,16 +196,35 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "BuildBaseRuntimeModels" in package_windows_script
     assert "BuildModelExportRuntime" in package_windows_script
     assert "SkipModelExportRuntime" in package_windows_script
-    assert "package_windows.ps1" in full_bat
-    assert "-BuildBaseRuntimeModels" in full_bat
-    assert "-BuildModelExportRuntime" in full_bat
-    assert 'set /p "PACKAGE_MODE=' in full_bat
-    assert 'if /i "%PACKAGE_MODE%"=="C"' in full_bat
-    assert 'else if /i "%PACKAGE_MODE%"=="G"' in full_bat
+    assert "packaging_menu.ps1" in full_bat
+    assert "ReadKey" in menu_script
+    for label in (
+        "=== YOLOTool Windows 打包工具 ===",
+        "[1] GPU + CPU 全量打包",
+        "[2] GPU 版全量打包",
+        "[3] GPU 基础包 - 单卷",
+        "[4] GPU 基础包 - 分卷，每卷小于 1 GiB",
+        "[5] GPU 附加包 - 单卷",
+        "[6] GPU 附加包 - 分卷，每卷小于 1 GiB",
+        "[7] GPU 程序包 - 复用已有环境包",
+        "[8] CPU 版本打包",
+        "[9] 本地开发快包",
+        "[Q] 退出",
+        "请选择操作 [1/2/3/4/5/6/7/8/9/Q]:",
+    ):
+        assert label in menu_script
+    for argument in (
+        '"-BuildBaseRuntimeModels", "-BuildModelExportRuntime", "-Clean"',
+        '"-Variant", "CPU", "-BuildBaseRuntimeModels", "-Clean"',
+        '"-Variant", "GPU", "-Clean", "-SplitBaseArchive"',
+        '"-Clean", "-SplitArchive"',
+        '"-Mode", "dev"',
+    ):
+        assert argument in menu_script
     assert "pwsh.exe -NoProfile" in full_bat
     assert "WindowsPowerShell" not in full_bat
-    assert 'set "PACKAGE_ARGS=-BuildBaseRuntimeModels"' in full_bat
-    assert 'set "PACKAGE_ARGS=-BuildBaseRuntimeModels -BuildModelExportRuntime"' in full_bat
+    assert "choice /C" not in full_bat
+    assert "set /p" not in full_bat
     assert "package_windows.ps1" in program_only_bat
     assert "-BuildBaseRuntimeModels" not in program_only_bat
     assert "-BuildModelExportRuntime" not in program_only_bat

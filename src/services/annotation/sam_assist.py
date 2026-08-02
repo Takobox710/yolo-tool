@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +20,7 @@ class SamModelSpec:
 
     @property
     def supports_assist(self) -> bool:
-        return self.runtime_kind in {"sam2", "sam3"}
+        return self.runtime_kind in {"sam2", "sam2_onnx", "sam3"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +61,9 @@ _SAM1_ARCHITECTURES = (
 
 def sam_model_spec_from_path(path: Path) -> SamModelSpec | None:
     checkpoint = Path(path)
+    onnx_spec = _sam2_onnx_model_spec(checkpoint)
+    if onnx_spec is not None:
+        return onnx_spec
     name = checkpoint.name.lower()
     if checkpoint.suffix.lower() != ".pt" or not name.startswith("sam"):
         return None
@@ -126,6 +130,37 @@ def sam_model_spec_from_path(path: Path) -> SamModelSpec | None:
     )
 
 
+def _sam2_onnx_model_spec(path: Path) -> SamModelSpec | None:
+    if not path.is_dir():
+        return None
+    encoder = path / "image_encoder.onnx"
+    decoder = path / "mask_decoder.onnx"
+    if not encoder.is_file() or not decoder.is_file():
+        return None
+    metadata_path = path / "metadata.json"
+    metadata: dict[str, Any] = {}
+    if metadata_path.is_file():
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and payload.get("model_kind") == "sam2":
+                metadata = payload
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            metadata = {}
+    precision = str(metadata.get("precision") or "").strip().upper()
+    if precision not in {"FP32", "FP16", "INT8"}:
+        match = re.search(r"_onnx_(fp32|fp16|int8)$", path.name, re.IGNORECASE)
+        precision = match.group(1).upper() if match else "ONNX"
+    source_model = str(metadata.get("source_model") or "").strip()
+    source_label = Path(source_model).stem if source_model else path.name
+    return SamModelSpec(
+        key=str(path.resolve()),
+        display_name=f"{source_label} · ONNX {precision}",
+        checkpoint_path=path.resolve(),
+        config_name="",
+        runtime_kind="sam2_onnx",
+    )
+
+
 def find_sam_model_specs(
     project_root: Path,
     app_root: Path | None = None,
@@ -141,8 +176,18 @@ def find_sam_model_specs(
         models_dir = root / "data" / "models"
         if not models_dir.is_dir():
             continue
-        for path in sorted(models_dir.glob("*.pt"), key=lambda item: item.name.lower()):
-            normalized_name = path.name.lower()
+        candidates = list(models_dir.glob("*.pt"))
+        export_root = models_dir / "model_exports"
+        if export_root.is_dir():
+            candidates.extend(
+                path.parent
+                for path in export_root.rglob("metadata.json")
+                if path.parent.is_dir()
+            )
+        for path in sorted(candidates, key=lambda item: str(item).lower()):
+            normalized_name = (
+                path.name.lower() if path.is_file() else str(path.resolve()).lower()
+            )
             if normalized_name in seen_names:
                 continue
             spec = sam_model_spec_from_path(path)
@@ -158,7 +203,14 @@ def preferred_sam_model(
 ) -> SamModelSpec | None:
     if not specs:
         return None
-    saved_name = Path(str(saved_model_path or "")).name.lower()
+    saved_value = str(saved_model_path or "").strip()
+    saved_path = Path(saved_value).expanduser() if saved_value else None
+    saved_resolved = str(saved_path.resolve()).lower() if saved_path is not None else ""
+    saved_name = saved_path.name.lower() if saved_path is not None else ""
+    if saved_resolved:
+        for spec in specs:
+            if str(spec.checkpoint_path.resolve()).lower() == saved_resolved:
+                return spec
     if saved_name:
         for spec in specs:
             if spec.checkpoint_path.name.lower() == saved_name:

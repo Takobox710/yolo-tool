@@ -156,3 +156,34 @@ def test_settings_service_preserves_model_bare_name_for_portable_download_target
 
     assert persisted["training"]["pretrained"] == "custom.pt"
     assert reloaded.training.pretrained == "custom.pt"
+
+
+def test_settings_service_migrates_legacy_model_export_fields(tmp_path):
+    from src.services.settings import SettingsService
+
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "model_export": {
+                    "format": "sam2_onnx",
+                    "quantize": 8,
+                    "simplify": False,
+                    "output_dir": "result/model_exports",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
+    settings = result.settings
+
+    assert settings.model_export.format == "onnx"
+    assert settings.model_export.precision == "int8"
+    assert settings.model_export.simplify is False
+    assert not any(issue.path == "model_export.quantize" for issue in result.issues)
+    assert settings.model_export.output_dir == str(
+        (tmp_path / "data" / "models" / "model_exports").resolve()
+    )

@@ -17,18 +17,17 @@ EXPORT_FORMATS: tuple[ExportFormatSpec, ...] = (
     ExportFormatSpec("OpenVINO", "openvino", False, "_openvino_model", ("openvino",)),
     ExportFormatSpec("TensorRT", "engine", False, ".engine", ("tensorrt",)),
     ExportFormatSpec("NCNN", "ncnn", False, "_ncnn_model", ("ncnn", "pnnx")),
-    ExportFormatSpec(
-        "SAM2 ONNX",
-        "sam2_onnx",
-        True,
-        "_sam2_onnx",
-        ("torch", "sam2", "onnx", "onnxscript"),
-    ),
 )
+
+_FORMAT_ALIASES = {
+    "sam2_onnx": "onnx",
+    "sam2 onnx": "onnx",
+    "tensorrt": "engine",
+}
 
 
 def resolve_export_format(value: str) -> ExportFormatSpec:
-    normalized = str(value or "").strip().lower()
+    normalized = _FORMAT_ALIASES.get(str(value or "").strip().lower(), str(value or "").strip().lower())
     for spec in EXPORT_FORMATS:
         if normalized in {spec.argument.lower(), spec.display_name.lower()}:
             return spec
@@ -40,16 +39,48 @@ def export_display_names() -> list[str]:
     return [spec.display_name for spec in EXPORT_FORMATS]
 
 
-def export_artifact_name(model_path: str | Path, export_format: str) -> str:
+def export_artifact_name(
+    model_path: str | Path,
+    export_format: str,
+    precision: str = "fp32",
+) -> str:
+    return export_artifact_name_for_precision(model_path, export_format, precision)
+
+
+def export_artifact_name_for_precision(
+    model_path: str | Path,
+    export_format: str,
+    precision: str = "fp32",
+) -> str:
     source = Path(model_path)
     spec = resolve_export_format(export_format)
-    return f"{source.stem}{spec.artifact_suffix}"
+    normalized_precision = {
+        "32": "fp32",
+        "fp32": "fp32",
+        "float32": "fp32",
+        "16": "fp16",
+        "fp16": "fp16",
+        "float16": "fp16",
+        "8": "int8",
+        "int8": "int8",
+    }.get(str(precision or "fp32").strip().lower(), "")
+    if normalized_precision not in {"fp32", "fp16", "int8"}:
+        raise ValueError(f"不支持的导出精度：{precision}")
+    sam_spec = sam_model_spec_from_path(source)
+    if sam_spec is not None and sam_spec.runtime_kind == "sam2" and spec.argument == "onnx":
+        return f"{source.stem}_sam2_onnx_{normalized_precision}"
+    return f"{source.stem}_{normalized_precision}{spec.artifact_suffix}"
 
 
 def export_artifact_path(
-    model_path: str | Path, output_dir: str | Path, export_format: str
+    model_path: str | Path,
+    output_dir: str | Path,
+    export_format: str,
+    precision: str = "fp32",
 ) -> Path:
-    return Path(output_dir) / export_artifact_name(model_path, export_format)
+    return Path(output_dir) / export_artifact_name_for_precision(
+        model_path, export_format, precision
+    )
 
 
 def model_export_source_error(
@@ -57,19 +88,20 @@ def model_export_source_error(
 ) -> str | None:
     path = Path(model_path)
     spec = sam_model_spec_from_path(path)
-    requested_format = str(export_format or "").strip().lower()
-    if requested_format == "sam2_onnx":
-        if spec is None:
-            return "SAM2 ONNX 导出只接受可识别的 SAM 2 或 SAM 2.1 checkpoint。"
-        if spec.runtime_kind != "sam2":
-            return f"模型“{path.name}”不是 SAM 2/2.1 checkpoint。"
-        return None
     if spec is None:
         return None
+    requested_format = str(export_format or "onnx").strip().lower()
+    if spec.runtime_kind == "sam2":
+        if requested_format in {"onnx", "sam2_onnx", "sam2 onnx"}:
+            return None
+        return (
+            f"模型“{path.name}”是 SAM 2/2.1 checkpoint；"
+            "SAM2/SAM2.1 目前只支持 ONNX 导出。"
+        )
     return (
         f"模型“{path.name}”是 {spec.display_name} checkpoint，不是 Ultralytics YOLO 权重。"
         "当前转换器仅支持 Ultralytics YOLO .pt 模型；"
-        "SAM2/SAM2.1 请改用“SAM2 ONNX”专用目标；SAM1、SAM3 和未知自定义 SAM 名称暂不支持导出。"
+        "SAM2/SAM2.1 目前只支持 ONNX；SAM1、SAM3 和未知自定义 SAM 名称暂不支持导出。"
     )
 
 
@@ -103,7 +135,10 @@ def find_export_model_paths(
                 candidates.extend(
                     path
                     for path in root.glob("*.pt")
-                    if sam_model_spec_from_path(path) is not None
+                    if (
+                        sam_model_spec_from_path(path) is not None
+                        and sam_model_spec_from_path(path).runtime_kind == "sam2"
+                    )
                 )
     result: list[Path] = []
     seen: set[str] = set()

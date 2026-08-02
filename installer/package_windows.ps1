@@ -39,11 +39,14 @@ function Write-StepElapsed {
 }
 
 function Get-InnoSetupCompiler {
-    $candidates = [System.Collections.Generic.List[string]]@(
-        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-        "C:\Program Files\Inno Setup 6\ISCC.exe",
-        "D:\ruanjian\Inno Setup 6\ISCC.exe"
-    )
+    $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+    $roots = @($programFilesX86, $env:ProgramFiles, "D:\ruanjian") |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -Unique
+    $candidates = [System.Collections.Generic.List[string]]@()
+    foreach ($root in $roots) {
+        $candidates.Add((Join-Path $root "Inno Setup 7\ISCC.exe"))
+    }
     $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if ($command) {
         $candidates.Add($command.Source)
@@ -54,14 +57,25 @@ function Get-InnoSetupCompiler {
         "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
     Get-ItemProperty $uninstallRoots -ErrorAction SilentlyContinue |
-        Where-Object { $_.DisplayName -like "Inno Setup version 6*" } |
+        Where-Object {
+            $_.InstallLocation -and
+            $_.DisplayName -match "^Inno Setup(?: version)?\s+7(?:\.|\s|$)"
+        } |
         ForEach-Object {
-            if ($_.InstallLocation) {
-                $candidates.Add((Join-Path $_.InstallLocation "ISCC.exe"))
-            }
+            $candidates.Add((Join-Path $_.InstallLocation "ISCC.exe"))
         }
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath $candidate) {
+    function Test-InnoSetup7Compiler {
+        param([string]$Path)
+        try {
+            $help = (& $Path '/?' 2>&1 | Out-String)
+            return $help -match '(?m)^Inno Setup 7 Command-Line Compiler'
+        } catch {
+            return $false
+        }
+    }
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if ((Test-Path -LiteralPath $candidate) -and
+            (Test-InnoSetup7Compiler $candidate)) {
             return $candidate
         }
     }
@@ -70,7 +84,7 @@ function Get-InnoSetupCompiler {
 
 Set-Location $Root
 try {
-    $RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-base" }
+    $RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-gpu" }
     $ArtifactPrefix = if ($Variant -eq "CPU") { "YOLOTool_CPU" } else { "YOLOTool" }
     $IntegratedRuntime = $Variant -eq "CPU"
     if ($IntegratedRuntime -and $SplitBaseArchive) {
@@ -241,7 +255,7 @@ try {
 
     $isccPath = Get-InnoSetupCompiler
     if (-not $isccPath) {
-        throw "ISCC.exe was not found. Install Inno Setup 6.4 or newer."
+        throw "ISCC.exe was not found. Install Inno Setup 7.0.2 or newer."
     }
     $AppVersion = (& pixi run -e $RuntimeEnvironment python -c "from src import APP_VERSION; print(APP_VERSION)" | Out-String).Trim()
     $InnoArgs = @(

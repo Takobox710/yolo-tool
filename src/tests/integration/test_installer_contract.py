@@ -31,6 +31,15 @@ def test_release_artifact_names_and_versions_are_short_and_stable():
     assert Path("installer/runtime-version.txt").read_text().strip() == "runtime-2"
 
 
+def test_inno_setup_7_compiler_is_required():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+
+    assert '"Inno Setup 7\\ISCC.exe"' in package_script
+    assert 'DisplayName -match "^Inno Setup(?: version)?\\s+7' in package_script
+    assert "Inno Setup 7 Command-Line Compiler" in package_script
+    assert "Install Inno Setup 7.0.2 or newer." in package_script
+
+
 def test_base_runtime_uses_parallel_python_source_copy_with_fallback():
     source = Path("src/devtools/release_package.py").read_text(encoding="utf-8")
 
@@ -119,7 +128,7 @@ def test_installer_uses_restart_manager_for_the_target_instance():
     assert "RestartApplications=no" in source
     assert "procedure RegisterExtraCloseApplicationsResources()" in source
     assert "RegisterExtraCloseApplicationsResource(" in source
-    assert "True, ExpandConstant('{app}\\{#MyAppExeName}'));" in source
+    assert "ExpandConstant('{app}\\{#MyAppExeName}'));" in source
     assert "powershell.exe" not in source
     assert "Get-CimInstance" not in source
     assert "Stop-Process" not in source
@@ -181,17 +190,23 @@ def test_cpu_variant_has_isolated_artifacts_and_runtime_selection():
     assert '"YOLOTool_CPU"' in package_script
     assert '"--variant", $Variant.ToLowerInvariant()' in build_script
     assert '"release-cpu"' in build_script
+    assert '"release-gpu"' in build_script
+    assert '"release-gpu"' in package_script
+    assert '"release-gpu"' in base_script
     assert '"YOLOTool_CPU"' in base_script
     assert '[switch]$SplitBaseArchive' in base_script
     assert '"--split"' in base_script
     assert '${ArtifactPrefix}_BaseEnv_' in package_script
     assert 'BaseRuntimeModels-CPU' in package_script
+    assert '"sam2.1_hiera_tiny.pt"' in build_script
     assert 'CPU 一体式安装包缺少基础运行时 staging 清单' in package_script
     assert '"/DPackageVariant=$($Variant.ToLowerInvariant())"' in package_script
     assert '#define PackageVariant "gpu"' in installer
     assert '#define ArtifactPrefix "YOLOTool"' in installer
     assert 'build_variant = os.environ.get("YOLO_TOOL_BUILD_VARIANT", "gpu")' in spec
-    assert 'runtime_packages += ["openvino", "ncnn", "pnnx"]' in spec
+    assert 'runtime_distribution = "onnxruntime" if is_cpu_variant else "onnxruntime-gpu"' in spec
+    assert 'runtime_distribution,' in spec
+    assert 'runtime_packages += ["openvino", "ncnn", "pnnx", "nncf"]' in spec
 
 
 def test_cpu_is_an_integrated_installer_and_gpu_keeps_external_archives():
@@ -213,6 +228,7 @@ def test_cpu_is_an_integrated_installer_and_gpu_keeps_external_archives():
 def test_cpu_update_and_batch_contract_hides_gpu_extra_environment():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
     batch_script = Path("打包程序.bat").read_text(encoding="utf-8")
+    menu_script = Path("installer/packaging_menu.ps1").read_text(encoding="utf-8")
     update_batch = Path("打包更新程序.bat").read_text(encoding="utf-8")
     dialog_layout = Path(
         "src/ui/features/settings/update_dialog_layout.py"
@@ -222,11 +238,30 @@ def test_cpu_update_and_batch_contract_hides_gpu_extra_environment():
     ).read_text(encoding="utf-8")
 
     assert "CPU 版不支持构建模型转换附加环境" in package_script
-    assert 'set "PACKAGE_ARGS=-Variant CPU -BuildBaseRuntimeModels"' in batch_script
+    assert "packaging_menu.ps1" in batch_script
+    assert "ReadKey" in menu_script
+    assert "[Q] 退出" in menu_script
+    assert '"-Clean", "-SplitArchive"' in menu_script
+    assert '"-Variant", "GPU", "-Clean", "-SplitBaseArchive"' in menu_script
     assert "pwsh.exe -NoProfile" in batch_script
     assert "pwsh.exe -NoProfile" in update_batch
     assert "normalize_variant(dialog.result.variant) != CPU_VARIANT" in dialog_layout
     assert "normalize_variant(result.variant) != CPU_VARIANT" in dialog_state
+
+
+def test_model_export_archive_builder_supports_checked_split_volumes():
+    builder = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
+    script = Path("installer/build_model_export_runtime.ps1").read_text(encoding="utf-8")
+
+    assert "EXTRA_ARCHIVE_VOLUME_BYTES = 1_073_700_000" in builder
+    assert "EXTRA_ARCHIVE_VOLUME_COUNT = 2" in builder
+    assert "MAX_ARCHIVE_VOLUME_BYTES = 1_073_741_824" in builder
+    assert 'command.append(f"-v{EXTRA_ARCHIVE_VOLUME_BYTES}b")' in builder
+    assert "附加环境包分卷必须严格小于 1 GiB" in builder
+    assert 'parser.add_argument("--split", action="store_true")' in builder
+    assert '[switch]$SplitArchive' in script
+    assert '"--split"' in script
+    assert 'YOLOTool_ExtraEnv_${Version}.7z.???' in script
 
 
 def test_full_packaging_rebuilds_program_only_installer_after_base_runtime():
