@@ -26,9 +26,9 @@
 - 系统设置中的依赖版本优先读取冻结包内的发行版元数据；旧包缺少元数据时会回退读取模块自身版本，不会把已正常导入的依赖误显示为“已安装”。
 - 系统设置的环境状态刷新属于短生命周期后台任务，关闭程序时不会因此弹出任务确认；训练、验证、导出和 AI 预标注等实际任务仍会提示。
 - Windows 发布同时提供 GPU 与 CPU 变体。GPU 保持现有资源命名；CPU 使用 `_CPU_` 标识、独立安装目录 `YOLOTool_CPU`，更新检查不会在两个变体之间交叉选择资源。
-- 每次启动后首次进入系统设置页会在后台检查 GitHub 最新稳定 Release；后续切换页面不重复检查，发现高于当前 `1.3.3` 的版本时程序版本卡片后显示升级图标，并将该 Release 的更新内容追加到下方程序日志，网络不可用不会阻塞使用。点击程序版本号或升级图标可打开更新窗口，GPU 窗口支持分别勾选程序安装包、基础环境包和附加环境包；CPU 窗口只显示程序安装包。GPU 环境包更新按 Release 文件名中的 `vX` 版本与本机安装清单或包信息版本比较，CPU 只按 `_CPU_` Setup 资源更新，源码版回退读取 `installer/*-version.txt`，Release 带有同版本环境包时不误报环境更新，基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，只有已安装附加包版本较旧时才触发更新；勾选资源会一并下载到用户 `Downloads` 文件夹，勾选程序安装包时下载完成后自动运行安装器，下载按钮右侧提供暂停和停止，下载期间可隐藏窗口且后台任务继续运行。
+- 每次启动后首次进入系统设置页会在后台检查 GitHub 最新稳定 Release；后续切换页面不重复检查，发现高于当前 `1.3.4` 的版本时程序版本卡片后显示升级图标，并将该 Release 的更新内容追加到下方程序日志，网络不可用不会阻塞使用。点击程序版本号或升级图标可打开更新窗口，GPU 窗口支持分别勾选程序安装包、基础环境包和附加环境包；CPU 窗口只显示程序安装包。GPU 环境包更新按 Release 文件名中的 `vX` 版本与本机安装清单或包信息版本比较，CPU 只按 `_CPU_` Setup 资源更新，源码版回退读取 `installer/*-version.txt`，Release 带有同版本环境包时不误报环境更新，基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，只有已安装附加包版本较旧时才触发更新；勾选资源会一并下载到用户 `Downloads` 文件夹，勾选程序安装包时下载完成后自动运行安装器，下载按钮右侧提供暂停和停止，下载期间可隐藏窗口且后台任务继续运行。
 - 正式发布拆分为 GPU 小型程序安装器、GPU 基础环境和模型包、可选模型转换附加包；CPU 发布为内嵌完整运行时和模型的一体式安装器，普通更新无需重复分发 GPU 完整环境。
-- Windows 发布包按程序、运行环境、模型和用户数据分层；GPU 普通程序更新包不再重复携带 Torch/CUDA 环境。CPU 一体式安装器使用 CPU Torch 与 CPU ONNX Runtime，直接内嵌完整 `dist/CPU/YOLOTool`；CPU 版不生成 `BaseRuntimeModels-CPU`、BaseEnv/ExtraEnv 压缩包，也不包含 CUDA、TensorRT、GPU ONNX Runtime。
+- Windows 发布包按程序、运行环境、模型和用户数据分层；GPU 普通程序更新包不再重复携带 Torch/CUDA 环境。CPU 一体式安装器使用 CPU Torch 与 CPU ONNX Runtime，直接内嵌完整 `dist/CPU/YOLOTool`，但排除其中重复的根目录 `YOLOTool.exe`；CPU 版不生成 `BaseRuntimeModels-CPU`、BaseEnv/ExtraEnv 压缩包，也不包含 CUDA、TensorRT、GPU ONNX Runtime 或 OpenVINO GPU/NPU/自动设备插件。
 - 支持把 Ultralytics YOLO `.pt` 模型转换为 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN；SAM2/SAM2.1 checkpoint 复用 ONNX 入口并按文件名显示固定输入配置。GPU 版的 OpenVINO、NNCF、TensorRT、NCNN 仍由可选 ExtraEnv 提供，CPU 版的 OpenVINO、NNCF、NCNN 直接内置，转换页隐藏 TensorRT 和附加包按钮。
 - 根目录提供两个打包入口：`打包更新程序.bat` 使用 PowerShell 7 复用 GPU 环境包；`打包程序.bat` 可选择 GPU 基础发布、GPU 完整发布或 CPU 发布。CPU 也可直接执行 `pwsh -File installer/package_windows.ps1 -Variant CPU -Clean`。
 - 服务层与测试已拆分，便于后续继续扩展 GUI 而不把业务逻辑写死在界面回调中；CLI、更新窗口、验证页状态和发布构建也按职责拆成可独立测试的模块，旧入口与公开类名保持兼容。
@@ -377,7 +377,7 @@ YOLOTool_CPU_Setup_<程序版本>.exe
 
 当前默认发布基础包为 `YOLOTool_BaseEnv_v3.7z`，附加包为 `YOLOTool_ExtraEnv_v3.7z`，运行时协议仍为 `runtime-2`。GPU 基础包使用 CPU ONNX Runtime，GPU 附加包 v3 额外携带隔离的 GPU ONNX Runtime，启动时按 CUDA Provider 探测结果自动选择或回退；基础包包含 SAM 3 推理代码与依赖，但不包含用户自行取得的 `sam3.pt` checkpoint。GPU 基础包和附加包默认生成单卷 `.7z`；分卷模式分别生成对应的 `.7z.001/.002` 文件，供需要按卷传输或归档的场景使用。CPU 版把完整运行时和模型直接压入 `YOLOTool_CPU_Setup_<版本>.exe`，不生成 CPU BaseEnv 压缩包。
 
-程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`；CPU 安装器例外，直接内嵌完整 CPU 运行时和模型。GPU 默认环境包文件名为 `YOLOTool_BaseEnv_v3.7z` 和 `YOLOTool_ExtraEnv_v3.7z`，运行时兼容协议使用 `runtime-2`；特殊分卷时安装器也接受基础包 `.7z.001/.002`。GPU 基础包携带 `sam2.1_hiera_base_plus.pt`，CPU 一体式安装器改为携带更小的 `sam2.1_hiera_tiny.pt`；`sam3.pt` 由用户自行取得并放入 `data/models/`，不会被打包。GPU 首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时优先提供基础包，首次安装缺少基础包时安装器组件页显示红色风险提示并阻止继续；CPU 一体式安装器不依赖外部基础包。已有安装但没有新基础包时 GPU 可只更新程序、继续使用旧环境，并警告部分功能可能无法使用。GUI 启动不会因运行时版本不一致强制退出，`--runtime-probe` 仍用于安装器和诊断。安装成功页右侧“启动 YOLOTool”选项下方可勾选删除本次使用的安装器和环境包。默认目录为 `YOLOTool`，CPU 默认目录为 `YOLOTool_CPU`。
+程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`；CPU 安装器例外，直接内嵌 CPU-only 运行时和模型，完整冻结目录中的根目录 EXE 不重复嵌入。GPU 默认环境包文件名为 `YOLOTool_BaseEnv_v3.7z` 和 `YOLOTool_ExtraEnv_v3.7z`，运行时兼容协议使用 `runtime-2`；特殊分卷时安装器也接受基础包 `.7z.001/.002`。GPU 基础包携带 `sam2.1_hiera_base_plus.pt`，CPU 一体式安装器改为携带更小的 `sam2.1_hiera_tiny.pt`；`sam3.pt` 由用户自行取得并放入 `data/models/`，不会被打包。GPU 首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时优先提供基础包，首次安装缺少基础包时安装器组件页显示红色风险提示并阻止继续；CPU 一体式安装器不依赖外部基础包。已有安装但没有新基础包时 GPU 可只更新程序、继续使用旧环境，并警告部分功能可能无法使用。GUI 启动不会因运行时版本不一致强制退出，`--runtime-probe` 仍用于安装器和诊断。安装成功页右侧“启动 YOLOTool”选项下方可勾选删除本次使用的安装器和环境包。默认目录为 `YOLOTool`，CPU 默认目录为 `YOLOTool_CPU`。
 
 安装器进入文件替换前通过 Inno Setup 的 Windows Restart Manager 注册当前安装目录中的 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不弹出是否停止应用的询问页，也不使用 PowerShell 或 WMI；其他安装目录的实例不会被停止。自动关闭前应保存好必要状态，安装器不负责恢复未保存的数据。
 

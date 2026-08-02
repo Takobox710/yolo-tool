@@ -8,7 +8,7 @@ Windows 冻结程序使用 PyInstaller `onedir`，GPU 与 CPU 分别发布。目
 | `YOLOTool_BaseEnv_<基础包版本>.7z` | `_internal/`、CPU ONNX Runtime、SAM 2/2.1 Base+ 与 SAM 3 推理代码/依赖、基础运行时清单和官方模型 | 基础依赖或官方模型变化 |
 | `YOLOTool_ExtraEnv_<附加包版本>.7z` | OpenVINO、NNCF、NCNN/PNNX 和 TensorRT 模型转换运行库 | 模型转换后端或扩展协议变化 |
 
-CPU 变体只发布 `YOLOTool_CPU_Setup_<版本>.exe` 一体式安装包。CPU 安装包使用 CPU Torch、CPU `onnxruntime`，直接把完整 `dist/CPU/YOLOTool` 冻结目录交给 Inno Setup 内嵌；不生成 `BaseRuntimeModels-CPU`、CPU BaseEnv/ExtraEnv 压缩包或第二次 `ProgramOnly` 构建，也不携带 CUDA、TensorRT、GPU ONNX Runtime 或 NVIDIA CUDA DLL。CPU 安装器默认目录为 `YOLOTool_CPU`。
+CPU 变体只发布 `YOLOTool_CPU_Setup_<版本>.exe` 一体式安装包。CPU 安装包使用 CPU Torch、CPU `onnxruntime`，直接把完整 `dist/CPU/YOLOTool` 冻结目录交给 Inno Setup 内嵌；安装器从完整目录排除根目录 `YOLOTool.exe`，只从程序 staging 安装一份程序本体，避免 EXE 重复携带。不生成 `BaseRuntimeModels-CPU`、CPU BaseEnv/ExtraEnv 压缩包或第二次 `ProgramOnly` 构建，也不携带 CUDA、TensorRT、GPU ONNX Runtime 或 NVIDIA CUDA DLL。CPU 内置 OpenVINO 仅保留 CPU 插件、模型前端和通用 TBB 运行库，排除 GPU/NPU/自动设备插件及开发期库文件。CPU 安装器默认目录为 `YOLOTool_CPU`。
 
 `Program Setup` 的硬性体积目标是小于 `100 MB`。GPU 附加包和基础包默认使用 Pixi 锁定的原生 7-Zip CLI 生成单卷非固实 LZMA2 `mx=5` 压缩；只有显式传入 `-SplitBaseArchive` 时，GPU 基础包才使用 `-v1073700000b` 生成最多两个 `.7z.001/.002` 分卷，每卷严格小于 `1 GiB`。CPU 发布不生成任何运行时压缩包，而是把 CPU 基础运行时 staging 作为 Inno Setup 的内嵌文件直接写入一体式安装器。GPU 安装器和 Release 更新兼容单卷 `.7z` 与特殊分卷基础包；CPU 更新只选择 CPU Setup，不查找或下载 CPU BaseEnv/ExtraEnv。基础运行环境构建时，第三方纯 Python 源码在 Windows 优先通过系统 `robocopy /S /MT:16` 目录级复制，缺少该工具时回退 Python 逐文件复制；测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码不会进入基础包，ONNX 测试数据也会排除。GPU 基础运行环境同时携带 `7z.exe` 和 `7z.dll`，软件内安装附加包时优先使用原生解压与 CRC 校验，避免 `py7zr` 解压后再次扫描大包；没有原生工具时回退到 `py7zr` 解压并检查文件集合。GPU 基础包不包含 `YOLOTool.exe`，目标机不需要另行安装 7-Zip；CPU 一体式安装器则由 Inno Setup 一次性安装程序和运行时。程序冻结包额外保留 ONNX、ONNX Runtime、OpenCV、Pillow、psutil 和 Ultralytics 的轻量 `.dist-info` 元数据，用于设置页显示精确版本；运行时仍保留模块版本回退。
 
@@ -21,7 +21,7 @@ CPU 变体只发布 `YOLOTool_CPU_Setup_<版本>.exe` 一体式安装包。CPU �
 GPU 完整发布先生成完整 `dist/YOLOTool` 供基础环境包提取 `_internal`，基础包归档完成后再生成 `-ProgramOnly` 的程序 staging。CPU 发布只生成一次完整 `dist/CPU/YOLOTool`，Inno Setup 直接从该目录组装一体式安装器。
 
 - `release-gpu`：构建 GPU 主程序、基础包和附加包，完整冻结源使用 GPU `onnxruntime-gpu`；GPU BaseEnv 生成时改用 `release-cpu` 中同版本 CPU ONNX Runtime，GPU ORT 作为 ExtraEnv 的隔离覆盖层提供。
-- `cpu` / `release-cpu`：构建 CPU 一体式安装器，使用 CPU Torch、CPU `onnxruntime`，并内置 OpenVINO、NNCF、NCNN、PNNX；CPU 环境的锁定依赖和冻结内容通过 `src.devtools.cpu_package_guard` 检查。
+- `cpu` / `release-cpu`：构建 CPU 一体式安装器，使用 CPU Torch、CPU `onnxruntime`，并内置 CPU-only OpenVINO、NNCF、NCNN、PNNX；OpenVINO GPU/NPU/自动设备插件不进入冻结目录，CPU 环境的锁定依赖和冻结内容通过 `src.devtools.cpu_package_guard` 检查。
 - 默认开发环境组合 `release-gpu` 的完整导出依赖，因此 `pixi run app` 可直接测试五种格式、YOLO/SAM2 ONNX 精度转换和 INT8 校准；CPU 发布使用 `pixi run -e release-cpu`，`onnxruntime` 与 `onnxruntime-gpu` 不进入同一环境。
 
 附加包按共享的 Python distribution 文件清单增量收集，包含 `openvino`、`openvino-telemetry`、`nncf` 及其运行时依赖、`ncnn`、`pnnx`、`tensorrt`、`tensorrt-cu13`、`tensorrt-cu13-libs`、`tensorrt-cu13-bindings`，并将 `onnxruntime-gpu` 放入 `packages/_onnxruntime_gpu/` 隔离覆盖层；不复制 Python、Torch、CUDA、Ultralytics、ONNX、OpenCV 或 PySide6，也不使用宽泛的 `collect_all(...)`。GPU BaseEnv 过滤全部附加发行包和 GPU ORT 后，从 `release-cpu` 覆盖同版本 CPU ONNX Runtime；构建 ExtraEnv 时拒绝普通路径重复文件，运行时覆盖层由启动探测单独选择。附加包清单支持 `openvino`、`engine` 和 `ncnn` 三种扩展格式。
@@ -133,11 +133,11 @@ GPU 安装器在压缩包校验页结束后使用普通百分比进度条显示�
 - 应验证更新窗口进度条上方右侧显示下载速度和已下载/总大小；无 `Content-Length` 时总大小显示为 `--`。
 - 应验证下载期间关闭更新窗口后任务仍继续，重新打开时复用原进度；点击暂停后的“停止”按钮应取消下载并允许重新开始。
 
-- 完整发布完成后必须检查 `dist/packages/Program/YOLOTool.exe` 来自最后一次 `-ProgramOnly` 构建，且 `dist/packages/Program/` 不含 `_internal/`；完整冻结目录仅作为基础环境包的输入和独立启动验证物。
+- GPU 完整发布完成后必须检查 `dist/packages/Program/YOLOTool.exe` 来自最后一次 `-ProgramOnly` 构建，且 `dist/packages/Program/` 不含 `_internal/`；CPU 直嵌模式还必须确认 Inno Setup 的完整目录输入排除了根目录 `YOLOTool.exe`，避免程序本体被携带两份。
 
 - 程序安装器小于 `100 MB`，且不包含 `_internal/`、运行时清单和模型；程序-only EXE 启动时必须能在目标目录找到基础包 `_internal/python312.dll`。
 - 两个约 2 GB 伴随包存在时，组件页不读取压缩包正文，必须在 3 秒内完成刷新并保持控件可交互。
-- GPU 基础包不包含 `YOLOTool.exe`、OpenVINO、NCNN、PNNX、TensorRT 或 GPU ONNX Runtime，只包含 CPU ONNX Runtime；GPU 附加包 v3 额外携带隔离的 GPU ONNX Runtime，启动前验证 `CUDAExecutionProvider` 后才优先加载，否则继续使用基础包 CPU Runtime。CPU 一体式安装器同时安装 `YOLOTool.exe`、CPU Torch、CPU ONNX Runtime、OpenVINO、NCNN、PNNX 和模型，不包含 TensorRT、GPU ONNX Runtime 和 CUDA。两种运行时内容都包含 SAM 2/2.1 Base+ 代码、配置和 checkpoint，以及 SAM 3 交互代码和依赖。
+- GPU 基础包不包含 `YOLOTool.exe`、OpenVINO、NCNN、PNNX、TensorRT 或 GPU ONNX Runtime，只包含 CPU ONNX Runtime；GPU 附加包 v3 额外携带隔离的 GPU ONNX Runtime，启动前验证 `CUDAExecutionProvider` 后才优先加载，否则继续使用基础包 CPU Runtime。CPU 一体式安装器同时安装 `YOLOTool.exe`、CPU Torch、CPU ONNX Runtime、CPU-only OpenVINO、NCNN、PNNX 和模型，不包含 TensorRT、GPU ONNX Runtime、CUDA 或 OpenVINO GPU/NPU/自动设备插件。两种运行时内容都包含 SAM 2/2.1 Base+ 代码、配置和 checkpoint，以及 SAM 3 交互代码和依赖。
 - 开发快包或 Program-only 产物应能显示内嵌 SAM 图标，并可启动 `YOLOTool.exe --sam-assist-runtime`；在具备 CUDA 的发布机分别使用 Base+ 与用户提供的官方 `sam3.pt` 完成加载、图片编码、单点几何推理和 `shutdown` 冒烟，验证高级参数协议及退出后不残留子进程。
 - 附加包包含 OpenVINO、NCNN/PNNX、TensorRT 发行包和 `_onnxruntime_gpu` 隔离覆盖层，清单中的文件和 DLL 目录完整；原生 7-Zip 安装路径使用归档 CRC，兼容回退路径检查文件集合，界面仅保留安装状态日志。
 - 覆盖首次安装、仅程序升级、强制基础包升级、主动重装、确认降级、并行实例与卸载保留数据。

@@ -19,7 +19,7 @@
 ## 模型格式转换
 
 - 数据处理页保留“模型格式转换”工具。GPU 版支持 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN 五种格式入口；CPU 版隐藏 TensorRT，仅显示 ONNX、TorchScript、OpenVINO 和 NCNN。
-- GPU 版模型转换附加包可从模型转换页或系统设置页选择/拖入，替换已有版本前需确认；安装完成后自检会先加载候选附属包目录，再校验 OpenVINO、NNCF、NCNN、PNNX 与 TensorRT 依赖；CPU 版已内置非 TensorRT 转换依赖，不显示附加包安装/替换按钮。
+- GPU 版模型转换附加包可从模型转换页或系统设置页选择/拖入，替换已有版本前需确认；安装完成后自检会先加载候选附属包目录，再校验 OpenVINO、NNCF、NCNN、PNNX 与 TensorRT 依赖；CPU 版已内置非 TensorRT 转换依赖，OpenVINO 仅使用 CPU 插件和模型前端，不显示附加包安装/替换按钮。
 - 左侧导航按钮保持与数据标注页相近的深色 hover / 选中高亮样式。
 
 数据集划分支持（包含标注转换）：

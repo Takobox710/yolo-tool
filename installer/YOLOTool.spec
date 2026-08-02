@@ -48,7 +48,8 @@ BASE_EXCLUDES = [
     "torch.distributed.rpc._testing",
     "torch.distributed.rpc.examples",
     "torch._numpy.testing",
-    # TensorRT and the optional export backends remain in the additive archive.
+    # TensorRT and NNCF stay out of the GPU base graph; CPU enables NNCF below
+    # because OpenVINO INT8 is part of the built-in CPU capability set.
     "tensorrt",
     "nncf",
 ]
@@ -72,6 +73,35 @@ PY7ZR_PACKAGES = (
 )
 SAM2_PACKAGES = ("sam2",)
 SAM3_PACKAGES = ("sam3",)
+CPU_OPENVINO_EXCLUDED_FILES = frozenset(
+    {
+        "openvino_auto_batch_plugin.dll",
+        "openvino_auto_plugin.dll",
+        "openvino_hetero_plugin.dll",
+        "openvino_intel_gpu_plugin.dll",
+        "openvino_intel_npu_compiler.dll",
+        "openvino_intel_npu_compiler_loader.dll",
+        "openvino_intel_npu_plugin.dll",
+        "cache.json",
+    }
+)
+
+
+def _is_cpu_openvino_file(path: str | Path) -> bool:
+    name = Path(path).name.casefold()
+    if name in CPU_OPENVINO_EXCLUDED_FILES:
+        return False
+    return not name.endswith((".lib", "_debug.lib"))
+
+
+def _collect_cpu_openvino_files(collector):
+    return [
+        item
+        for item in collector("openvino")
+        if _is_cpu_openvino_file(item[0])
+    ]
+
+
 excludes = list(BASE_EXCLUDES)
 
 if is_program_only:
@@ -147,7 +177,10 @@ else:
             # The vendored SAM2 wheel only ships a CUDA `_C.pyd`; SAM2's
             # Python inference path remains usable with CPU Torch without it.
             continue
-        binaries += collect_dynamic_libs(package)
+        if is_cpu_variant and package == "openvino":
+            binaries += _collect_cpu_openvino_files(collect_dynamic_libs)
+        else:
+            binaries += collect_dynamic_libs(package)
 
     hiddenimports = collect_submodules("ultralytics", on_error="ignore")
     hiddenimports += ["src.assets_rc"]
@@ -165,7 +198,16 @@ else:
         import_packages += ["openvino", "ncnn", "pnnx", "nncf"]
     for package in import_packages:
         hiddenimports += collect_submodules(package, on_error="ignore")
-        datas += collect_data_files(package, excludes=RUNTIME_DATA_EXCLUDES)
+        if is_cpu_variant and package == "openvino":
+            datas += [
+                item
+                for item in collect_data_files(
+                    package, excludes=RUNTIME_DATA_EXCLUDES
+                )
+                if _is_cpu_openvino_file(item[0])
+            ]
+        else:
+            datas += collect_data_files(package, excludes=RUNTIME_DATA_EXCLUDES)
     if is_cpu_variant:
         # The vendored SAM2 wheel exposes a CUDA-only extension as a hidden
         # module even though the CPU inference path does not need it.

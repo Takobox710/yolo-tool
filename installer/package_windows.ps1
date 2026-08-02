@@ -260,6 +260,9 @@ try {
         "/DBaseRuntimeVersion=$($Catalog.base.runtime_version)",
         "/DBaseUnpackedSize=$($Catalog.base.uncompressed_size)"
     )
+    if ($Variant -eq "CPU") {
+        $InnoArgs += "/DShortcutName=YOLOTool_CPU"
+    }
     if ($IntegratedRuntime) {
         $InnoArgs += "/DIntegratedRuntime=1"
         $InnoArgs += "/DIntegratedRuntimeDirect=1"

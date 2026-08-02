@@ -376,11 +376,11 @@
 | `installer/hooks/program_external_runtime.py` | 51 | Windows 打包脚本与安装配置。 |
 | `installer/languages/ChineseSimplified.isl` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/model-export-runtime-version.txt` | 1 | Windows 打包脚本与安装配置。 |
-| `installer/package_windows.ps1` | 298 | Windows 打包脚本与安装配置。 |
+| `installer/package_windows.ps1` | 301 | Windows 打包脚本与安装配置。 |
 | `installer/packaging_menu.ps1` | 143 | Windows 打包脚本与安装配置。 |
 | `installer/runtime-version.txt` | 1 | Windows 打包脚本与安装配置。 |
 | `installer/vendor/sam2-1.1.0-cp312-cp312-win_amd64.whl` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/vendor/sam3-0.1.0-py3-none-any.whl` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/vendor/sam3-LICENSE.txt` | 61 | Windows 打包脚本与安装配置。 |
-| `installer/yolo_tool.iss` | 1421 | Windows 打包脚本与安装配置。 |
-| `installer/YOLOTool.spec` | 267 | Windows 打包脚本与安装配置。 |
+| `installer/yolo_tool.iss` | 1440 | Windows 打包脚本与安装配置。 |
+| `installer/YOLOTool.spec` | 309 | Windows 打包脚本与安装配置。 |

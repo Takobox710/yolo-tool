@@ -40,6 +40,15 @@ def test_inno_setup_7_compiler_is_required():
     assert "Install Inno Setup 7.0.2 or newer." in package_script
 
 
+def test_cpu_installer_uses_short_cpu_shortcut_name():
+    installer = INSTALLER.read_text(encoding="utf-8")
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+
+    assert '#ifndef ShortcutName' in installer
+    assert "if '{#ShortcutName}' <> '' then" in installer
+    assert '"/DShortcutName=YOLOTool_CPU"' in package_script
+
+
 def test_base_runtime_uses_parallel_python_source_copy_with_fallback():
     source = Path("src/devtools/release_package.py").read_text(encoding="utf-8")
 
@@ -221,6 +230,7 @@ def test_cpu_is_an_integrated_installer_and_gpu_keeps_external_archives():
     assert '/DIntegratedRuntimeDirect=1' in package_script
     assert '#ifdef IntegratedRuntime' in installer
     assert '..\\dist\\CPU\\YOLOTool\\*' in installer
+    assert 'Excludes: "YOLOTool.exe"' in installer
     assert 'Source: "{code:GetBaseArchivePath}"' in installer
     assert 'integrated=True' in catalog
 
@@ -317,6 +327,24 @@ def test_program_only_spec_skips_external_runtime_analysis():
     assert "collect_submodules(\"ultralytics\"" in spec
     assert "pyi_rth_pyside6.py" in spec
     assert '"ctypes.util"' in spec
+
+
+def test_cpu_spec_filters_non_cpu_openvino_payloads():
+    spec = Path("installer/YOLOTool.spec").read_text(encoding="utf-8")
+
+    for filename in (
+        "openvino_auto_batch_plugin.dll",
+        "openvino_auto_plugin.dll",
+        "openvino_hetero_plugin.dll",
+        "openvino_intel_gpu_plugin.dll",
+        "openvino_intel_npu_compiler.dll",
+        "openvino_intel_npu_compiler_loader.dll",
+        "openvino_intel_npu_plugin.dll",
+        "cache.json",
+    ):
+        assert f'"{filename}"' in spec
+    assert 'name.endswith((".lib", "_debug.lib"))' in spec
+    assert "_collect_cpu_openvino_files" in spec
 
 
 def test_sam3_vendor_runtime_is_packaged_without_checkpoint():

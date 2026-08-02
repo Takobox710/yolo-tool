@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "1.3.3"
+#define MyAppVersion "1.3.4"
 #endif
 #ifndef RequiredRuntimeVersion
 #define RequiredRuntimeVersion "runtime-2"
@@ -30,6 +30,9 @@
 #endif
 #ifndef DefaultAppDirName
 #define DefaultAppDirName "YOLOTool"
+#endif
+#ifndef ShortcutName
+#define ShortcutName ""
 #endif
 #define GitHubReleaseUrl "https://github.com/Takobox710/yolo-tool/releases"
 
@@ -93,7 +96,7 @@ Source: "..\dist\packages\Program\companion-catalog.json"; DestDir: "{app}\.inst
 #endif
 #ifdef IntegratedRuntime
 #ifdef IntegratedRuntimeDirect
-Source: "..\dist\CPU\YOLOTool\*"; DestDir: "{app}\.install-staging\base"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: ShouldInstallBase
+Source: "..\dist\CPU\YOLOTool\*"; DestDir: "{app}\.install-staging\base"; Excludes: "YOLOTool.exe"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: ShouldInstallBase
 #else
 Source: "..\dist\packages\BaseRuntimeModels-CPU\*"; DestDir: "{app}\.install-staging\base"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: ShouldInstallBase
 #endif
@@ -236,7 +239,9 @@ var
   FolderName: String;
 begin
   FolderName := ExtractFileName(RemoveBackslashUnlessRoot(ExpandConstant('{app}')));
-  if CompareText(FolderName, '{#MyAppName}') = 0 then
+  if '{#ShortcutName}' <> '' then
+    Result := '{#ShortcutName}'
+  else if CompareText(FolderName, '{#MyAppName}') = 0 then
     Result := '{#MyAppName}'
   else
     Result := '{#MyAppName} - ' + FolderName;

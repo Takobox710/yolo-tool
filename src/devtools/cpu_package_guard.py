@@ -31,6 +31,11 @@ FORBIDDEN_FILE_TOKENS = (
     "tensorrt",
     "onnxruntime_providers_cuda",
     "onnxruntime_providers_tensorrt",
+    "openvino_auto_batch_plugin",
+    "openvino_auto_plugin",
+    "openvino_hetero_plugin",
+    "openvino_intel_gpu_plugin",
+    "openvino_intel_npu_",
 )
 FORBIDDEN_FROZEN_PACKAGE_PARTS = (
     "onnxruntime-gpu",
