@@ -1,481 +1,213 @@
-# yolo_tool
+# YOLOTool
 
-基于 Python + PySide6 / Qt 的本地 YOLO 可视化训练工作台，面向 Windows 桌面环境，主打“通用 YOLO 优先，同时兼容焊缝 OBB 项目”的本地数据处理、训练与验证流程。
+<p align="center">
+  <img src="src/assets/app_icon.png" alt="YOLOTool 图标" width="144">
+</p>
 
-项目独立于 `yolo-weld`，使用本仓库自己的 `pixi` 环境管理依赖，不依赖外部 conda 环境。
+<p align="center">
+  Windows 本地 YOLO 数据处理、训练与验证工作台
+</p>
 
-## 项目特点
+<p align="center">
+  <a href="https://github.com/Takobox710/yolo-tool/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Takobox710/yolo-tool?display_name=tag&label=Release&color=2ea44f"></a>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.12-3776AB">
+  <img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-2.13.0%2Bcu130-ee4c2c">
+  <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows-0078D4">
+</p>
 
-- 支持 YOLO `obb`、`seg` 与普通 `detect` 三类任务。
-- 提供完整桌面 GUI，包含主页、数据标注、数据处理、模型训练、模型验证、系统设置六个主页面。
-- 内置焊缝项目常用约定，类别可配置为 `weld`，兼容 Labelme 标注流程；新项目不预置具体类别名称。
-- 数据集划分默认任务类型为 `detect`，默认划分比例为 `train=0.8 / val=0.2 / test=0.0`。
-- 数据集划分页提供“Labelme 转 YOLO 并划分数据集”和“YOLO 原生数据集划分”两种模式，分别处理 Labelme `.json` 与已有 YOLO `.txt` 标注。
-- 支持 `oriented_rectangle` 转 OBB，支持 `line` 标注按半宽扩展为旋转框。
-- 训练命令由服务层统一生成，支持优化器、HSV、MixUp、Mosaic 等常见参数，训练页 tooltip 采用“中文全称（命令参数名）；说明”的统一格式。
-- 模型验证和训练使用 `data/models/` 中的基础模型；模型格式转换默认只显示 `result/**/weights/*.pt`，`data/models/` 中的基础模型和 SAM checkpoint 通过浏览选择。
-- 支持图片检测、视频检测、摄像头检测、数据集验证四类验证模式。
-- 内置本地数据标注页，默认读写 Labelme `.json`，支持右键切换绘制/编辑模式、类别管理、官方 SAM 3 文本分割预标注、SAM 2/2.1 悬停辅助标注及项目级标注设置。
-- 图片检测模式支持固定输入源和单张图片；视频检测模式支持批量视频目录和单个视频。
-- 数据集验证模式会在点击开始检测后临时改写 `data.yaml` 的 `val:` 指向，验证结束后自动恢复。
-- 模型验证默认输出目录为 `result/gui_val`，结果图片对应的标注会保存到本次输出目录下的 `labels/` 子目录。
-- 系统设置提供“训练模型显示 last”开关，默认关闭；关闭时模型验证页只显示训练产物中的 `best.pt`，开启后才额外显示 `last.pt`。
-- 主要配置会持久化到当前项目目录的 `data/runtime/settings.json`，切换项目目录后会自动读取该项目自己的配置。
-- 最近一次使用的项目目录会记录到应用根目录 `data/runtime/app_state.json`，用于下次启动时恢复到最近项目。
-- 支持 PyInstaller `onedir` 冻结打包，目标 Windows 机器无需安装 Python 或 pixi。
-- 系统设置中的依赖版本优先读取冻结包内的发行版元数据；旧包缺少元数据时会回退读取模块自身版本，不会把已正常导入的依赖误显示为“已安装”。
-- 系统设置的环境状态刷新属于短生命周期后台任务，关闭程序时不会因此弹出任务确认；训练、验证、导出和 AI 预标注等实际任务仍会提示。
-- Windows 发布同时提供 GPU 与 CPU 变体。GPU 保持现有资源命名；CPU 使用 `_CPU_` 标识、独立安装目录 `YOLOTool_CPU`，更新检查不会在两个变体之间交叉选择资源。
-- 每次启动后首次进入系统设置页会在后台检查 GitHub 最新稳定 Release；后续切换页面不重复检查，发现高于当前 `1.3.4` 的版本时程序版本卡片后显示升级图标，并将该 Release 的更新内容追加到下方程序日志，网络不可用不会阻塞使用。点击程序版本号或升级图标可打开更新窗口，GPU 窗口支持分别勾选程序安装包、基础环境包和附加环境包；CPU 窗口只显示程序安装包。GPU 环境包更新按 Release 文件名中的 `vX` 版本与本机安装清单或包信息版本比较，CPU 只按 `_CPU_` Setup 资源更新，源码版回退读取 `installer/*-version.txt`，Release 带有同版本环境包时不误报环境更新，基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，只有已安装附加包版本较旧时才触发更新；勾选资源会一并下载到用户 `Downloads` 文件夹，勾选程序安装包时下载完成后自动运行安装器，下载按钮右侧提供暂停和停止，下载期间可隐藏窗口且后台任务继续运行。
-- 正式发布拆分为 GPU 小型程序安装器、GPU 基础环境和模型包、可选模型转换附加包；CPU 发布为内嵌完整运行时和模型的一体式安装器，普通更新无需重复分发 GPU 完整环境。
-- Windows 发布包按程序、运行环境、模型和用户数据分层；GPU 普通程序更新包不再重复携带 Torch/CUDA 环境。CPU 一体式安装器使用 CPU Torch 与 CPU ONNX Runtime，直接内嵌完整 `dist/CPU/YOLOTool`，但排除其中重复的根目录 `YOLOTool.exe`；CPU 版不生成 `BaseRuntimeModels-CPU`、BaseEnv/ExtraEnv 压缩包，也不包含 CUDA、TensorRT、GPU ONNX Runtime 或 OpenVINO GPU/NPU/自动设备插件。
-- 支持把 Ultralytics YOLO `.pt` 模型转换为 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN；SAM2/SAM2.1 checkpoint 复用 ONNX 入口并按文件名显示固定输入配置。GPU 版的 OpenVINO、NNCF、TensorRT、NCNN 仍由可选 ExtraEnv 提供，CPU 版的 OpenVINO、NNCF、NCNN 直接内置，转换页隐藏 TensorRT 和附加包按钮。
-- 根目录提供两个打包入口：`打包更新程序.bat` 使用 PowerShell 7 复用 GPU 环境包；`打包程序.bat` 可选择 GPU 基础发布、GPU 完整发布或 CPU 发布。CPU 也可直接执行 `pwsh -File installer/package_windows.ps1 -Variant CPU -Clean`。
-- 服务层与测试已拆分，便于后续继续扩展 GUI 而不把业务逻辑写死在界面回调中；CLI、更新窗口、验证页状态和发布构建也按职责拆成可独立测试的模块，旧入口与公开类名保持兼容。
-- 主导航页面采用“启动先显示首页、窗口空闲后分批预热其余页面”的策略，避免冷启动时连带触发重页面初始化，同时减少首次切到任意页面时的同步卡顿。
-- 应用窗口与任务栏图标通过 Qt 资源模块内嵌到程序本体，开发态保留 `src/assets/` 文件作为资源编译源；安装器和 EXE 图标使用 `src/assets/app_icon.ico`，顶部导航图标会按当前屏幕缩放比例生成高 DPI pixmap，窗口跨屏切换时同步刷新，避免缩放后模糊。
+YOLOTool 是一个基于 Python、Qt 和 Ultralytics 的 Windows 桌面 YOLO 训练工作台，覆盖图片标注、数据集整理、模型训练、模型验证和格式转换，支持 YOLO 的 `detect`、`obb` 和 `seg` 任务
 
-## 主要功能
+## 快速开始
 
-### 1. 主页
-
-- 展示项目路径、图片数量、标注数量、训练曲线、训练历史等概览信息。
-- 主页打开时优先展示布局，再在后台刷新统计与图表，避免大项目目录下首次进入明显卡顿。
-- 主页切回时若已有上一轮统计结果，会先保留当前的图片数量与标注数量，待后台新统计返回后再静默替换，不再闪过 `加载中...`。
-- “标注数量”按标注对象数统计：优先累计当前标注路径中 Labelme `.json` 的 `shapes` 数量；若没有有效 JSON，则回退累计非空 YOLO `.txt` 行数。
-- 普通模式显示总图片、训练、验证、测试和未标注五项；总图片固定在最左侧，其余项目按数量降序排列，未标注为 0 时隐藏，百分比以总图片数为分母。只有一个标注类型时在图表上方显示类型名称，多类别时隐藏该名称并扩大图表区域；无标题模式下 Y 轴顶部间距为 15px，柱顶数值标签和柱状图位置保持独立。
-- 开启多类别分布模式时，标题改为“多类别标注分布”，第一项为总标注数，后续按各类别标注对象数量降序排列。
-- 未完成数据集划分时，主页使用当前图片文件夹及对应 Labelme/YOLO 标注统计；普通模式仍显示总图片、训练、验证、测试和未标注五项。
-- 项目 `data.yaml` 与设置中的类别名称都为空时，主页分布图使用“目标名称”作为兜底名称。
-- 自动读取 `results.csv` 绘制关键训练曲线；横轴使用文件中的 `epoch` 列显示实际训练轮次，纵轴显示指标值。
-- 主页“各类别图片分布”和左下角训练曲线按当前屏幕缩放比例生成高 DPI 图表画布，窗口跨屏切换时自动重绘，避免坐标轴、文字和曲线模糊。
-- 两个图表在画布内部绘制与训练历史表格一致的浅色 1px 边框和 5px 圆角，避免 QLabel 内容覆盖圆角造成断开空隙。
-- 自动扫描 `result/**/weights/*.pt` 展示训练历史。
-
-### 2. 数据处理
-
-- 数据集划分、标注预览、批量重命名和数据标注共用图片目录；数据标注、数据集划分和批量重命名共用 Labelme 标注目录；标注预览和数据集划分共用 YOLO 标注目录，修改后立即同步。图片压缩源目录独立保存。
-
-- 数据集划分：支持 Labelme 转 YOLO 并划分数据集，或已有 YOLO 标签原生重新分组；类别名称直接读取数据标注页“管理类别”，也支持自定义类别名称映射与转换产物备份；仅在实际写出新文件时创建对应输出目录，空 split 不再预建空文件夹。
-- 标注预览：读取图片与同名 `.txt` 标签进行可视化预览，支持 `detect` / `obb` / `seg` 标签格式，并使用接近 YOLO 官方的标注框与标签样式。
-- 批量重命名：支持图片、Labelme `.json`、YOLO `.txt` 联动重命名。
-- 图片压缩：递归扫描子目录图片，按画布尺寸对齐长边、贴到统一画布，并保持输出目录结构；是否备份原始图片可选，默认不备份，并可直接从页面打开当前结果文件夹。
-- 模型格式转换：默认只扫描 `result/**/weights/*.pt`，不主动显示 `data/models/` 中的基础模型或 SAM checkpoint；支持浏览选择其他 `.pt` 文件，默认输出到 `data/models/model_exports/<模型名>/`。GPU 版提供 ONNX、TorchScript、OpenVINO、TensorRT、NCNN 五种格式入口，CPU 版隐藏 TensorRT 和附加包按钮。
-- ONNX + YOLO 支持 FP32/FP16/INT8、独立图简化、Batch/高/宽动态轴、NMS、opset、校准和量化后冒烟验证；ONNX + SAM2/SAM2.1 固定 batch=1、输入 1024、单点提示，输出 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`，当前只提供 FP32/FP16。实际验证表明，SAM2 的 ORT 静态 INT8 会破坏点提示分割质量，因此平台不会生成该精度；YOLO、OpenVINO 和 TensorRT 的 INT8 能力不受影响。校准数据可选 `dataset.yaml` 或图片目录，也可在页面按需下载并缓存 COCO128 通用校准集。
-- 数据处理页面在普通窗口放大或进入全屏后会自动铺满可用宽度，页面内容过高时仍可通过纵向滚动查看。
-
-### 3. 数据标注
-
-- 顶部主导航新增“数据标注”页面，独立于“数据处理 > 标注预览”。
-- 左侧工具栏提供图片文件夹、标签文件夹、上一张、下一张、画标注框、AI 预标注、更多设置。
-- `标签文件夹` 当前用于 Labelme `.json` 标注目录；YOLO 标注目录继续使用项目配置中的 `labels_dir`。
-- 右侧仅在 YOLO 相关设置开启时提供“任务类别”（`detect` / `obb` / `seg`）；没有有效 YOLO 文件时初始显示红色“未选择”，用户不能将已选择状态改回该占位状态。任务类别按项目全局保存，切换照片不会改变。另有“目标类型”、管理类别、标注列表和图片列表；未配置类别时“目标类型”初始为空。
-- 绘制过程中矩形框、圆形和旋转框使用会与底图混合的半透明纯绿色轮廓，在白底下约为 `rgb(127, 255, 127)`；多边形在至少三个顶点确定后显示同样随底图变化的半透明纯绿色背景，白底下约为 `rgb(191, 255, 191)`，完成标注后恢复对应类别颜色，控制点同步使用该类别颜色。
-- YOLO 相关设置开启时标注列表显示：`序号.类别-绘制类型（最终格式）`，例如 `1.weld-镜像有向矩形（obb）`；相关设置关闭时隐藏最终格式后缀。
-- 图片列表标题右侧显示当前索引/总数，例如 `15/460`；有标注图片显示 `☑︎`，无标注图片显示 `☐`。
-- 首次进入标注页时会先完成导航切页，再在页面首次显示后启动首轮图片扫描，优先显示当前图片与首批图片列表；如果主窗口已在空闲阶段预热过标注页，则切入时会尽量直接显示第一张图片，减少先见空画布的闪动。
-- 图片列表只为首批/可见项创建较重的行内控件，减少大目录下第一次切页卡顿。
-- 图片列表使用行内只读勾选框和文件名控件时，底层列表项不会再重复绘制同名文本，避免出现文件名重影。
-- 当前支持的绘制/编辑模式：
-  - `编辑`
-  - `矩形框`
-  - `圆形`
-  - `镜像有向矩形`
-  - `有向矩形`
-  - `多边形`
-  - `直线拓展`（默认关闭，需要在“更多设置”中启用）
-- 点击“画标注框”后，会先弹出默认宽度为 `240 px`、SAM 标题行距窗口顶部 `12 px` 的标注类型选择窗口；`编辑` 与下方绘制类型共用一个连续外框，中间使用固定 `2 px` 高的较粗分隔线隔开。
-- “画标注框”窗口顶部提供 SAM 图标、动画开关，以及同一行的模型选择和`高级`按钮；画布右键菜单提供同步开关。模型从当前项目和程序根目录的 `data/models/*.pt` 扫描，并额外发现 `data/models/model_exports/**` 下完整的 SAM2 ONNX 双文件目录；项目目录中的同名模型优先，所有以 `sam`/`SAM` 开头的 `.pt` 都会显示。官方 SAM 2/2.1 各尺寸、SAM 1 ViT 系列、SAM2 ONNX 和 `sam3.pt` 会显示简化名称，自定义名称保留文件名；只有可确定画布后端的 SAM 2/2.1、SAM2 ONNX 与 SAM 3 可启用开关和高级按钮。所选模型路径按项目保存，但启用状态不会保存。
-- `SAM 高级设置`窗口约为 `480 x 400 px`，顶部“当前模型”使用下拉框选择模型，右侧“打开文件夹”可直接打开所选 checkpoint 所在目录；取消不切换模型，保存后才同步模型选择。窗口按项目保存快速单结果/三候选优选、最低预测质量、最小掩码面积和多边形轮廓简化比例，其中最小掩码面积使用与轮廓简化比例对齐的对数滑块并保留精确数值框（`1~100000000 px²`）；三个参数数值框均不显示上下调箭头，仍可直接输入并与滑块联动；保存后清除旧预览，下一次悬停立即使用新参数，不重新加载模型或编码图片。
-- SAM 智能标注支持矩形框、有向矩形、镜像有向矩形和多边形；开启时圆形、直线扩展及其快捷键不可用，当前为不支持形状时自动切换为矩形框，编辑模式仍可正常选择和修改已有标注。
-- 鼠标在未被现有标注覆盖的图片区域移动时，SAM 会立即提交首个位置，并根据最近推理耗时在 `50~120 ms` 范围内持续识别最新坐标；同一形状下小于 `2 px` 的原图微小移动会被过滤。控制器最多保持一个在途推理和一个最新待处理坐标，绿色预览采用 LabelPaw 风格的纯绿色不透明边缘、低透明度绿色填充和固定屏幕像素虚线（实线段约 `12 px`、空隙约 `5 px`），并会用最近完成的结果连续更新，无需停住鼠标；窗口缩放不会改变虚线的长短、宽度或粗细。左键直接确认当前可见预览，不再次推理；预览不进入标注列表、撤销记录或保存文件，确认后继续复用当前类别、连续标注、自动保存和 Labelme/YOLO 转换流程。
-- 状态栏会显示 SAM 的加载、图片编码、就绪和推理状态；切图、切模型、切形状、离开画布或关闭开关会立即清除旧预览。SAM2/2.1 画布辅助标注使用官方点提示 predictor；SAM2 ONNX 画布辅助标注使用导出目录中的 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`，固定使用 ONNX Runtime CPUExecutionProvider；SAM 3 画布辅助标注使用官方交互式单点预测器且需要 CUDA。无 CUDA、权重不兼容、ONNX 文件不完整或显存不足时会自动关闭开关并明确提示，无法从自定义文件名确定后端的模型只显示、不允许启用。关闭开关只暂停智能标注并保留当前模型，离开数据标注页、切换项目或退出程序时才关闭 SAM 子进程并释放模型与显存。启动 AI 预标注前会先关闭画布 SAM 子进程并释放显存，任务结束后不自动重新开启。
-- 按 `W` 可直接打开与“画标注框(W)”按钮相同的标注类型选择窗口。
-- 标注模式快捷键与右键菜单一致：`V` 编辑、`R` 矩形框、`O` 有向矩形、`M` 镜像有向矩形、`P` 多边形、`C` 圆形；启用直线扩展后，`L` 切换到直线扩展。SAM 开启时 `M` 仍可使用，其余不支持形状快捷键保持禁用。
-- 数据标注页底部会显示当前模式状态栏，例如 `当前状态：编辑` 或 `当前状态：圆形`；可在“更多设置”的“显示当前状态”中关闭。离开数据标注页后该状态栏自动隐藏。
-- 状态栏开启时页面底部状态栏与模块之间保持 `3 px` 间距；关闭后恢复原有页面底部 `12 px` 留白。
-- 右键菜单顶部首先显示带动画开关的 `SAM 智能标注`，随后是分隔线、`编辑`、分隔线和 `矩形框`、`有向矩形`、`镜像有向矩形`、`多边形`、`圆形`、`直线拓展`；存在未完成绘制时追加`取消当前绘制`。
-- 选中标注后支持直接拖动、拖动控制点修改形状，并支持 `Delete` 删除；有向矩形四条边的中心点提供旋转控制，拖动后围绕矩形中心旋转。
-- 类别管理窗口底部左侧提供“转换类别”按钮，右侧显示“确定”和“取消”；重命名类别保留类别索引，已有标注的类别引用不变。删除拥有标注依赖的类别时会阻止操作并提示依赖数量；点击“转换类别”会打开独立设置窗口，可将源类别的全部标注转换到目标类别，确认后保存，取消则不执行转换。
-- 编辑模式下选中标注会持续显示半透明背景，便于区分当前正在编辑的标注。
-- 绘制预览使用不透明纯绿色实心圆点，已完成标注默认显示实心圆点；绘制模式只展示控制点、不允许交互。圆形标注绘制预览中的半径控制点随鼠标确定方向，完成后固定为标注时写入的半径点位置，只有主动拖动该点才会改变。有向矩形编辑时在四条边中心显示圆形旋转控制点，拖动后围绕矩形中心旋转。编辑模式悬浮到具体控制点时该点显示实心方块，其余控制点显示空心圆点，悬浮到标注框或内部时显示与选中态深度一致的背景；移开后恢复默认样式。
-- 除编辑模式外，选择任意绘制模式后画布显示系统十字光标辅助定位；手动矩形框模式额外显示贯穿画布、按热点下图片亮度在黑色与深灰色（`#000000` 至 `#484848`）之间变化的水平/垂直辅助线，SAM 智能标注开启时隐藏该长十字辅助线并仅保留系统短十字光标；长十字不会显示彩色，并在短光标周围留出原始背景采样空隙；离开再进入画布时会立即恢复辅助线与短十字光标；多边形悬停到封闭顶点时仍显示小手。
-- 标注控制点默认实心直径 `7 px`；悬浮状态的空心圆点和方块直径 `9 px`，不随图片分辨率变化；编辑模式鼠标命中范围为最大可视尺寸的 `2.0` 倍。
-- 标注绘制过程中不显示类别名称，图形完成后才显示；编辑模式下按 `Esc` 可取消选中，从编辑模式切换到绘制模式也会自动取消选中。
-- 标注完成后默认不选中，需要编辑时可在编辑模式下点击标注框选中。
-- 标注页支持最近 5 次标注内容操作的撤销与恢复（新增、删除、移动、变形和类别修改），换页不占用历史；`Ctrl+Z` 撤销、`Ctrl+Y` 恢复，跨页操作会自动切回对应图片，且撤销/恢复时编辑模式会自动选中受影响标注。
-- 连续标注模式下，下一次点击开始新标注时会先取消上一标注的选中状态。
-- 圆形标注采用“两次点击确认”的方式，不依赖按住鼠标再松开。
-- `Esc` 支持两级取消：先取消当前正在绘制的标注；若当前未在绘制，则退回到“编辑”模式。
-- “更多设置”当前包含：
-  - 是否自动保存 Labelme `.json`
-  - 是否自动转换并保存 YOLO `.txt`
-  - 是否显示标注名称，默认关闭
-  - 若无 Labelme 标注，是否自动读取显示 YOLO 标注，默认关闭，位于“显示标注名称”上方
-  - “开启快捷标注”复选框开关，默认关闭
-  - “开启直线扩展标注”复选框开关
-  - “优化镜像有向矩形编辑”复选框开关，默认关闭
-  - YOLO 标注文件夹（项目目录内显示为相对路径）
-  - 直线扩展像素，默认 `10`
-  - “自动转换为 YOLO 格式”“显示标注名称”“显示当前状态”均提供 `ⓘ` 解释提示。
-  - “更多设置”窗口默认尺寸为 `300 x 450`；拉高窗口时，各设置项之间的额外空间平均分配。
-  - 窗口底部按钮显示为“确定”和“取消”。
-- 退出程序时，只有当前可见的未保存标注状态会触发确认；关闭“右键显示保存YOLO标注”后，隐藏的 YOLO 未保存状态不会触发退出提示，确认按钮显示为“是”和“否”。
-- AI 预标注已落地为独立弹窗，默认大小为 `700 x 620`，最小大小为 `650 x 520`。
-- AI 预标注顶部采用左右两张卡片布局：左侧“模型与参数”包含模型文件；普通 YOLO 模型另显示置信度、IoU，右侧“范围与模式”包含标注范围下拉框，以及“追加 / 替换”两种处理模式。
-- “范围与模式”卡片内的标题、范围选择和处理模式保持顶部紧凑排列，额外高度留在卡片底部。
-- AI 预标注支持“当前图片”“当前及以后图片”“全部未标注图片”“全部图片”“自定义图片”五种范围，并支持模型类别到当前项目类别的映射。
-- AI 预标注结果会先直接转换为页面内部标注对象并写回 Labelme `.json`；如果“更多设置”开启了自动转换，才会额外同步写 YOLO `.txt`。
-- 非自定义范围下会显示 `已选择 x 张图片`；选择“自定义图片”后，右侧改为 `列表` 按钮。
-- 选择“自定义图片”后，可通过 `列表` 按钮打开当前图片文件夹的图片列表，单击文件名前的勾选框切换选择，并支持搜索、全选、反选、全不选；窗口左下角会显示 `已选择 x 张图片`。
-- 自定义图片列表支持按住鼠标左键拖动连续多选/取消；拖到列表上下边缘时会自动滚动，且越靠近边缘滚动越快。
-- AI 预标注窗口关闭后会记住上次使用的模型、置信度、IoU、范围、处理模式和自定义图片选择。
-- 选择 `sam3.pt` 后可为每个项目类别填写文本提示词，并选择矩形框、有向矩形或多边形输出；文本提示词表格行高为 `38 px`，输入框保持至少 `28 px` 高，所在单元格上下左右均保留 `5 px` 内边距，在表格行内完整可见。同一权重也可在“画标注框”窗口用于 CUDA 单点画布辅助。SAM 3 模式隐藏置信度和 IoU 控件，“高级参数”位于标注形状右侧并可展开设置最小 mask 面积与轮廓简化比例，模型文件与标注形状下拉框的文本左边缘对齐，轮廓简化数值框不显示上下箭头。SAM 3 每张图片只编码一次，按分数做跨类别 mask 去重后写入 Labelme。SAM 3 仅支持 CUDA，官方权重需用户自行放入项目或程序根目录 `data/models/`，应用不会自动下载或打包 checkpoint。
-- AI 预标注模型下拉框对 SAM 3 checkpoint 仅显示 `sam3.pt` 文件名，内部仍保留完整路径。
-- AI 预标注的类别映射表在小窗口下应保持内部滚动可用，“标注类别”下拉框文字不得被裁切。
-- 类别映射表中鼠标指向“标注类别”下拉框滚动时，不切换下拉选项，继续滚动映射列表。
-- 直线扩展模式以直线为中心线，按设定像素向两侧扩展，生成镜像有向矩形；镜像有向矩形和直线扩展保存到 Labelme 时均使用 `shape_type: oriented_rectangle`，并通过 YOLOTool 私有 flags 保留内部形状。
-- 开启“优化镜像有向矩形编辑”后，镜像有向矩形显示中心线，只保留中心线两端和两条长边中心的控制点；拖动宽度控制点会沿中心线对称同步改变两侧宽度。
-- 标注页的任务类别、类别名称与主要配置会持久化到当前项目的 `data/runtime/settings.json`；进入标注页时会扫描项目 Labelme JSON 并追加设置中缺少的非空类别名。切换项目后使用新项目自己的类别名称。
-
-### 4. 模型训练
-
-- 自动从模型名称推断 `seg`、`obb` 或 `detect`。
-- 基础模型优先从 `data/models/` 读取，也允许手动输入；当前默认基础模型为 `yolo11s.pt`。
-- 默认训练参数为：优化器 `auto`、学习率 `0.001`、`训练轮数=500`、`早停轮数=100`、`线程数=2`、`批次大小=16`、`图片尺寸=640`、`设备=0`。
-- 训练页当前参数显示名为：优化器、学习率、训练轮数、早停轮数、线程数、批次大小、图片尺寸、设备；其中“图片尺寸”为可编辑下拉框，内置 `640`、`960`、`1280`，也支持手动输入。
-- 默认增强勾选状态为：随机拼图、缩放、平移、调色、左右翻转开启；上下翻转、旋转、混合关闭。
-- 支持训练前弹出命令编辑对话框，便于手动微调最终命令。
-- 后台刷新 GPU、显存、CPU、内存状态，避免阻塞页面交互。
-- 支持中途停止训练；停止后会在训练进程真正退出时自动恢复按钮状态，避免“开始训练”按钮卡灰无法再次启动。
-- GUI 日志会自动清洗终端 ANSI 控制符，不再显示 `[K`、`[34m` 这类颜色/进度刷新乱码。
-- 开始训练前会自动修复 `data.yaml` 中可能遗留的未还原 `val` 路径，例如把异常的反斜杠路径恢复成和 `train` 对应的 `val` 路径。
-- 训练、验证、转换等日志框为只读展示控件，支持鼠标选中文本并可直接使用 `Ctrl+C` 复制。
-
-训练命令示例：
+在 Windows 的 PowerShell 7 环境中，从仓库根目录执行：
 
 ```powershell
-python -m src.main --yolo-train seg train model=... data=... epochs=... imgsz=... batch=... optimizer=...
+pixi install
+pixi run app
 ```
 
-开发态隐藏 CLI 会通过仓库根目录作为工作目录启动 `python -m src.main ...`。如果把子进程 `cwd` 切到外部项目目录或 `src/` 目录，Python 将无法解析顶层 `src` 包，训练/验证等后台任务会直接启动失败。
+等价启动入口：
 
-打包后的程序会通过 `YOLOTool.exe --yolo-train ...` 启动内部训练入口，不依赖目标机器上的 `pixi` 或 `yolo` 命令。
+```powershell
+pixi run app-qt
+pixi run python -m src.main
+```
 
-### 5. 模型验证
+也可以双击 `src/open_yolo_tool.pyw`。程序启动后默认进入主页；项目目录和项目设置在系统设置中管理，当前项目设置保存到 `data/runtime/settings.json`。
 
-- 支持图片检测、视频检测、摄像头检测、数据集验证四种检测模式。
-- 验证页当前采用 `1:3` 左右分栏比例，左侧配置区更紧凑，右侧保留更大结果展示空间。
-- 验证页保持标准页面内边距，并清除右侧内部装配布局的额外 margin，避免右侧模块贴边或与软件边缘距离偏大。
-- 置信度、IoU 与图片尺寸放在同一行，其中“图片尺寸”为可编辑下拉框，内置 `640`、`960`、`1280`，也支持手动输入，并会实际传递到检测推理的 `imgsz` 参数。
-- 批量检测按自然数字排序处理输入文件。
-- 摄像头检测实时运行时，即使当前帧无目标，也会持续显示摄像头画面，避免黑屏。
-- 摄像头检测模式隐藏批量检测结果工具栏，实时预览区从右侧模块顶部开始显示。
-- 摄像头检测模式左侧保留“开始检测”和“停止”按钮，用于启动和结束实时检测。
-- “选择模型”下拉框支持扫描训练结果模型；默认仅显示各训练目录下的 `best.pt`，开启系统设置里的“训练模型显示 last”后才会额外显示 `last.pt`。
-- 图片检测模式下，`输入源` 可选择 `全部图片`、`训练图片`、`验证图片`、`测试图片` 或 `单张图片`；视频检测模式可选择 `批量视频` 或 `单个视频`。选择按钮默认打开 Windows 原生文件夹对话框，只有选择单张图片/单个视频时才打开文件对话框。
-- 数据集验证模式下，左侧显示 `数据集 YAML`、`选择验证源`、`输出文件夹` 与 `打开保存目录`；`选择验证源` 带“选择”按钮，可自定义验证文件夹；右侧改为验证日志视图。
-- 数据集验证模式下左侧配置项保持紧凑的顶部排列，不随右侧验证日志高度产生大段空隙。
-- 普通检测保存结果时，会同时导出同名 `.txt` 标注文件到该次输出目录下的 `labels/` 子目录。
-- 验证页不显示“检测控制”标题，普通检测模式仅保留日志文本框，不显示“检测日志”标题。
-- 源图和检测结果图移除外层大框，由图片区自身边框直接占据原来的展示区域。
-- 模型验证不会创建或显示主窗口底部状态栏，检测进度与结果状态统一写入验证日志。
-- 普通检测模式下，左侧日志框会自动填满配置面板底部的剩余空间。
-- 验证页通过“输入源”选择按钮选取自定义文件夹后，界面显示相对于项目根目录的路径，项目外路径使用 `..` 表示，检测时仍使用实际绝对路径。
-- 视频检测模式自动切换为视频播放模式，打开时显示当前第一个视频的第一帧但不自动播放；隐藏图片结果切换按钮，日志每秒显示视频百分比和上一秒检测帧数；结果保存为 MP4，不生成视频帧 TXT 标注。
-- 视频检测模式的左侧保留“开始检测”和“停止”按钮，顶部三角按钮单独控制源视频和检测后视频的播放/暂停；播放进度条可拖动同步定位两侧视频，右侧提供“上个视频”“下个视频”“列表”和“打开保存文件夹”。批量检测后续视频时不替换当前预览。
-- 源视频和检测后视频预览面板使用等权宽度，两个视频区域保持一致。
-- 图片检测与视频检测相互切换时会批量更新预览控件，避免视频检测切换为图片检测时出现中间画面闪动。
-- 检测开始前，验证页源图会提前显示输入源的第一张图片；列表可切换预览图片，单张图片或拖入图片/视频会显示对应媒体的图片或视频首帧，开始检测后恢复原有结果展示逻辑。
-- 检测开始前，上一张、下一张、第一张、最后一张按钮可切换源文件预览；切换检测模式或输入源时会清除旧的图片、视频和结果显示。
-- 检测开始前，验证页计数显示当前源图片位置与输入源总数；开始检测后恢复检测结果计数。
-- 视频自然播放结束后，播放按钮会自动恢复为三角播放图标并取消选中状态。
-- 可将单个图片或视频文件直接拖入模型验证页面，程序会按扩展名自动切换到图片检测或视频检测；点击检测按钮时只处理拖入的文件。
+## 功能总览
 
-### 6. 系统设置
+| 页面/模块 | 主要能力 |
+| --- | --- |
+| 主页 | 项目统计、标注分布、训练曲线和训练历史；大目录统计在后台执行。 |
+| 数据标注 | Labelme 标注读写、矩形/圆形/有向矩形/多边形/直线扩展、类别管理、撤销恢复和自动保存。 |
+| AI 标注 | YOLO / SAM 预标注，SAM 2/2.1 画布悬停辅助标注，SAM 3 文本提示预标注。 |
+| 数据处理 | Labelme 转 YOLO、YOLO 原生数据集划分、标注预览、批量重命名和图片压缩。 |
+| 模型训练 | 自动识别任务类型，统一生成训练命令，支持增强参数、命令编辑和中途停止。 |
+| 模型验证 | 图片、视频、摄像头和数据集验证；按模式保存图片、标签或视频结果。 |
+| 模型转换 | YOLO 支持 ONNX、TorchScript、OpenVINO、TensorRT、NCNN；支持 SAM 模型导出。 |
+| 系统设置 | 环境状态、项目设置、默认值恢复、Release 检查和 GPU/CPU 更新资源选择。 |
 
-- 首次进入系统设置页的版本检测完成后，即使更新窗口已经打开，窗口也会自动刷新版本、发布说明、环境提示和资源选项；窗口提供“检测更新”按钮，可在“访问 GitHub 仓库”旁手动再次检测，检测期间按钮会暂时禁用。
-- 更新窗口的汇总下载进度从 `0%` 开始；程序与一个环境包同时下载时按 `20%/80%` 分配，三项资源同时下载时按 `10%/45%/45%` 分配，单个资源下载完成显示 `100%`。
-- 更新进度条上方右侧显示下载速度和“已下载 / 总大小”；无法从响应头获得总大小时显示 `--`。
-- 下载过程中可以关闭或隐藏更新窗口，后台下载会继续；再次进入版本更新窗口会保留原进度。暂停按钮后新增停止按钮，用于取消下载并清理临时文件。
+## 环境与任务
 
-- 页面顶部显示 Python、Torch/CUDA、Ultralytics、OpenCV、Pillow、ONNX、TensorRT 和程序版本；GPU、显存、CPU、内存状态在训练页后台刷新。
-- 系统信息下方同一行放置“多类别分布模式”“训练前显示自定义命令框”“显示配置解释符号”“训练模型显示 last”“恢复默认设置”。
-- 控制字段名后的 `ⓘ` 解释符号显示，但不会移除 tooltip。
-- “训练模型显示 last”默认关闭，只影响模型验证页的“选择模型”下拉框。
-- 支持一键把当前项目设置恢复为默认值，同时保留当前项目目录不变。
+支持的任务和标注链路：
 
-## 技术栈
+- YOLO `detect`、`obb`、`seg` 三种任务类型。
+- Labelme `.json` 与 YOLO `.txt` 互转，支持类别映射和转换产物备份。
+- 标注编辑器提供矩形、圆形、有向矩形、多边形和直线等标注形状；这些形状与 YOLO 任务类型是两个不同层次的概念。
+- 有向矩形标注可用于构建 OBB 数据集，直线可按半宽扩展为区域后参与数据集转换。
+- SAM 2/2.1 画布辅助标注和 SAM 3 文本提示预标注；官方 `sam3.pt` 由用户自行放入 `data/models/`。
 
-- Python 3.12
-- PySide6 / Qt
-- Ultralytics
-- Pillow
-- OpenCV
-- Matplotlib
-- PyYAML
-- scikit-learn
-- psutil
-- pytest
-- torch / torchvision / torchaudio（目标 CUDA 13.0）
-- ONNX / ONNXSlim / ONNXScript；发布基础环境使用 CPU ONNX Runtime
-- GPU 开发/发布环境：OpenVINO / NNCF / TensorRT / NCNN / PNNX；CPU 发布环境：OpenVINO / NNCF / NCNN / PNNX 内置，TensorRT 不安装
+模型格式转换能力：
 
-依赖由 `pixi.toml` 管理。默认开发环境保持 GPU CUDA 13.0；`cpu`/`release-cpu` 使用 PyTorch CPU wheel 和 CPU `onnxruntime`，不参与 CUDA、TensorRT 或 GPU ONNX Runtime 的解析。
+| 环境 | 格式 |
+| --- | --- |
+| GPU | ONNX、TorchScript、OpenVINO、TensorRT、NCNN |
+| CPU | ONNX、TorchScript、OpenVINO、NCNN |
 
-## 目录结构
+模型转换默认扫描 `result/**/weights/*.pt`；基础模型和 SAM checkpoint 可通过浏览按钮选择，默认输出到 `data/models/model_exports/<模型名>/`。YOLO 转换支持多种精度、动态输入、NMS、校准和转换后验证。
+
+Pixi 环境由 `pixi.toml` 管理：
+
+| 环境 | 用途 |
+| --- | --- |
+| `default` | GPU 开发、GPU GUI、基础包和附加包构建。 |
+| `release-cpu` | CPU 安装包构建，使用 CPU Torch、CPU ONNX Runtime，并内置 CPU 版 OpenVINO、NNCF、NCNN、PNNX。 |
+
+检查 CPU 发布依赖：
+
+```powershell
+pixi run -e release-cpu python -m src.devtools.cpu_package_guard
+```
+
+## 推荐工作流
+
+1. **创建项目**：在主页或系统设置中选择项目目录，确认基础模型和类别设置。
+2. **准备标注**：在数据标注页读写 Labelme 标注；需要 YOLO 输出时，在更多设置中开启自动转换或保存 YOLO 标注。
+3. **整理数据集**：在数据处理中选择 Labelme 转换模式或 YOLO 原生划分模式。默认比例为 `train=0.8`、`val=0.2`、`test=0.0`，空 split 不预建目录。
+4. **训练模型**：默认基础模型为 `data/models/yolo11s.pt`；训练页根据模型名称自动选择 `detect`、`obb` 或 `seg` 任务，其余训练参数在页面中配置。
+5. **验证结果**：模型验证默认显示训练产物中的 `best.pt`；开启“模型验证显示 last”后才显示 `last.pt`。普通图片检测默认输出到 `result/gui_val`，标签位于输出目录的 `labels/` 子目录；视频输出为 MP4。
+6. **导出模型**：在数据处理中选择目标格式，按需配置精度、动态轴、NMS、opset、校准和验证参数。
+
+## 项目数据
+
+| 路径 | 用途 |
+| --- | --- |
+| `images/` | 默认图片目录，同时作为默认 Labelme 标注目录。 |
+| `labels/` | 默认 YOLO 标注目录。 |
+| `data/` | 数据集和项目数据目录。 |
+| `data/models/` | 基础模型、SAM checkpoint 和模型导出目录。 |
+| `data/models/model_exports/` | 模型格式转换默认输出目录。 |
+| `result/` | 训练结果和验证结果目录。 |
+| `result/gui_val/` | 模型验证默认输出目录。 |
+| `data/runtime/settings.json` | 当前项目设置。 |
+| `data/runtime/app_state.json` | 应用级最近项目状态。 |
+
+项目数据、训练结果、用户模型和运行时设置属于本地工作数据；`.pixi/`、`build/`、`dist/` 和训练产物不应提交到 Git。
+
+## Windows 发布
+
+GPU 发布拆分为程序安装器、基础环境包和可选模型转换附加包；CPU 发布为内嵌完整运行时和模型的一体式安装器。
+
+| 发布物 | 用途 |
+| --- | --- |
+| `YOLOTool_Setup_<版本>.exe` | GPU 程序安装器和普通程序更新。 |
+| `YOLOTool_BaseEnv_<版本>.7z` | GPU 基础运行环境、模型和 SAM 资源。 |
+| `YOLOTool_ExtraEnv_<版本>.7z` | GPU OpenVINO、NNCF、NCNN/PNNX、TensorRT 和 GPU ONNX Runtime 覆盖层。 |
+| `YOLOTool_CPU_Setup_<版本>.exe` | CPU 一体式安装器，包含 CPU 运行时和模型。 |
+
+常用构建命令：
+
+```powershell
+# GPU 完整发布
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer/package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
+
+# CPU 完整发布
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer/package_windows.ps1 -Variant CPU -Clean
+
+# 普通程序更新，复用已有 GPU 环境包
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer/package_windows.ps1
+
+# 本地开发快包
+pwsh -NoProfile -ExecutionPolicy Bypass -File installer/build_windows.ps1 -Mode dev
+```
+
+根目录双击入口：
+
+- `打包程序.bat`：通过 PowerShell 7 菜单选择 GPU/CPU 全量发布、环境包归档、复用已有 GPU 环境包的程序安装器或开发快包。
+
+安装事务、环境包内容、更新下载和卸载保留规则见 [docs/packaging-windows.md](docs/packaging-windows.md)。
+
+## 开发与测试
+
+完整检查：
+
+```powershell
+pixi run check
+pixi run test
+```
+
+分层回归：
+
+```powershell
+pixi run test-fast
+pixi run test-ui
+pixi run test-integration
+pixi run test-full
+```
+
+当前测试覆盖服务层、UI、集成入口、隐藏 CLI、PyInstaller、Windows 安装器和分层打包契约，也覆盖设置迁移、任务停止、日志清洗、模型转换和用户文件安全。
+
+开发态入口为 `python -m src.main`；打包后训练、导出和验证由统一 CLI 分发：
+
+```powershell
+YOLOTool.exe --yolo-train ...
+YOLOTool.exe --yolo-export ...
+YOLOTool.exe --yolo-val ...
+```
+
+业务逻辑位于 `src/services/`，Qt 页面位于 `src/ui/`，共享上下文和任务协调器负责页面间状态与后台任务；服务层不依赖 UI 层。
+
+## 项目结构
 
 ```text
 yolo_tool/
 ├── AGENTS.md
 ├── README.md
 ├── pixi.toml
-├── pixi.lock
-├── 打包程序.bat
-├── 打包更新程序.bat
 ├── docs/
-│   └── packaging-windows.md
+│   ├── architecture.md
+│   ├── packaging-windows.md
+│   ├── code-inventory.md
+│   └── spec/
 ├── installer/
-│   ├── yolo_tool.iss
 │   ├── YOLOTool.spec
 │   ├── build_windows.ps1
+│   ├── package_windows.ps1
 │   └── hooks/
 └── src/
     ├── main.py
     ├── app.py
     ├── train_cli.py
-    ├── open_yolo_tool.pyw
     ├── bootstrap/
-    ├── shared/
-    ├── runtime/
-    │   └── settings.json
-    ├── assets/
     ├── services/
+    ├── shared/
     ├── ui/
-    │   ├── shell/
-    │   ├── shared/
-    │   ├── widgets/
-    │   └── features/
+    ├── runtime/
+    ├── assets/
     └── tests/
 ```
 
-项目代码统一放在 `src/` 目录下，测试代码放在 `src/tests/`。
-
-## 环境准备
-
-推荐使用 Pixi：
-
-```powershell
-pixi install
-```
-
-默认开发环境和 `release-gpu` 共享 GPU 的全部模型转换后端；`release-gpu` 用于 GPU 主程序、基础包和附加包构建，`release-cpu` 用于 CPU 主安装包并内置 OpenVINO、NNCF、NCNN、PNNX。GPU 环境只使用 `onnxruntime-gpu`，CPU 环境只使用 `onnxruntime`。
-
-CPU 环境检查：
-
-```powershell
-pixi run -e release-cpu python -m src.devtools.cpu_package_guard
-```
-
-如果需要确认 PyTorch/CUDA 是否正确安装，可执行：
-
-```powershell
-pixi run python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
-```
-
-目标是 `torch.version.cuda` 对应 CUDA 13 系列，且 `torch.cuda.is_available()` 为 `True`。
-
-## 启动方式
-
-启动 GUI：
-
-```powershell
-pixi run app
-```
-
-等价入口：
-
-```powershell
-pixi run python -m src.main
-```
-
-也可以双击 `src/open_yolo_tool.pyw` 启动程序。
-
-## Windows 打包与更新
-
-安装器使用 Inno Setup 7.0.2 或更高版本编译；打包脚本只搜索 Inno Setup 7 的编译器。
-
-完整发布会先生成完整冻结目录供基础环境包使用，基础包完成后再强制重建 program-only EXE 供安装器使用。这样完整发布的 `YOLOTool_Setup_<版本>.exe` 不会把基础环境中的 Python、Torch 和其他运行库重复打入安装器；`dist/YOLOTool/` 仍保留为完整冻结启动验证物。
-
-文档中早期版本的 `2.76 MB` program-only 体积仅作历史参考；当前体积会随应用代码和静态导入模块图变化，发布验证以安装器小于 `100 MB` 且最终 Program staging 不含 `_internal/` 为准。
-
-冻结程序仍使用 PyInstaller `onedir`。普通功能更新只发布小型程序安装器：
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1
-```
-
-程序更新构建会跳过第三方运行库的全量 PyInstaller 分析，直接复用基础包的 `_internal/`；基础包额外保留动态导入所需的标准库 ZIP 和第三方纯 Python 源码，程序更新包不会复制大型 DLL、Torch 或 CUDA。本机实测程序-only EXE 约 2.76 MB，完整发布仍会执行完整环境分析。完整冻结目录会附带本地启动所需的兼容清单，可直接运行 `dist/YOLOTool/YOLOTool.exe`；程序-only 目录仅用于更新已安装的基础环境。
-
-双击根目录 `打包更新程序.bat` 只重建 GPU 程序安装器，并复用 `installer/output/` 中已有的 GPU 基础环境包和附加环境包。基础包必须存在，附加包仍为可选；脚本要求 PowerShell 7 的 `pwsh.exe`。
-
-双击根目录 `打包程序.bat` 会打开数字菜单，按下数字后立即进入对应流程：
-
-1. GPU 与 CPU 全量发布；
-2. GPU 全量发布；
-3. GPU BaseEnv 单卷归档；
-4. GPU BaseEnv 分卷归档；
-5. GPU ExtraEnv 单卷归档；
-6. GPU ExtraEnv 分卷归档；
-7. GPU 程序安装器；
-8. CPU 全量发布；
-9. 本地开发快包。
-
-选项 1 会先完成 GPU 发布，再完成 CPU 发布；任一步失败都会停止后续流程。CPU 发布不会生成 BaseEnv/ExtraEnv 压缩包。菜单使用 PowerShell 7 的现有脚本组合，并在调用子脚本时显式传递命名参数，不改变 `打包更新程序.bat`。
-
-GPU 全量发布对应 PowerShell 7 命令为：
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -BuildBaseRuntimeModels -BuildModelExportRuntime
-```
-
-CPU 正式发布命令为：
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File installer\package_windows.ps1 -Variant CPU -Clean
-```
-
-GPU BaseEnv 分卷归档会先生成完整 GPU 冻结程序，再执行：
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_base_runtime_models.ps1 -Variant GPU -Clean -SplitBaseArchive
-```
-
-GPU ExtraEnv 分卷归档使用：
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_model_export_runtime.ps1 -Clean -SplitArchive
-```
-
-PowerShell 下也可分别使用 `-SkipBaseRuntimeModels`、`-SkipModelExportRuntime` 跳过未变化的运行包。本地快速验证仍可构建开发快包：
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode dev
-```
-
-GPU 基础包和附加包都不生成或读取 `.cache.json`，每次完整发布都会重新 staging、计算清单并压缩；GPU 归档默认单卷，显式使用 `-SplitBaseArchive` 或 `-SplitArchive` 才启用对应分卷。分卷使用 `-v1073700000b`，每卷必须严格小于 `1 GiB`，当前最多生成 `.001/.002` 两卷。CPU 每次完整发布只重新冻结 `dist/CPU/YOLOTool`，由 Inno Setup 直接内嵌，不生成运行时 staging 或归档。需要完全重建时，在完整命令后增加 `-Clean`；该选项会强制重新冻结对应变体的程序内容。
-
-面向用户的发布物固定为：
-
-```text
-YOLOTool_Setup_<程序版本>.exe
-YOLOTool_BaseEnv_<基础包版本>.7z
-YOLOTool_ExtraEnv_<附加包版本>.7z
-
-YOLOTool_CPU_Setup_<程序版本>.exe
-```
-
-当前默认发布基础包为 `YOLOTool_BaseEnv_v3.7z`，附加包为 `YOLOTool_ExtraEnv_v3.7z`，运行时协议仍为 `runtime-2`。GPU 基础包使用 CPU ONNX Runtime，GPU 附加包 v3 额外携带隔离的 GPU ONNX Runtime，启动时按 CUDA Provider 探测结果自动选择或回退；基础包包含 SAM 3 推理代码与依赖，但不包含用户自行取得的 `sam3.pt` checkpoint。GPU 基础包和附加包默认生成单卷 `.7z`；分卷模式分别生成对应的 `.7z.001/.002` 文件，供需要按卷传输或归档的场景使用。CPU 版把完整运行时和模型直接压入 `YOLOTool_CPU_Setup_<版本>.exe`，不生成 CPU BaseEnv 压缩包。
-
-程序安装器只包含内嵌资源的 `YOLOTool.exe` 和程序清单，硬性目标小于 `100 MB`；CPU 安装器例外，直接内嵌 CPU-only 运行时和模型，完整冻结目录中的根目录 EXE 不重复嵌入。GPU 默认环境包文件名为 `YOLOTool_BaseEnv_v3.7z` 和 `YOLOTool_ExtraEnv_v3.7z`，运行时兼容协议使用 `runtime-2`；特殊分卷时安装器也接受基础包 `.7z.001/.002`。GPU 基础包携带 `sam2.1_hiera_base_plus.pt`，CPU 一体式安装器改为携带更小的 `sam2.1_hiera_tiny.pt`；`sam3.pt` 由用户自行取得并放入 `data/models/`，不会被打包。GPU 首次安装、环境清单缺失、官方 `yolo26n.pt` 缺失或环境不兼容时优先提供基础包，首次安装缺少基础包时安装器组件页显示红色风险提示并阻止继续；CPU 一体式安装器不依赖外部基础包。已有安装但没有新基础包时 GPU 可只更新程序、继续使用旧环境，并警告部分功能可能无法使用。GUI 启动不会因运行时版本不一致强制退出，`--runtime-probe` 仍用于安装器和诊断。安装成功页右侧“启动 YOLOTool”选项下方可勾选删除本次使用的安装器和环境包。默认目录为 `YOLOTool`，CPU 默认目录为 `YOLOTool_CPU`。
-
-安装器进入文件替换前通过 Inno Setup 的 Windows Restart Manager 注册当前安装目录中的 `YOLOTool.exe`；没有目标进程时直接继续，发现目标进程后由安装器自动关闭，不弹出是否停止应用的询问页，也不使用 PowerShell 或 WMI；其他安装目录的实例不会被停止。自动关闭前应保存好必要状态，安装器不负责恢复未保存的数据。
-
-GPU 附加包始终可选，收集 OpenVINO、NNCF 及其运行时依赖、NCNN/PNNX、TensorRT 和隔离的 GPU ONNX Runtime 覆盖层。用户可在模型转换页或系统设置页选择/拖入 `.7z`，替换已有版本前会二次确认，安装过程仅显示状态日志；安装优先使用基础环境随附的原生 7-Zip，避免大包解压后的重复文件扫描；附加环境安装到当前程序目录 `_internal\extensions\model-export-runtime\`，基础环境升级时会保留该目录，旧版 `%LOCALAPPDATA%\YOLOTool\` 扩展同盘原子迁移、跨盘复制完成后再删除旧目录。CPU 安装器不显示 ExtraEnv，CPU 实例手动导入 GPU 附加包会拒绝安装。
-
-组件页只按版本化名称和扩展名识别本地包，不绑定压缩大小或归档 SHA-256，因此同一环境包版本的不同重打包可以复用。安装器使用普通百分比进度条显示文件安装进度；提交完成前的 `--runtime-probe` 只比较程序清单要求的运行时版本与 `_internal` 基础环境清单版本，不导入 Torch、PySide6 或 ONNX。归档损坏或无法解压时安装事务失败并回滚；运行环境版本不匹配或自检未通过时只显示警告并继续安装，提示部分功能可能无法使用，不恢复旧版本。程序-only 本体明确包含 `ctypes.util`，兼容 Python 3.12 Windows 下 Cryptodome 的 ctypes 回退路径；七个安装清单保存到 `_internal/yolotool_metadata/`，旧根目录清单可自动迁移。基础包同时维护 `data/models/yolo26n.pt` 和根目录兼容副本 `yolo26n.pt`。用户模型和 `data/runtime/`、`images/`、`labels/`、`result/` 均保留。
-
-更多说明见 `docs/packaging-windows.md`。
-
-## 测试与检查
-
-日常快速回归：
-
-```powershell
-pixi run test
-```
-
-默认测试为完整回归，当前 269 项。测试按服务、UI、集成和架构职责分组；快速回归与分层测试按需执行：
-
-```powershell
-pixi run test-fast        # 服务层、架构围栏和统一入口快速回归
-pixi run test-full        # 完整测试兼容别名
-pixi run test-ui          # Qt UI 测试
-pixi run test-integration # 入口、安装器和打包集成测试
-```
-
-pytest 的临时缓存写入 `.pixi/pytest-cache`，不会在项目根目录生成 `.pytest_cache`。
-
-静态编译检查：
-
-```powershell
-pixi run check
-```
-
-## 默认目录约定
-
-- 图片目录：`images/`
-- Labelme 标注目录：默认 `images/`
-- YOLO 标注目录：`labels/`
-- 数据集目录：`data/`
-- 基础模型目录：`data/models/`
-- 训练结果目录：`result/`
-- 模型验证默认输出路径：`result/gui_val`
-- 运行时设置：`data/runtime/settings.json`
-- 最近项目状态：`data/runtime/app_state.json`
-
-当前代码默认值还包括：
-
-- 数据集划分任务类型：`detect`、`obb`、`seg`（默认 `detect`）
-- 数据标注自动保存 Labelme：默认开启
-- 数据标注自动转换 YOLO：默认关闭
-- 数据标注直线扩展开关：默认关闭
-- 数据标注直线扩展像素：`10`
-- 数据标注优化镜像有向矩形编辑：默认关闭
-- 数据集划分比例：`0.8 / 0.2 / 0.0`
-- 图片压缩画布尺寸：`960`
-- 训练基础模型：`data/models/yolo11s.pt`
-- 模型 YAML：默认留空
-- 训练参数：`epochs=500`、`patience=100`、`workers=2`、`batch=16`、`imgsz=640`、`device=0`
-- 模型验证训练结果列表默认仅显示 `best.pt`，需在系统设置开启“训练模型显示 last”后才显示 `last.pt`
-
-默认主窗口尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`。
-AI 智能预标注弹窗默认尺寸为 `700 x 620`，最小尺寸为 `650 x 520`。
-
-## 已覆盖测试
-
-完整回归当前包含 269 项测试，主要覆盖以下内容：
-
-- 设置深合并、项目路径、恢复默认值与可移植模型路径。
-- Labelme/YOLO 标注读写，以及 detect、OBB、Seg 多边形、直线扩展、类别映射和数据集划分。
-- 批量重命名、图片压缩、备份和目录结构保持等会修改用户文件的流程。
-- 训练/验证命令、模型目录、指标读取、输入源、结果标签和视频检测控制流。
-- 模型格式映射、临时导出与覆盖回滚、扩展清单安全、候选安装切换、动态激活和打包依赖分层。
-- 隐藏后台子进程、日志清洗、运行环境状态、发布清单与路径安全。
-- 页面创建、项目切换、关闭保护、任务结束恢复和设置跨页面通知等关键 UI 工作流。
-- 服务/UI 依赖方向、旧入口禁用、模块体量、顶层 UI 类职责和 Qt 延迟回调生命周期等架构围栏；模块行数采用建议复审线与硬安全线，不要求压缩排版或为了数字立即拆文件。
-- 开发态/冻结态统一入口和隐藏 CLI；完整测试另外覆盖 PyInstaller、Windows 安装器和分层打包契约。
-
-快速回归不包含全部 UI 工作流，可分别通过 `pixi run test-ui`、`pixi run test-integration` 或统一的 `pixi run test`/`pixi run test-full` 执行。精确边距、颜色、控件尺寸、帮助提示和其他纯视觉细节在发布前通过桌面界面人工检查。
-
-## 注意事项
-
-- 本项目当前面向 Windows 本地桌面环境。
-- `.pixi/` 不应提交到 git。
-- `data/`、`images/`、`labels/`、`result/` 属于本地工作数据目录，默认已在 `.gitignore` 中忽略。
-- 当前项目的配置文件位于 `data/runtime/settings.json`；`src/runtime/settings.json` 仅保留为源码内历史/默认配置参考。
-- `data/runtime/app_state.json` 只保存应用级最近项目状态，不应用来替代各项目自己的 `data/runtime/settings.json`。
-- PyInstaller 生成的 `build/`、`dist/` 属于构建产物，默认已在 `.gitignore` 中忽略。
-- 如果编译或测试错误连续出现 5 次仍未解决，应停止并由人类介入排查。
-
-## 与 yolo-weld 的关系
-
-原参考项目位于：
-
-```text
-D:\ruanjian\User\Python\yolo-weld
-```
-
-本项目仅参考其流程与脚本思路，不直接依赖原项目代码或环境。
-
-- 模型格式转换默认输出路径：`data/models/model_exports`
+项目代码统一放在 `src/`，测试代码统一放在 `src/tests/`。
+
+## 详细文档
+
+- [架构与维护说明](docs/architecture.md)
+- [主页规格](docs/spec/home.md)
+- [数据标注规格](docs/spec/annotation.md)
+- [数据处理规格](docs/spec/data-processing.md)
+- [模型训练规格](docs/spec/training.md)
+- [模型验证规格](docs/spec/validation.md)
+- [系统设置规格](docs/spec/settings.md)
+- [Windows 发布说明](docs/packaging-windows.md)
+- [代码清单](docs/code-inventory.md)

@@ -491,7 +491,6 @@ def _build_action_row(page, root_layout) -> None:
     page.install_status = QLabel()
     page.install_status.setMinimumWidth(150)
     page.install_status.setVisible(False)
-    page.install_btn.setVisible(installed_variant() != CPU_VARIANT)
     page.install_controls = QHBoxLayout()
     page.install_controls.setContentsMargins(0, 0, 0, 0)
     page.install_controls.setSpacing(8)
@@ -512,6 +511,10 @@ def _build_action_row(page, root_layout) -> None:
     page.install_controls.addWidget(page.install_btn)
     page.install_controls.addWidget(page.install_status)
     root_layout.addLayout(page.install_controls)
+    # The button must be parented before making it visible.  Showing it while
+    # the page is still being assembled creates a transient top-level Qt window
+    # on Windows during startup/project reload.
+    page.install_btn.setVisible(installed_variant() != CPU_VARIANT)
 
 
 def _top_row_layout(left: QWidget, right: QWidget) -> QHBoxLayout:

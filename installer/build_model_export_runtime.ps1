@@ -19,9 +19,14 @@ $ArchivePath = Join-Path $OutputDir "YOLOTool_ExtraEnv_${Version}.7z"
 $OutputPath = if ($SplitArchive) { "${ArchivePath}.001" } else { $ArchivePath }
 if ($Clean) {
     Remove-Item -LiteralPath $StagingRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
-    Get-ChildItem -LiteralPath $OutputDir -Filter "YOLOTool_ExtraEnv_${Version}.7z.???" -File -ErrorAction SilentlyContinue |
-        Remove-Item -Force
+    if ($SplitArchive) {
+        $VolumePattern = "^{0}\\.[0-9]{{3}}$" -f [regex]::Escape("YOLOTool_ExtraEnv_${Version}.7z")
+        Get-ChildItem -LiteralPath $OutputDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match $VolumePattern } |
+            Remove-Item -Force
+    } else {
+        Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+    }
     foreach ($LegacySuffix in @("exe", "zip")) {
         $LegacyPath = Join-Path $OutputDir "YOLOTool_ExtraEnv_${Version}.$LegacySuffix"
         Remove-Item -LiteralPath $LegacyPath -Force -ErrorAction SilentlyContinue
@@ -41,7 +46,7 @@ if (Test-Path -LiteralPath (Join-Path $BaseStagingRoot "base-package-manifest.js
 if ($SplitArchive) {
     $PackageArgs += "--split"
 }
-& pixi run -e release-gpu python @PackageArgs
+& pixi run -e default python @PackageArgs
 if ($LASTEXITCODE -ne 0) {
     throw "附加模型转换环境归档构建失败，退出码：$LASTEXITCODE"
 }

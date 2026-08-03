@@ -61,7 +61,6 @@ torchaudio = { version = "*", index = "https://download.pytorch.org/whl/cu130" }
 
 [feature.release-cpu.pypi-dependencies]
 onnxruntime = ">=1.27.0, <2"
-nncf = ">=2.14.0, <3"
 openvino = ">=2026.2.1, <2027"
 openvino-telemetry = ">=2025.2.0, <2027"
 ncnn = ">=1.0.20260526"
@@ -69,7 +68,6 @@ pnnx = ">=20260526"
 
 [feature.release-gpu.pypi-dependencies]
 onnxruntime-gpu = ">=1.27.0, <2"
-nncf = ">=2.14.0, <3"
 openvino = ">=2026.2.1, <2027"
 openvino-telemetry = ">=2025.2.0, <2027"
 ncnn = ">=1.0.20260526"
@@ -81,5 +79,4 @@ tensorrt-cu13-bindings = { version = "==11.1.0.106", index = "https://pypi.nvidi
 
 [environments]
 default = ["gpu", "release-gpu"]
-release-gpu = ["gpu", "release-gpu"]
 release-cpu = ["cpu", "release-cpu"]

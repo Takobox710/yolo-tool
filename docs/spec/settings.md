@@ -48,6 +48,12 @@
 - `SettingsService.save()` 只接受 `AppSettings`，保存前再次校验；恢复默认设置保留当前项目根目录。
 - 页面设置变更由 `WorkbenchContext.save_settings()` 比较快照后持久化，并只广播实际变化字段；项目切换时递增 generation，使旧页面的后台结果失效。
 
+## 默认路径与窗口尺寸
+
+- 默认图片目录为 `images/`，Labelme 标注目录默认与图片目录相同；YOLO 标注目录为 `labels/`，数据集目录为 `data/`，训练结果目录为 `result/`。
+- 基础模型统一放在 `data/models/`；模型格式转换默认输出到 `data/models/model_exports/`；模型验证默认输出到 `result/gui_val/`。
+- 默认主窗口尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`；AI 预标注弹窗默认尺寸为 `700 x 620`，最小尺寸为 `650 x 520`。
+
 ## 设置项行为
 
 - `model_export` 保存模型导出页的完整配置：`format`、`precision`、`batch`、`imgsz`、`simplify`、`dynamic_batch`、`dynamic_height`、`dynamic_width`、`nms`、`nms_conf`、`nms_iou`、`nms_max_det`、`agnostic_nms`、`opset`、`workspace`、`optimize`、`calibration_data`、`calibration_samples`、`validate_quantized` 和 `validation_samples`。

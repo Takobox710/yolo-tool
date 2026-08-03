@@ -108,6 +108,9 @@ def test_model_export_archive_always_rebuilds_without_cache(monkeypatch, tmp_pat
 
     staging = tmp_path / "staging"
     output = tmp_path / "output"
+    output.mkdir()
+    split_marker = output / "YOLOTool_ExtraEnv_v1.7z.001"
+    split_marker.write_bytes(b"existing split volume")
     model_export_package.build_model_export_archive(
         staging,
         output,
@@ -116,6 +119,7 @@ def test_model_export_archive_always_rebuilds_without_cache(monkeypatch, tmp_pat
     assert commands
     assert "-m0=lzma2" in commands[0]
     assert "-mmt=on" in commands[0]
+    assert split_marker.is_file()
     cache_path = output / "YOLOTool_ExtraEnv_v1.7z.cache.json"
     assert not cache_path.exists()
     marker = staging / "keep-on-cache-hit.txt"
@@ -163,16 +167,21 @@ def test_model_export_archive_can_use_split_volumes(monkeypatch, tmp_path):
     monkeypatch.setattr(model_export_package.shutil, "which", lambda _name: "7z.exe")
     monkeypatch.setattr(model_export_package.subprocess, "run", fake_run)
 
+    output = tmp_path / "output"
+    output.mkdir()
+    single_marker = output / "YOLOTool_ExtraEnv_v1.7z"
+    single_marker.write_bytes(b"existing single archive")
     archive_path = model_export_package.build_model_export_archive(
         tmp_path / "staging",
-        tmp_path / "output",
+        output,
         version="v1",
         split=True,
     )
 
     assert archive_path.name == "YOLOTool_ExtraEnv_v1.7z.001"
     assert "-v1073700000b" in commands[0]
-    assert (tmp_path / "output" / "YOLOTool_ExtraEnv_v1.7z.002").is_file()
+    assert (output / "YOLOTool_ExtraEnv_v1.7z.002").is_file()
+    assert single_marker.is_file()
 
 
 def test_model_export_layer_rejects_files_already_owned_by_base(monkeypatch, tmp_path):

@@ -2,11 +2,14 @@
 
 import os
 import shutil
+import sys
 from pathlib import Path
 import PyInstaller
 
 SPEC_ROOT = Path(SPECPATH).resolve()
 ROOT = SPEC_ROOT.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 HOOKS_DIR = ROOT / "installer" / "hooks"
 ASSETS_DIR = ROOT / "src" / "assets"
 
@@ -16,6 +19,7 @@ from PyInstaller.utils.hooks import (
     collect_submodules,
     copy_metadata,
 )
+from src.devtools.runtime_package_boundaries import PROGRAM_EXTERNAL_RUNTIME_EXCLUDES
 
 BASE_EXCLUDES = [
     "pytest",
@@ -121,6 +125,7 @@ if is_program_only:
         str(HOOKS_DIR / "program_external_runtime.py"),
     ]
     excludes += [
+        *PROGRAM_EXTERNAL_RUNTIME_EXCLUDES,
         "PIL",
         "cv2",
         "torch",

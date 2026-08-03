@@ -19,6 +19,9 @@
 ## 模型格式转换
 
 - 数据处理页保留“模型格式转换”工具。GPU 版支持 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN 五种格式入口；CPU 版隐藏 TensorRT，仅显示 ONNX、TorchScript、OpenVINO 和 NCNN。
+- 模型列表默认只扫描 `result/**/weights/*.pt` 训练产物；`data/models/` 中的基础模型和 SAM checkpoint 不主动列入列表，但可通过浏览按钮选择其他 `.pt` 文件。默认导出目录为 `data/models/model_exports/<模型名>/`。
+- YOLO 模型转换支持 FP32、FP16、INT8、图简化、Batch/高/宽动态轴、NMS、opset、校准和量化后冒烟验证；SAM2/SAM2.1 ONNX 固定 `batch=1`、输入尺寸 `1024`、单点提示，输出 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`，只提供 FP32/FP16。SAM2 的 ORT 静态 INT8 会破坏点提示质量，因此不生成该精度；YOLO、OpenVINO 和 TensorRT 的 INT8 能力不受影响。校准数据可使用 `dataset.yaml`、图片目录或图片列表，也可按需缓存 COCO128 通用校准集。
+- 模型转换日志框为只读展示控件，但必须允许鼠标选中文本并使用 `Ctrl+C` 复制。
 - GPU 版模型转换附加包可从模型转换页或系统设置页选择/拖入，替换已有版本前需确认；安装完成后自检会先加载候选附属包目录，再校验 OpenVINO、NNCF、NCNN、PNNX 与 TensorRT 依赖；CPU 版已内置非 TensorRT 转换依赖，OpenVINO 仅使用 CPU 插件和模型前端，不显示附加包安装/替换按钮。
 - 左侧导航按钮保持与数据标注页相近的深色 hover / 选中高亮样式。
 

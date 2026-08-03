@@ -188,6 +188,37 @@ def test_program_update_build_uses_program_only_output_without_runtime_layer():
     assert '"sam2.1_hiera_base_plus.pt"' in build_script
 
 
+def test_program_only_excludes_external_runtime_python_layers():
+    spec = Path("installer/YOLOTool.spec").read_text(encoding="utf-8")
+    boundaries = Path("src/devtools/runtime_package_boundaries.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "PROGRAM_EXTERNAL_RUNTIME_EXCLUDES" in spec
+    assert "*PROGRAM_EXTERNAL_RUNTIME_EXCLUDES" in spec
+    assert "if str(ROOT) not in sys.path" in spec
+    for package in (
+        "numpy",
+        "scipy",
+        "pandas",
+        "networkx",
+        "torchvision",
+        "sam2",
+        "sam3",
+        "timm",
+        "huggingface_hub",
+        "fsspec",
+        "einops",
+        "iopath",
+        "pycocotools",
+        "hydra",
+        "omegaconf",
+        "antlr4",
+        "typing_extensions",
+    ):
+        assert f'    "{package}",' in boundaries
+
+
 def test_cpu_variant_has_isolated_artifacts_and_runtime_selection():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
     base_script = Path("installer/build_base_runtime_models.ps1").read_text(encoding="utf-8")
@@ -199,9 +230,9 @@ def test_cpu_variant_has_isolated_artifacts_and_runtime_selection():
     assert '"YOLOTool_CPU"' in package_script
     assert '"--variant", $Variant.ToLowerInvariant()' in build_script
     assert '"release-cpu"' in build_script
-    assert '"release-gpu"' in build_script
-    assert '"release-gpu"' in package_script
-    assert '"release-gpu"' in base_script
+    assert '"default"' in build_script
+    assert '"default"' in package_script
+    assert '"default"' in base_script
     assert '"YOLOTool_CPU"' in base_script
     assert '[switch]$SplitBaseArchive' in base_script
     assert '"--split"' in base_script
@@ -235,11 +266,10 @@ def test_cpu_is_an_integrated_installer_and_gpu_keeps_external_archives():
     assert 'integrated=True' in catalog
 
 
-def test_cpu_update_and_batch_contract_hides_gpu_extra_environment():
+def test_cpu_update_and_packaging_menu_contract_hides_gpu_extra_environment():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
     batch_script = Path("打包程序.bat").read_text(encoding="utf-8")
     menu_script = Path("installer/packaging_menu.ps1").read_text(encoding="utf-8")
-    update_batch = Path("打包更新程序.bat").read_text(encoding="utf-8")
     dialog_layout = Path(
         "src/ui/features/settings/update_dialog_layout.py"
     ).read_text(encoding="utf-8")
@@ -254,7 +284,11 @@ def test_cpu_update_and_batch_contract_hides_gpu_extra_environment():
     assert '"-Clean", "-SplitArchive"' in menu_script
     assert '"-Variant", "GPU", "-Clean", "-SplitBaseArchive"' in menu_script
     assert "pwsh.exe -NoProfile" in batch_script
-    assert "pwsh.exe -NoProfile" in update_batch
+    assert not Path("打包更新程序.bat").exists()
+    program_only_menu_item = menu_script.split('"7" {', 1)[1].split('"8" {', 1)[0]
+    assert 'Invoke-PackagingScript "installer\\package_windows.ps1"' in program_only_menu_item
+    assert "BuildBaseRuntimeModels" not in program_only_menu_item
+    assert "BuildModelExportRuntime" not in program_only_menu_item
     assert "normalize_variant(dialog.result.variant) != CPU_VARIANT" in dialog_layout
     assert "normalize_variant(result.variant) != CPU_VARIANT" in dialog_state
 
@@ -279,7 +313,25 @@ def test_model_export_archive_builder_supports_checked_split_volumes():
     assert 'parser.add_argument("--split", action="store_true")' in builder
     assert '[switch]$SplitArchive' in script
     assert '"--split"' in script
-    assert 'YOLOTool_ExtraEnv_${Version}.7z.???' in script
+    assert '[regex]::Escape("YOLOTool_ExtraEnv_${Version}.7z")' in script
+
+
+def test_archive_builders_preserve_the_alternate_archive_format():
+    base_script = Path("installer/build_base_runtime_models.ps1").read_text(encoding="utf-8")
+    extra_script = Path("installer/build_model_export_runtime.ps1").read_text(encoding="utf-8")
+    base_builder = Path("src/devtools/base_runtime_builder.py").read_text(encoding="utf-8")
+    extra_builder = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
+
+    assert 'if ($SplitBaseArchive)' in base_script
+    assert 'if ($SplitArchive)' in extra_script
+    assert 'Where-Object { $_.Name -match $VolumePattern }' in base_script
+    assert 'Where-Object { $_.Name -match $VolumePattern }' in extra_script
+    assert '[0-9]{{3}}' in base_script
+    assert '[0-9]{{3}}' in extra_script
+    assert 'if split:' in base_builder
+    assert 'if split:' in extra_builder
+    assert 'archive_path.unlink(missing_ok=True)' in base_builder
+    assert 'archive_path.unlink(missing_ok=True)' in extra_builder
 
 
 def test_gpu_full_packaging_rebuilds_program_only_installer_after_base_runtime():
@@ -314,6 +366,18 @@ def test_full_packaging_always_builds_base_archive():
     assert "--check-current" not in base_script
     assert "cache.json" not in base_script
     assert "--force" not in extension_script
+
+
+def test_full_packaging_reselects_base_archive_after_build():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+
+    build_call = 'throw "Base runtime and models build failed with exit code $LASTEXITCODE"'
+    build_index = package_script.index(build_call)
+    resolve_index = package_script.index("$BaseArchive = if ($SplitBaseArchive)", build_index)
+
+    assert resolve_index > build_index
+    assert "$BaseArchiveFirstVolume" in package_script[resolve_index : resolve_index + 180]
+    assert "$BaseArchivePath" in package_script[resolve_index : resolve_index + 180]
 
 
 def test_program_only_spec_skips_external_runtime_analysis():

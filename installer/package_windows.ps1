@@ -84,7 +84,7 @@ function Get-InnoSetupCompiler {
 
 Set-Location $Root
 try {
-    $RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-gpu" }
+    $RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "default" }
     $ArtifactPrefix = if ($Variant -eq "CPU") { "YOLOTool_CPU" } else { "YOLOTool" }
     $IntegratedRuntime = $Variant -eq "CPU"
     if ($IntegratedRuntime -and $SplitBaseArchive) {
@@ -162,6 +162,14 @@ try {
         }
         if ($LASTEXITCODE -ne 0) {
             throw "Base runtime and models build failed with exit code $LASTEXITCODE"
+        }
+        # The base builder may remove stale split volumes during -Clean. Resolve
+        # the archive from the requested mode again instead of retaining a path
+        # selected from pre-build output state.
+        $BaseArchive = if ($SplitBaseArchive) {
+            $BaseArchiveFirstVolume
+        } else {
+            $BaseArchivePath
         }
         $BaseStepTimer.Stop()
         Write-StepElapsed "[2/5] 基础环境包步骤完成" $BaseStepTimer

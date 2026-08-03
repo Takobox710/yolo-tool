@@ -17,7 +17,6 @@ from src.tests.helpers.ui_paths import (
     PACKAGING_DOC,
     PACKAGING_PACKAGE_SCRIPT,
     PACKAGING_FULL_BAT,
-    PACKAGING_PROGRAM_ONLY_BAT,
     PACKAGING_SCRIPT,
     PACKAGING_SPEC,
 )
@@ -148,7 +147,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_SCRIPT.exists()
     assert PACKAGING_PACKAGE_SCRIPT.exists()
     assert PACKAGING_FULL_BAT.exists()
-    assert PACKAGING_PROGRAM_ONLY_BAT.exists()
+    assert not Path("打包更新程序.bat").exists()
     packaging_menu = Path("installer/packaging_menu.ps1")
     assert packaging_menu.exists()
     assert INSTALLER_ISS.exists()
@@ -160,9 +159,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     script = PACKAGING_SCRIPT.read_text(encoding="utf-8")
     package_windows_script = PACKAGING_PACKAGE_SCRIPT.read_text(encoding="utf-8")
     full_bat_bytes = PACKAGING_FULL_BAT.read_bytes()
-    program_only_bat_bytes = PACKAGING_PROGRAM_ONLY_BAT.read_bytes()
     full_bat = full_bat_bytes.decode("ascii")
-    program_only_bat = program_only_bat_bytes.decode("ascii")
     menu_script = packaging_menu.read_text(encoding="utf-8")
     iss = INSTALLER_ISS.read_text(encoding="utf-8")
     doc = PACKAGING_DOC.read_text(encoding="utf-8")
@@ -225,7 +222,7 @@ def test_windows_packaging_files_document_project_local_runtime_settings():
     assert "WindowsPowerShell" not in full_bat
     assert "choice /C" not in full_bat
     assert "set /p" not in full_bat
-    assert "package_windows.ps1" in program_only_bat
-    assert "-BuildBaseRuntimeModels" not in program_only_bat
-    assert "-BuildModelExportRuntime" not in program_only_bat
-    assert b"\r\n" in full_bat_bytes and b"\r\n" in program_only_bat_bytes
+    assert 'Invoke-PackagingScript "installer\\package_windows.ps1"' in menu_script
+    assert "-BuildBaseRuntimeModels" not in menu_script.split('"7" {', 1)[1].split('"8" {', 1)[0]
+    assert "-BuildModelExportRuntime" not in menu_script.split('"7" {', 1)[1].split('"8" {', 1)[0]
+    assert b"\r\n" in full_bat_bytes

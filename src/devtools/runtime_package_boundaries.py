@@ -28,6 +28,54 @@ GPU_BASE_EXCLUDED_DISTRIBUTIONS = (
     *GPU_RUNTIME_OVERLAY_DISTRIBUTIONS,
 )
 
+# Program-only executables must resolve these modules from the installed
+# BaseEnv/ExtraEnv. Embedding their Python layers in the executable while
+# loading native extensions from an older environment creates mixed-version
+# imports (most visibly with NumPy, SciPy, Pandas and TorchVision).
+PROGRAM_EXTERNAL_RUNTIME_EXCLUDES = (
+    "numpy",
+    "scipy",
+    "pandas",
+    "networkx",
+    "pytz",
+    "torchvision",
+    "sam2",
+    "sam3",
+    "timm",
+    "huggingface_hub",
+    "fsspec",
+    "einops",
+    "iopath",
+    "pycocotools",
+    "hydra",
+    "omegaconf",
+    "antlr4",
+    "requests",
+    "urllib3",
+    "certifi",
+    "charset_normalizer",
+    "idna",
+    "filelock",
+    "jinja2",
+    "portalocker",
+    "tqdm",
+    "safetensors",
+    "regex",
+    "ml_dtypes",
+    "packaging",
+    "dateutil",
+    "six",
+    "cffi",
+    "pycparser",
+    "yaml",
+    "colorama",
+    "wcwidth",
+    "attrs",
+    "attr",
+    "backports",
+    "typing_extensions",
+)
+
 
 def safe_distribution_path(value: object) -> Path | None:
     path = PurePosixPath(str(value).replace("\\", "/"))
@@ -74,6 +122,7 @@ __all__ = [
     "GPU_BASE_EXCLUDED_DISTRIBUTIONS",
     "GPU_EXTRA_DISTRIBUTIONS",
     "GPU_RUNTIME_OVERLAY_DISTRIBUTIONS",
+    "PROGRAM_EXTERNAL_RUNTIME_EXCLUDES",
     "distribution_path_roots",
     "distribution_relative_files",
     "extension_distribution_paths",

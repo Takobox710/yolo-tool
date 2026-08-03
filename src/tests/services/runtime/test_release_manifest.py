@@ -263,16 +263,21 @@ def test_base_runtime_archive_excludes_program_and_uses_expected_name(tmp_path):
     ):
         (app_root / "data" / "models" / name).write_bytes(b"model")
 
+    output = tmp_path / "output"
+    output.mkdir()
+    split_marker = output / "YOLOTool_BaseEnv_v1.7z.001"
+    split_marker.write_bytes(b"existing split volume")
     archive_path = build_base_runtime_archive(
         app_root,
         tmp_path / "staging",
-        tmp_path / "output",
+        output,
         package_version="v1",
         runtime_version="runtime-1",
     )
 
     assert archive_path.name == "YOLOTool_BaseEnv_v1.7z"
     assert (tmp_path / "output" / "YOLOTool_BaseEnv_v1.7z").exists()
+    assert split_marker.is_file()
     with py7zr.SevenZipFile(archive_path, "r") as archive:
         names = set(archive.getnames())
     assert "_internal/runtime.dll" in names
@@ -295,10 +300,14 @@ def test_base_runtime_archive_can_use_split_volumes_when_requested(tmp_path):
     ):
         (app_root / "data" / "models" / name).write_bytes(b"model")
 
+    output = tmp_path / "output"
+    output.mkdir()
+    single_marker = output / "YOLOTool_BaseEnv_v1.7z"
+    single_marker.write_bytes(b"existing single archive")
     archive_path = build_base_runtime_archive(
         app_root,
         tmp_path / "staging",
-        tmp_path / "output",
+        output,
         package_version="v1",
         runtime_version="runtime-1",
         split=True,
@@ -306,6 +315,7 @@ def test_base_runtime_archive_can_use_split_volumes_when_requested(tmp_path):
 
     assert archive_path.name == "YOLOTool_BaseEnv_v1.7z.001"
     assert archive_path.is_file()
+    assert single_marker.is_file()
 
 
 def test_base_runtime_archive_always_rebuilds_without_cache(tmp_path):

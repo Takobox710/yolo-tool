@@ -4,6 +4,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import tempfile
 import time
 from importlib import metadata
 from pathlib import Path, PurePosixPath
@@ -137,16 +138,33 @@ def _build_native_archive(
     seven_zip = shutil.which("7z") or shutil.which("7z.exe")
     if not seven_zip:
         raise RuntimeError("未找到 Pixi 提供的 7z 命令，无法构建模型转换附加包。")
+    if split:
+        for volume_path in archive_path.parent.glob(
+            f"{archive_path.name}.[0-9][0-9][0-9]"
+        ):
+            volume_path.unlink(missing_ok=True)
+    else:
+        archive_path.unlink(missing_ok=True)
+    split_temp_dir = (
+        tempfile.TemporaryDirectory(
+            dir=archive_path.parent,
+            prefix=f".{archive_path.stem}.split-",
+        )
+        if split
+        else None
+    )
+    archive_command_path = (
+        Path(split_temp_dir.name) / archive_path.name
+        if split_temp_dir is not None
+        else archive_path
+    )
     archive_started = time.perf_counter()
     print("[Extra] 正在使用 7-Zip 压缩，下面显示实时进度：", flush=True)
-    archive_path.unlink(missing_ok=True)
-    for volume_path in archive_path.parent.glob(f"{archive_path.name}.[0-9][0-9][0-9]"):
-        volume_path.unlink(missing_ok=True)
     command = [
         seven_zip,
         "a",
         "-t7z",
-        str(archive_path),
+        str(archive_command_path),
         "*",
     ]
     if split:
@@ -161,40 +179,50 @@ def _build_native_archive(
             "-bb0",
         ]
     )
-    completed = subprocess.run(
-        command,
-        cwd=staging_root,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"7z 模型转换附加包构建失败，退出码：{completed.returncode}"
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=staging_root,
+            check=False,
         )
-    if split:
-        volume_paths = sorted(
-            archive_path.parent.glob(f"{archive_path.name}.[0-9][0-9][0-9]")
-        )
-        if not volume_paths or len(volume_paths) > EXTRA_ARCHIVE_VOLUME_COUNT:
+        if completed.returncode != 0:
             raise RuntimeError(
-                f"附加环境包最多允许生成 {EXTRA_ARCHIVE_VOLUME_COUNT} 个分卷，实际生成 {len(volume_paths)} 个。"
+                f"7z 模型转换附加包构建失败，退出码：{completed.returncode}"
             )
-        if any(path.stat().st_size >= MAX_ARCHIVE_VOLUME_BYTES for path in volume_paths):
-            raise RuntimeError("附加环境包分卷必须严格小于 1 GiB。")
-        first_volume_path = archive_path.with_name(f"{archive_path.name}.001")
-        if not first_volume_path.is_file():
-            raise RuntimeError("附加环境包分卷缺少首卷 .001。")
-        _print_elapsed("[Extra] 7-Zip 分卷压缩完成", archive_started)
-        for volume_path in volume_paths:
-            print(
-                f"[Extra] 分卷：{volume_path.name} ({volume_path.stat().st_size} bytes)",
-                flush=True,
+        if split:
+            volume_paths = sorted(
+                archive_command_path.parent.glob(
+                    f"{archive_command_path.name}.[0-9][0-9][0-9]"
+                )
             )
-        return first_volume_path
-    if not archive_path.is_file():
-        raise RuntimeError("附加环境包单卷归档未生成。")
-    _print_elapsed("[Extra] 7-Zip 压缩完成", archive_started)
-    print(f"[Extra] 单卷归档：{archive_path}", flush=True)
-    return archive_path
+            if not volume_paths or len(volume_paths) > EXTRA_ARCHIVE_VOLUME_COUNT:
+                raise RuntimeError(
+                    f"附加环境包最多允许生成 {EXTRA_ARCHIVE_VOLUME_COUNT} 个分卷，实际生成 {len(volume_paths)} 个。"
+                )
+            if any(path.stat().st_size >= MAX_ARCHIVE_VOLUME_BYTES for path in volume_paths):
+                raise RuntimeError("附加环境包分卷必须严格小于 1 GiB。")
+            for volume_path in volume_paths:
+                volume_path.replace(archive_path.parent / volume_path.name)
+            first_volume_path = archive_path.with_name(f"{archive_path.name}.001")
+            if not first_volume_path.is_file():
+                raise RuntimeError("附加环境包分卷缺少首卷 .001。")
+            _print_elapsed("[Extra] 7-Zip 分卷压缩完成", archive_started)
+            for volume_path in sorted(
+                archive_path.parent.glob(f"{archive_path.name}.[0-9][0-9][0-9]")
+            ):
+                print(
+                    f"[Extra] 分卷：{volume_path.name} ({volume_path.stat().st_size} bytes)",
+                    flush=True,
+                )
+            return first_volume_path
+        if not archive_path.is_file():
+            raise RuntimeError("附加环境包单卷归档未生成。")
+        _print_elapsed("[Extra] 7-Zip 压缩完成", archive_started)
+        print(f"[Extra] 单卷归档：{archive_path}", flush=True)
+        return archive_path
+    finally:
+        if split_temp_dir is not None:
+            split_temp_dir.cleanup()
 
 
 def build_model_export_layer(

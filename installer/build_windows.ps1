@@ -27,7 +27,7 @@ $env:YOLO_TOOL_PROGRAM_ONLY = if ($ProgramOnly) { "1" } else { "0" }
 $PreviousBuildVariant = $env:YOLO_TOOL_BUILD_VARIANT
 $env:YOLO_TOOL_BUILD_VARIANT = $Variant.ToLowerInvariant()
 
-$RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "release-gpu" }
+$RuntimeEnvironment = if ($Variant -eq "CPU") { "release-cpu" } else { "default" }
 
 $AppName = if ($Mode -eq "dev") {
     "YOLOTool-dev"

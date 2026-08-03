@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 from importlib import metadata
@@ -273,19 +274,34 @@ def build_base_runtime_archive(
         variant=variant,
         cpu_runtime_root=cpu_runtime_root,
     )
-    archive_path.unlink(missing_ok=True)
-    for volume_path in output_dir.glob(f"{archive_path.name}.*"):
-        volume_path.unlink(missing_ok=True)
+    if split:
+        for volume_path in output_dir.glob(f"{archive_path.name}.[0-9][0-9][0-9]"):
+            volume_path.unlink(missing_ok=True)
+    else:
+        archive_path.unlink(missing_ok=True)
     seven_zip = shutil.which("7z") or shutil.which("7z.exe")
     if not seven_zip:
         raise ReleaseManifestError("未找到 Pixi 提供的 7z 命令，无法构建基础环境包。")
+    split_temp_dir = (
+        tempfile.TemporaryDirectory(
+            dir=output_dir,
+            prefix=f".{archive_path.stem}.split-",
+        )
+        if split
+        else None
+    )
+    archive_command_path = (
+        Path(split_temp_dir.name) / archive_path.name
+        if split_temp_dir is not None
+        else archive_path
+    )
     archive_started = time.perf_counter()
     print("[Base] 正在使用 7-Zip 压缩，下面显示实时进度：", flush=True)
     command = [
         seven_zip,
         "a",
         "-t7z",
-        str(archive_path),
+        str(archive_command_path),
         "*",
     ]
     if split:
@@ -300,31 +316,44 @@ def build_base_runtime_archive(
             "-bb0",
         ]
     )
-    completed = subprocess.run(
-        command,
-        cwd=Path(staging_root).resolve(),
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise ReleaseManifestError(f"7z 基础环境包构建失败，退出码：{completed.returncode}")
-    if split:
-        volume_paths = sorted(output_dir.glob(f"{archive_path.name}.[0-9][0-9][0-9]"))
-        if not volume_paths or len(volume_paths) > BASE_ARCHIVE_VOLUME_COUNT:
-            raise ReleaseManifestError(
-                f"基础环境包最多允许生成 {BASE_ARCHIVE_VOLUME_COUNT} 个分卷，实际生成 {len(volume_paths)} 个。"
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=Path(staging_root).resolve(),
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise ReleaseManifestError(f"7z 基础环境包构建失败，退出码：{completed.returncode}")
+        if split:
+            volume_paths = sorted(
+                archive_command_path.parent.glob(
+                    f"{archive_command_path.name}.[0-9][0-9][0-9]"
+                )
             )
-        if any(path.stat().st_size >= 1_073_741_824 for path in volume_paths):
-            raise ReleaseManifestError("基础环境包分卷必须严格小于 1 GiB。")
-    elif not archive_path.is_file():
-        raise ReleaseManifestError("基础环境包单卷归档未生成。")
-    print_elapsed("[Base] 7-Zip 压缩完成", archive_started, perf_counter=time.perf_counter)
-    if split:
-        print(f"[Base] 归档首卷：{first_volume_path}", flush=True)
-        for volume_path in volume_paths:
-            print(f"[Base] 分卷：{volume_path.name} ({volume_path.stat().st_size} bytes)", flush=True)
-        return first_volume_path
-    print(f"[Base] 单卷归档：{archive_path}", flush=True)
-    return archive_path
+            if not volume_paths or len(volume_paths) > BASE_ARCHIVE_VOLUME_COUNT:
+                raise ReleaseManifestError(
+                    f"基础环境包最多允许生成 {BASE_ARCHIVE_VOLUME_COUNT} 个分卷，实际生成 {len(volume_paths)} 个。"
+                )
+            if any(path.stat().st_size >= 1_073_741_824 for path in volume_paths):
+                raise ReleaseManifestError("基础环境包分卷必须严格小于 1 GiB。")
+            for volume_path in volume_paths:
+                volume_path.replace(output_dir / volume_path.name)
+        elif not archive_path.is_file():
+            raise ReleaseManifestError("基础环境包单卷归档未生成。")
+        print_elapsed("[Base] 7-Zip 压缩完成", archive_started, perf_counter=time.perf_counter)
+        if split:
+            print(f"[Base] 归档首卷：{first_volume_path}", flush=True)
+            final_volume_paths = sorted(
+                output_dir.glob(f"{archive_path.name}.[0-9][0-9][0-9]")
+            )
+            for volume_path in final_volume_paths:
+                print(f"[Base] 分卷：{volume_path.name} ({volume_path.stat().st_size} bytes)", flush=True)
+            return first_volume_path
+        print(f"[Base] 单卷归档：{archive_path}", flush=True)
+        return archive_path
+    finally:
+        if split_temp_dir is not None:
+            split_temp_dir.cleanup()
 
 
 __all__ = [

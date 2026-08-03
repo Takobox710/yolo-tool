@@ -36,9 +36,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $AppRoot "_internal"))) {
 }
 if ($Clean) {
     Remove-Item -LiteralPath $StagingRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
-    Get-ChildItem -LiteralPath $OutputDir -Filter "${ArtifactPrefix}_BaseEnv_${Version}.7z.???" -File -ErrorAction SilentlyContinue |
-        Remove-Item -Force
+    if ($SplitBaseArchive) {
+        $VolumePattern = "^{0}\\.[0-9]{{3}}$" -f [regex]::Escape("${ArtifactPrefix}_BaseEnv_${Version}.7z")
+        Get-ChildItem -LiteralPath $OutputDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match $VolumePattern } |
+            Remove-Item -Force
+    } else {
+        Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+    }
 }
 if ($NoArchive) {
     Get-ChildItem -LiteralPath $OutputDir -Filter "${ArtifactPrefix}_BaseEnv_${Version}.7z*" -File -ErrorAction SilentlyContinue |
@@ -70,7 +75,7 @@ if ($Variant -eq "GPU") {
         (Join-Path $Root ".pixi\envs\release-cpu")
     )
 }
-& pixi run -e $(if ($Variant -eq "CPU") { "release-cpu" } else { "release-gpu" }) python @PackageArgs
+& pixi run -e $(if ($Variant -eq "CPU") { "release-cpu" } else { "default" }) python @PackageArgs
 if ($LASTEXITCODE -ne 0) {
     throw "基础环境和模型归档构建失败，退出码：$LASTEXITCODE"
 }
