@@ -4,32 +4,21 @@ from pathlib import Path
 
 from src.services.annotation import (
     EditableAnnotation,
-    detect_yolo_mode,
     load_editable_annotations,
     load_labelme_annotations,
     save_editable_annotations,
     save_labelme_annotations,
 )
 from src.services.annotation.history import AnnotationHistory
-from src.services.annotation.yolo_format import YOLO_MODES
 from src.ui.shared.page_base import BasePage
-from src.shared.qt import (
-    QAbstractItemView,
-    QEvent,
-    QFileDialog,
-    QHBoxLayout,
-    QListWidgetItem,
-    QMessageBox,
-    Qt,
-    QTimer,
-    QVBoxLayout,
-)
+from src.shared.qt import QHBoxLayout, QTimer, QVBoxLayout
 from src.ui.features.annotation.actions import AnnotationActionsMixin
 from src.ui.features.annotation.ai.dialog import AiPrelabelDialog, CustomAiImageSelectionDialog
 from src.ui.features.annotation.canvas.widget import AnnotationCanvas
 from src.ui.features.annotation.class_panel import AnnotationClassPanelMixin
 from src.ui.features.annotation.dialogs import AnnotationSettingsDialog, ClassManagerDialog, DrawShapeDialog
 from src.ui.features.annotation.file_browser import AnnotationFileBrowserMixin
+from src.ui.features.annotation.lifecycle import AnnotationLifecycleMixin
 from src.ui.features.annotation.layout import (
     build_center,
     build_right_panel,
@@ -39,9 +28,11 @@ from src.ui.features.annotation.layout import (
 from src.ui.features.annotation.menus import AnnotationMenuMixin
 from src.ui.features.annotation.persistence import AnnotationPersistenceMixin
 from src.ui.features.annotation.selection import AnnotationSelectionMixin
+from src.ui.features.annotation.project_paths import AnnotationProjectPathsMixin
 from src.ui.features.annotation.settings_actions import AnnotationPageSettingsMixin
 from src.ui.features.annotation.shortcuts import register_annotation_shortcuts
 from src.ui.features.annotation.sam import SamAssistController
+from src.ui.features.annotation.task_mode import AnnotationTaskModeMixin
 from src.ui.features.annotation.toolbar import build_toolbar
 from src.ui.shared.workers import Worker
 
@@ -54,6 +45,9 @@ class AnnotationPage(
     AnnotationPersistenceMixin,
     AnnotationPageSettingsMixin,
     AnnotationSelectionMixin,
+    AnnotationProjectPathsMixin,
+    AnnotationTaskModeMixin,
+    AnnotationLifecycleMixin,
     BasePage,
 ):
     def __init__(self, context):
@@ -103,222 +97,6 @@ class AnnotationPage(
         self._refresh_class_state()
         self._refresh_path_labels()
         register_annotation_shortcuts(self)
-
-    def _list_widget_item_factory(self, text: str | None = None) -> QListWidgetItem:
-        return QListWidgetItem("" if text is None else text)
-
-    @staticmethod
-    def _custom_context_menu_policy():
-        return Qt.ContextMenuPolicy.CustomContextMenu
-
-    def _show_image_open_error(self, exc: OSError) -> None:
-        QMessageBox.warning(self, "数据标注", f"无法打开图片：{exc}")
-
-    def choose_image_dir(self) -> None:
-        directory = QFileDialog.getExistingDirectory(
-            self, "选择图片文件夹", str(self.path_from_setting("images_dir"))
-        )
-        if not directory:
-            return
-        self.save_current()
-        self.clear_annotation_history()
-        self.update_setting("paths", "images_dir", value=directory)
-        self._refresh_path_labels()
-        self.scan_images(select_first=True)
-
-    def choose_label_dir(self) -> None:
-        directory = QFileDialog.getExistingDirectory(
-            self, "选择 Labelme JSON 标签文件夹", str(self.path_from_setting("annotations_dir"))
-        )
-        if not directory:
-            return
-        self.save_current()
-        self.clear_annotation_history()
-        self.update_setting("paths", "annotations_dir", value=directory)
-        Path(directory).mkdir(parents=True, exist_ok=True)
-        self._refresh_path_labels()
-        self.load_current()
-        self.refresh_file_list()
-
-    def path_from_setting(self, key: str) -> Path:
-        return Path(getattr(self.context.settings.paths, key))
-
-    def annotation_settings(self):
-        return self.context.settings.annotation
-
-    def labelme_auto_save_enabled(self) -> bool:
-        return bool(self.annotation_settings().auto_save)
-
-    def yolo_auto_save_enabled(self) -> bool:
-        return bool(self.annotation_settings().auto_convert_yolo)
-
-    def load_yolo_when_labelme_missing(self) -> bool:
-        return bool(self.annotation_settings().load_yolo_when_labelme_missing)
-
-    def show_yolo_save_in_context_menu(self) -> bool:
-        return bool(self.annotation_settings().show_yolo_save_in_context_menu)
-
-    def yolo_features_enabled(self) -> bool:
-        return self.yolo_auto_save_enabled() or self.show_yolo_save_in_context_menu()
-
-    def _task_mode_probe_signature(self) -> tuple[str, str]:
-        return (
-            str(self.path_from_setting("images_dir").resolve()),
-            str(self.path_from_setting("labels_dir").resolve()),
-        )
-
-    def _refresh_task_mode_from_paths(self, *, force: bool = False) -> None:
-        signature = self._task_mode_probe_signature()
-        if not force and signature == self._mode_probe_signature:
-            return
-        previous_signature = self._mode_probe_signature
-        self._mode_probe_signature = signature
-        detected = detect_yolo_mode(self.path_from_setting("labels_dir"))
-        settings_task = self.context.settings.task
-        if detected in YOLO_MODES:
-            self.output_mode = detected
-            settings_task.mode = detected
-            settings_task.mode_selected = True
-        elif (
-            settings_task.mode_selected
-            and self.output_mode in YOLO_MODES
-            and previous_signature is None
-            and not force
-        ):
-            pass
-        else:
-            self.output_mode = None
-            settings_task.mode_selected = False
-        self.save_settings()
-        self._refresh_task_mode_controls()
-
-    def _refresh_task_mode_controls(self) -> None:
-        if not hasattr(self, "output_mode_combo"):
-            return
-        visible = self.yolo_features_enabled()
-        self.output_mode_label.setVisible(visible)
-        self.output_mode_combo.setVisible(visible)
-        self.output_mode_combo.blockSignals(True)
-        if self.output_mode in YOLO_MODES:
-            self.output_mode_combo.setCurrentText(self.output_mode)
-            self.output_mode_combo.setStyleSheet("")
-        else:
-            self.output_mode_combo.setCurrentIndex(-1)
-            self.output_mode_combo.setPlaceholderText("未选择")
-            self.output_mode_combo.setStyleSheet("color: #C62828;")
-        self.output_mode_combo.blockSignals(False)
-
-    def _refresh_path_labels(self) -> None:
-        return None
-
-    def on_setting_changed(self, keys, value):
-        if keys == ("paths", "images_dir"):
-            self.clear_annotation_history()
-            self._refresh_task_mode_from_paths(force=True)
-            self.scan_images(select_first=True)
-        elif keys == ("paths", "annotations_dir"):
-            self.clear_annotation_history()
-            self.load_current()
-            self.refresh_file_list()
-        elif keys == ("paths", "labels_dir"):
-            self.clear_annotation_history()
-            self._refresh_task_mode_from_paths(force=True)
-            self.load_current()
-            self.refresh_file_list()
-
-    def change_output_mode(self, text: str) -> None:
-        mode = text if text in YOLO_MODES else None
-        if mode is None:
-            return
-        self.output_mode = mode
-        self.context.settings.task.mode = mode
-        self.context.settings.task.mode_selected = True
-        self.save_settings()
-        if self.current_image_path is not None and self.canvas.annotations:
-            self.yolo_dirty = True
-            if self.yolo_auto_save_enabled():
-                self.save_current(save_json=False, save_yolo=True)
-        self._refresh_task_mode_controls()
-        self.refresh_annotation_list()
-        self._refresh_manual_action_buttons()
-
-    def delete_selected(self) -> None:
-        self.canvas.delete_selected()
-
-    def keyPressEvent(self, event):  # noqa: N802 - Qt API name
-        if event.key() == Qt.Key.Key_Delete:
-            self.delete_selected()
-            return
-        if event.key() == Qt.Key.Key_A:
-            self.prev_image()
-            return
-        if event.key() == Qt.Key.Key_D:
-            self.next_image()
-            return
-        super().keyPressEvent(event)
-
-    def on_show(self) -> None:
-        self._refresh_task_mode_from_paths()
-        self.sam_assist.refresh_models()
-        self.refresh_annotation_status_bar()
-        self._refresh_path_labels()
-        if not self._initialized_once:
-            self._initialized_once = True
-            if not self.image_items:
-                QTimer.singleShot(0, self, lambda: self.scan_images(select_first=True))
-                return
-        decorate_rows = getattr(self, "_decorate_visible_rows", None)
-        if callable(decorate_rows):
-            decorate_rows()
-        if not self.image_items:
-            self.scan_images(select_first=True)
-
-    def prepare_for_first_show(self) -> None:
-        if self.image_items:
-            return
-        prepare_initial_image = getattr(self, "prepare_initial_image", None)
-        if callable(prepare_initial_image):
-            prepare_initial_image()
-
-    def on_hide(self) -> None:
-        self.sam_assist.shutdown(wait=False)
-        self.annotation_status_bar.hide()
-        set_annotation_bottom_margin(self, 12)
-
-    def prepare_for_show(self) -> None:
-        self.refresh_annotation_status_bar(page_visible=True)
-
-    def refresh_annotation_status_bar(self, *, page_visible: bool | None = None) -> None:
-        show_status = bool(
-            self.context.settings.annotation.show_canvas_status
-        )
-        if show_status:
-            self.annotation_status_bar.showMessage(
-                f"当前状态：{self.canvas._canvas_status_text()}"
-            )
-        page_visible = self.isVisible() if page_visible is None else page_visible
-        status_visible = show_status and page_visible
-        self.annotation_status_bar.setVisible(status_visible)
-        set_annotation_bottom_margin(self, 0 if status_visible else 12)
-
-    def has_unsaved_annotations(self) -> bool:
-        return bool(self._current_image_unsaved_text())
-
-    def on_shutdown(self) -> None:
-        self.sam_assist.shutdown(wait=True)
-
-    def eventFilter(self, watched, event):  # noqa: N802 - Qt API name
-        if watched is self.file_list.viewport():
-            if event.type() in {
-                QEvent.Type.Paint,
-                QEvent.Type.Resize,
-                QEvent.Type.Wheel,
-            }:
-                decorate_rows = getattr(self, "_decorate_visible_rows", None)
-                if callable(decorate_rows):
-                    QTimer.singleShot(0, self, decorate_rows)
-        return super().eventFilter(watched, event)
-
 
 __all__ = [
     "AnnotationPage",

@@ -4,17 +4,9 @@ import os
 
 import sys
 
-from pathlib import Path
-
 from types import SimpleNamespace
 
 import pytest
-
-def make_image(path: Path, size=(100, 100), color="white"):
-    from PIL import Image
-
-    Image.new("RGB", size, color).save(path)
-
 
 def test_cached_call_reuses_value_until_ttl_expires(monkeypatch):
     from src.services.runtime import cached_call

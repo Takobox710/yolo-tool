@@ -82,6 +82,7 @@ class ReleaseUpdateDialog(
         self._download_speed_timer.setInterval(1000)
         self._download_speed_timer.timeout.connect(self._update_download_speed)
         self.setObjectName("releaseUpdateDialog")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("GitHub Release 更新")
         self.setModal(True)
         self.setMinimumSize(680, 610)
@@ -89,6 +90,9 @@ class ReleaseUpdateDialog(
         self.setSizeGripEnabled(False)
         self.setStyleSheet(_DIALOG_STYLE)
         self._build_layout()
+        # Force the per-dialog stylesheet to be polished before the first
+        # expose, avoiding a transient default-white paint on Windows.
+        self.ensurePolished()
 
     def _build_layout(self) -> None:
         build_release_update_layout(self)

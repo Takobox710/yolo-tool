@@ -10,12 +10,6 @@ from types import SimpleNamespace
 
 import pytest
 
-def make_image(path: Path, size=(100, 100), color="white"):
-    from PIL import Image
-
-    Image.new("RGB", size, color).save(path)
-
-
 def test_settings_service_loads_and_merges_defaults(tmp_path):
     from src.services.settings import SettingsService
 

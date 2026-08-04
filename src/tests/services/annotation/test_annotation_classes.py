@@ -4,17 +4,9 @@ import os
 
 import sys
 
-from pathlib import Path
-
 from types import SimpleNamespace
 
 import pytest
-
-def make_image(path: Path, size=(100, 100), color="white"):
-    from PIL import Image
-
-    Image.new("RGB", size, color).save(path)
-
 
 def test_collect_labelme_class_names_appends_project_labels(tmp_path):
     from src.services.annotation import collect_labelme_class_names

@@ -62,7 +62,12 @@ def open_release_update_dialog(page) -> None:
         result = ReleaseCheckResult(current_version=version, latest_version=version, release_notes="正在获取 GitHub Release 信息，请稍后再试。")
     from src.ui.features.settings.update_dialog import ReleaseUpdateDialog
 
-    dialog = ReleaseUpdateDialog(page, result)
+    # Own the top-level dialog by the workbench window.  Passing the stacked
+    # settings page as the native owner can make Windows briefly expose an
+    # unpainted transient window while Qt promotes the page to a top-level
+    # window.
+    owner = page.window()
+    dialog = ReleaseUpdateDialog(owner if owner is not page else page, result)
     page.release_update_dialog = dialog
 
     def clear_dialog(_result=0):

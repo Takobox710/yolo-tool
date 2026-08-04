@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
-from src.services.annotation.sam_assist import sam_model_spec_from_path
 from src.services.model_export.types import ExportCapabilities, ModelExportConfig
+from src.services.model_export.capability_rules import (
+    model_kind_from_path,
+    normalize_format as _normalize_format,
+    normalize_precision,
+)
 
 
 PRECISIONS = ("fp32", "fp16", "int8")
@@ -12,11 +15,6 @@ DEFAULT_NMS_IOU = 0.45
 DEFAULT_NMS_MAX_DET = 300
 DEFAULT_CALIBRATION_SAMPLES = 300
 DEFAULT_VALIDATION_SAMPLES = 16
-
-
-def model_kind_from_path(model_path: str | Path) -> str:
-    spec = sam_model_spec_from_path(Path(model_path))
-    return "sam2" if spec is not None and spec.runtime_kind == "sam2" else "yolo"
 
 
 def capabilities_for(
@@ -95,25 +93,6 @@ def capabilities_for(
             supports_batch=True,
         )
     raise ValueError(f"不支持的模型格式：{export_format}")
-
-
-def normalize_precision(value: object) -> str:
-    normalized = str(value or "").strip().lower()
-    aliases = {
-        "32": "fp32",
-        "fp32": "fp32",
-        "float32": "fp32",
-        "16": "fp16",
-        "fp16": "fp16",
-        "float16": "fp16",
-        "8": "int8",
-        "int8": "int8",
-        "quantized": "int8",
-    }
-    try:
-        return aliases[normalized]
-    except KeyError as exc:
-        raise ValueError("导出精度必须是 fp32、fp16 或 int8。") from exc
 
 
 def normalize_model_export_config(
@@ -286,25 +265,6 @@ def _validate_unsupported_raw_options(
 
 def dynamic_axes(config: ModelExportConfig) -> tuple[bool, bool, bool]:
     return (bool(config.dynamic_batch), bool(config.dynamic_height), bool(config.dynamic_width))
-
-
-def _normalize_format(value: object) -> str:
-    normalized = str(value or "").strip().lower()
-    aliases = {
-        "onnx": "onnx",
-        "onnx model": "onnx",
-        "sam2_onnx": "onnx",
-        "sam2 onnx": "onnx",
-        "torchscript": "torchscript",
-        "openvino": "openvino",
-        "tensorrt": "engine",
-        "engine": "engine",
-        "ncnn": "ncnn",
-    }
-    try:
-        return aliases[normalized]
-    except KeyError as exc:
-        raise ValueError(f"不支持的模型格式：{value}") from exc
 
 
 __all__ = [

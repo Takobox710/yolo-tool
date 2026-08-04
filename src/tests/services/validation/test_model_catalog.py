@@ -4,17 +4,9 @@ import os
 
 import sys
 
-from pathlib import Path
-
 from types import SimpleNamespace
 
 import pytest
-
-def make_image(path: Path, size=(100, 100), color="white"):
-    from PIL import Image
-
-    Image.new("RGB", size, color).save(path)
-
 
 def test_validation_model_choices_include_result_best_and_optional_last(tmp_path):
     from src.services.validation import find_result_model_paths

@@ -103,11 +103,79 @@ def test_modules_and_service_exports_stay_within_size_limits():
         lines = len(path.read_text(encoding="utf-8").splitlines())
         if lines > 80:
             offenders.append(f"{path.as_posix()} ({lines} > 80)")
+    for path in Path("src/devtools").glob("*.py"):
+        if path.name in {"__init__.py", "generate_code_inventory.py"}:
+            continue
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        if lines > 400:
+            offenders.append(f"{path.as_posix()} ({lines} > 400)")
     assert offenders == [], (
         "Modules exceeded the architecture safety ceiling. Split them by "
         "responsibility; do not compress formatting merely to reduce line counts: "
         + ", ".join(offenders)
     )
+
+
+def test_targeted_refactor_facades_stay_small():
+    limits = {
+        Path("src/ui/features/annotation/sam/settings_dialog.py"): 180,
+        Path("src/ui/features/annotation/ai/dialog.py"): 180,
+        Path("src/ui/features/annotation/draw_shape_dialog.py"): 180,
+        Path("src/ui/features/annotation/canvas/widget.py"): 160,
+        Path("src/bootstrap/cli_annotation.py"): 80,
+        Path("src/bootstrap/cli_validation.py"): 80,
+        Path("src/ui/shared/forms.py"): 80,
+    }
+    offenders = [
+        f"{path.as_posix()} ({len(path.read_text(encoding='utf-8').splitlines())} > {limit})"
+        for path, limit in limits.items()
+        if len(path.read_text(encoding="utf-8").splitlines()) > limit
+    ]
+    assert offenders == []
+
+
+def test_targeted_refactor_facades_keep_compatibility_exports():
+    from src.bootstrap.cli_annotation import (
+        _run_ai_label_cli_impl,
+        _run_ai_runtime_cli_impl,
+        _run_model_labels_cli_impl,
+        _run_sam_assist_runtime_cli_impl,
+    )
+    from src.bootstrap.cli_validation import _run_predict_cli_impl, _run_val_cli_impl
+    from src.ui.features.annotation.ai.dialog import (
+        AiPrelabelDialog,
+        CustomAiImageSelectionDialog,
+    )
+    from src.ui.features.annotation.canvas.widget import (
+        AnnotationCanvas,
+        SAM_SUPPORTED_SHAPES,
+    )
+    from src.ui.features.annotation.draw_shape_dialog import DrawShapeDialog
+    from src.ui.features.annotation.sam.settings_dialog import (
+        SAM_ASSIST_PARAMETER_DEFAULTS,
+        SamAdvancedSettingsDialog,
+    )
+    from src.ui.shared.forms import FormPageMixin
+
+    assert all(
+        callable(item)
+        for item in (
+            _run_ai_label_cli_impl,
+            _run_ai_runtime_cli_impl,
+            _run_model_labels_cli_impl,
+            _run_sam_assist_runtime_cli_impl,
+            _run_predict_cli_impl,
+            _run_val_cli_impl,
+            AiPrelabelDialog,
+            CustomAiImageSelectionDialog,
+            AnnotationCanvas,
+            DrawShapeDialog,
+            SamAdvancedSettingsDialog,
+            FormPageMixin,
+        )
+    )
+    assert SAM_ASSIST_PARAMETER_DEFAULTS["minimum_area"] == 4
+    assert SAM_SUPPORTED_SHAPES == {"rect", "obb_single", "obb_mirror", "polygon"}
 
 
 def test_feature_modules_keep_explicit_top_level_class_boundaries():
@@ -130,8 +198,6 @@ def test_feature_modules_keep_explicit_top_level_class_boundaries():
 def test_large_feature_modules_stay_within_reviewed_safety_ceilings():
     reviewed = {
         Path("src/ui/features/annotation/ai/dialog.py"): 900,
-        Path("src/ui/features/data/model_export/layout.py"): 900,
-        Path("src/ui/features/data/model_export/tab.py"): 900,
         Path("src/ui/features/settings/update_dialog.py"): 900,
     }
     offenders = []
@@ -148,6 +214,29 @@ def test_large_feature_modules_stay_within_reviewed_safety_ceilings():
         "Large feature modules need an explicit responsibility review or split: "
         + ", ".join(unreviewed + offenders)
     )
+
+
+def test_model_export_ui_support_modules_keep_small_responsibilities():
+    expected = {
+        Path("src/ui/features/data/model_export/availability.py"): 300,
+        Path("src/ui/features/data/model_export/config.py"): 300,
+        Path("src/ui/features/data/model_export/layout.py"): 80,
+        Path("src/ui/features/data/model_export/layout_options.py"): 300,
+        Path("src/ui/features/data/model_export/layout_actions.py"): 120,
+        Path("src/ui/features/data/model_export/layout_base.py"): 220,
+        Path("src/ui/features/data/model_export/layout_components.py"): 80,
+        Path("src/ui/features/data/model_export/layout_responsive.py"): 180,
+        Path("src/ui/features/data/model_export/runtime_actions.py"): 300,
+        Path("src/ui/features/data/model_export/selection.py"): 300,
+        Path("src/ui/features/data/model_export/tab.py"): 350,
+    }
+    offenders = []
+    for path, limit in expected.items():
+        assert path.exists(), f"Expected model-export module is missing: {path}"
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        if lines > limit:
+            offenders.append(f"{path.as_posix()} ({lines} > {limit})")
+    assert offenders == []
 
 
 def test_python_imports_and_qt_delayed_callbacks_use_safe_patterns():

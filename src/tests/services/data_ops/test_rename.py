@@ -4,17 +4,9 @@ import os
 
 import sys
 
-from pathlib import Path
-
 from types import SimpleNamespace
 
 import pytest
-
-def make_image(path: Path, size=(100, 100), color="white"):
-    from PIL import Image
-
-    Image.new("RGB", size, color).save(path)
-
 
 def test_rename_preview_execute_and_conflict(tmp_path):
     from src.services.data_ops import execute_rename, preview_rename

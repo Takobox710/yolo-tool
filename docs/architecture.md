@@ -62,6 +62,7 @@ yolo_tool/
 ## 分层边界
 
 - `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-export-probe`、`--yolo-ort-probe`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label`、`--sam-assist-runtime` 等隐藏 CLI。
+- `src/devtools/window_lifecycle_monitor.py` 是 Windows 原生窗口诊断工具，通过 Win32 事件钩子以 JSONL 记录顶层窗口的创建、显示、移动/缩放、标题变化和销毁事件；用于排查短暂闪现的窗口，不能作为应用运行时依赖。更新对话框的动态可见控件必须在构造时传入对话框父对象，防止 Qt 先为无父控件创建原生顶层窗口。
 - `src/app.py` 与 `src/bootstrap/app_factory.py` 负责 GUI 应用创建，不承载业务规则。
 - `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。
 - `src/shared/` 只放跨层共享基础能力，例如路径、Qt 导出和主题；设置模型与任务模型分别归属设置服务和 UI 上下文，不再放入通用类型文件。
@@ -80,10 +81,10 @@ yolo_tool/
 - `src/services/annotation/yolo_format.py` 按排序后的 YOLO `.txt` 文件探测首个有效格式，处理空文件、detect/seg 判定和 OBB/四点 Seg 歧义；标注页以此初始化或重新判断全局任务类别。
 - `src/ui/shared/widgets/` 放基础控件与图表组件，旧的 `src/ui/widgets/` 已删除。主页 `DatasetDistributionWidget` 和 `TrainingCurveWidget` 使用当前控件 DPR 创建物理 pixmap、以逻辑坐标绘制，并通过 `refresh_for_device_pixel_ratio()` 响应主窗口跨屏切换，避免高 DPI 下图表文字、坐标轴和曲线被放大模糊；图表内框在 pixmap 内部绘制，与训练历史表格统一使用 `1 px #CFD9E3` 边框和 `5 px` 圆角，避免 QLabel 内容覆盖圆角造成断开空隙；各类别图片分布坐标轴保持 `20 px` 左边距、`38 px` 顶部位置和 `33 px` 底部留白；训练曲线横轴使用 `results.csv` 的 `epoch` 列。
 - `src/tests/architecture/` 只保留依赖方向、旧入口、模块体量、UI 顶层类职责和 Qt 生命周期五类结构围栏，不扫描文档措辞或代码清单内容。
-- `src/tests/services/` 按领域保护文件读写、转换、设置、命令构造和运行时安全等业务规则。
-- `src/tests/ui/` 按业务域和 shell 分目录保留关键页面工作流与服务接线；数据处理 UI 测试使用 `data_processing/`，避免与项目级 `data/` 忽略规则冲突；精确布局、颜色、尺寸与提示文本改由发布前人工检查。
-- `src/tests/integration/` 放开发/冻结入口、隐藏 CLI 和 Windows 打包契约回归。
-- `pixi run test` 是完整测试入口，当前通过 269 项测试；测试文件按业务职责拆分但不为减少数字删除语义不同的覆盖；`pixi run test-fast` 提供服务层、架构围栏和入口的快速回归，`pixi run test-ui`、`pixi run test-integration` 和 `pixi run test-full` 保留分层/兼容入口。
+- `src/tests/services/` 按领域保护文件读写、转换、设置、命令构造和运行时安全等业务规则；发布、模型导出和标注服务测试按发现、执行、归档等工作流拆分。
+- `src/tests/ui/` 按业务域和用户工作流保留关键页面接线与状态转移；数据处理 UI 测试使用 `data_processing/`，避免与项目级 `data/` 忽略规则冲突。
+- `src/tests/integration/` 放开发/冻结入口、隐藏 CLI 和 Windows 打包契约回归，安装器测试按安装生命周期、运行时层、变体和打包接线拆分。
+- `pixi run test` 是完整测试入口，当前收集 349 个用例；测试按行为边界拆分并通过 `workflow_annotation`、`workflow_model_export`、`workflow_release`、`workflow_installer` 标记提供工作流筛选。`pixi run test-fast`、`pixi run test-ui`、`pixi run test-integration` 和 `pixi run test-full` 保持兼容，新增对应的 `pixi run test-annotation`、`test-model-export`、`test-release`、`test-installer` 快捷入口。
 - pytest 缓存由 Pixi 测试任务写入 `.pixi/pytest-cache`，避免在项目根目录生成 `.pytest_cache`；该目录随本地 Pixi 环境一起被忽略。
 
 ## 服务层说明
@@ -122,13 +123,15 @@ yolo_tool/
 ### `src/services/model_export/`
 
 - `formats.py` 定义模型格式显示名称、旧 `sam2_onnx` 兼容别名、按精度命名的产物路径和模型扫描规则，并按目标格式校验 YOLO 与 SAM2 checkpoint；模型转换页按安装变体隐藏 CPU 不可用的 TensorRT。
+- `capability_rules.py` 集中维护模型类型、格式别名与精度归一化；`capabilities.py` 只负责能力矩阵、配置归一化和约束校验，避免规则字典与校验流程交叉膨胀。
+- `package_inspection.py` 负责 ZIP/7z 清单、路径安全、重复/缺失文件检查与缓存；`package.py` 保留扩展包安装、活动指针和候选目录提升流程，并继续 re-export 检查入口。
 - `capabilities.py` 描述 YOLO/SAM2 与五种格式的能力矩阵，归一化精度和旧 CLI 字段，校验动态轴、NMS、校准、workspace、opset 等配置，禁止无效参数流入后端。
 - `backend.py` 将配置转换为 Ultralytics 后端参数，统一处理非 ONNX 动态输入、精度编码、校准 dataset 临时清单和产物路径解析。
 - `commands.py` 构建统一的 `YOLOTool.exe --yolo-export` 命令；训练服务保留 `build_export_command` 转发以兼容旧导入，精度统一编码为 `quantize=32/16/8`。
 - `execute.py` 在输出目录的临时工作区导出 YOLO 产物或装配 SAM2 ONNX 导出服务，成功后替换最终产物；失败或停止时清理临时文件并保留旧结果。YOLO ONNX 统一执行 FP32 导出、可选图简化、精确动态轴处理和 FP16/INT8 后处理；SAM2 ONNX 仅执行 FP32/FP16，避免不稳定的交互式 INT8 量化。
 - `backend.py` 将公共配置字段映射为 Ultralytics 实际参数名（例如 `nms_conf`/`nms_iou`/`nms_max_det` 映射为 `conf`/`iou`/`max_det`），并在配置校验层拒绝 TorchScript FP16 优化和 TensorRT batch=1 动态导出等后端组合约束。
-- `calibration.py` 识别 dataset YAML、图片目录和图片列表，提供 ORT 校准 reader、FP16 转换、静态 INT8 量化和量化后冒烟验证；SAM2 使用与官方 predictor 一致的 RGB 缩放、`[0,1]` 转换和 ImageNet 均值/方差归一化，YOLO 保持原有图像校准路径；`calibration_pack.py` 按需下载并缓存公开的 COCO128 通用校准图片，供通用平台在没有项目图片时完成静态量化；`onnx_utils.py` 负责图简化、动态轴约束和 ONNX checker。
-- `sam_onnx.py` 复用当前 SAM2/SAM2.1 配置和 checkpoint，导出固定 1024、batch=1、单点提示的图像编码器和 mask 解码器 ONNX，支持 FP16 和完整 metadata；SAM2/SAM2.1 的 ORT 静态 INT8 已因实际点提示质量不足而禁用。
+- `calibration.py` 仅保留兼容导出；`calibration_sources.py` 负责 dataset YAML、图片目录和列表解析，`calibration_images.py` 负责通用/SAM2 图像张量，`onnx_quantization.py` 负责 ORT reader、FP16 与静态 INT8，`onnx_validation.py` 负责冒烟验证和 validation metadata。SAM2 使用与官方 predictor 一致的 RGB 缩放、`[0,1]` 转换和 ImageNet 均值/方差归一化；`calibration_pack.py` 按需下载并缓存公开的 COCO128 通用校准图片，`onnx_utils.py` 负责图简化、动态轴约束和 ONNX checker。
+- `sam_onnx.py` 保留 SAM2 导出协调入口、源校验、精度归一化和旧 monkeypatch 兼容名；`sam_onnx_components.py` 负责模型加载、encoder/decoder wrapper 与 Torch ONNX 导出，`sam_onnx_metadata.py` 负责 metadata，`sam_onnx_transaction.py` 负责临时目录、备份、替换和回滚。导出固定 1024、batch=1、单点提示并支持 FP16；SAM2/SAM2.1 的 ORT 静态 INT8 已因实际点提示质量不足而禁用。
 - `runtime.py` 区分内置 ONNX/TorchScript、开发态 Pixi 后端和冻结态增量扩展，并在 SAM2 ONNX 能力探测中检查 ONNXSlim、在 OpenVINO INT8 能力探测中检查 NNCF；CPU 变体把一体式安装器内嵌的 OpenVINO/NNCF/NCNN/PNNX 视为内置能力并始终拒绝 TensorRT，GPU 变体的 BaseEnv 使用 CPU ONNX Runtime，ExtraEnv v3 提供隔离 GPU ORT 覆盖层，启动前探测 `CUDAExecutionProvider` 后选择 GPU 或回退 CPU，并继续通过增量扩展提供 OpenVINO/NNCF、TensorRT、NCNN。
 - `package.py` 导入纯 `.7z` 或兼容 `.zip` 附加包，校验扩展 schema、协议、平台、安全相对路径、符号链接、文件清单和解压结果，管理候选安装、原子活动指针、失败回滚和“当前 + 上一版本”保留策略；`manifest.py` 集中维护清单协议、路径校验、指纹和 7z 清单读取，避免 `package.py` 与 `inspection.py` 循环依赖。`.7z` 优先调用基础环境随附的原生 `7z.exe`，利用解压过程的 CRC 校验发现归档损坏，没有原生工具时回退到 `py7zr` 解压并检查文件集合。原生 7-Zip 的百分比输出会通过进度回调映射到附加包安装的解压区间，`inspection.py` 的快速入口只读取清单并按压缩包指纹缓存，安装阶段再报告检查、解压、探测和切换。模型转换自检入口会显式激活候选附属包目录后再导入 OpenVINO、NNCF、NCNN、PNNX 与 TensorRT，避免把已随附属包提供的依赖误判为缺失。
 - `activation.py` 在程序或 GPU 隐藏导出子进程启动早期追加活动扩展的 `packages/` 到 `sys.path`，并通过清单注册 DLL 目录；若清单声明 `_onnxruntime_gpu` 覆盖层，则先用隐藏 `--yolo-ort-probe` 子进程验证 CUDA Provider，成功时将覆盖层插到基础 CPU Runtime 前，失败时保留 CPU Runtime。CPU 变体不激活或安装 GPU ExtraEnv。主程序本体与 GPU 扩展共用同一个 Python、Torch、CUDA、Ultralytics、SAM2、ONNX、ONNXScript 和基础 CPU ONNX Runtime，GPU ORT 只在覆盖层中提供，不覆盖基础文件。
@@ -158,7 +161,7 @@ yolo_tool/
 ### `src/services/annotation/`
 
 - 负责 Labelme/YOLO 标注读写、可编辑标注模型、预览渲染和 AI 预标注业务逻辑。
-- `editable_document.py` 将镜像有向矩形和直线扩展统一保存为内部 `obb_mirror`；Labelme 仍写标准 `oriented_rectangle`，通过 shape 级 `flags.yolo_tool_shape` 恢复内部形状，旧的无 flags 文件继续按普通 `obb` 兼容读取。Seg 标签显式按任务类型读取为 polygon，矩形、OBB、圆形和 line 在导出时转换为多边形。
+- `editable_document.py` 仅保留兼容导出；`annotation_models.py` 定义唯一的 `EditableAnnotation`，`yolo_document.py` 负责 YOLO detect/seg/obb 读写与几何归一化，`labelme_document.py` 负责 Labelme 读写、类别映射和 shape flags。镜像有向矩形和直线扩展仍统一保存为内部 `obb_mirror`；Labelme 仍写标准 `oriented_rectangle`，通过 shape 级 `flags.yolo_tool_shape` 恢复内部形状，旧的无 flags 文件继续按普通 `obb` 兼容读取。
 - `sam3_text.py` 提供官方 `sam3.pt` 识别、项目优先模型发现、文本提示词规范化、mask IoU 去重和三种 mask 几何转换；SAM3 运行时不依赖 Qt，仅在 CUDA 上加载官方图片模型。`ai_labeling.py` 复用一次图片编码、多提示词推理、面积过滤、稳定去重和 Labelme/YOLO 写入。
 - 标注页图片列表的大目录扫描、标注存在性判断与首屏批量渲染应尽量拆成“首批同步 + 后台分批补齐”，避免首次进入标注页时阻塞主线程；对大量不可见行不要同步创建整套行内 `QCheckBox`/`QWidget`。
 - 标注页首次进入时，应避免在 `AnnotationPage` 构造阶段直接触发整套图片扫描；首轮图片扫描应延后到页面首次显示后启动，先让导航切页完成，再逐步进入标注工作状态。
@@ -171,7 +174,7 @@ yolo_tool/
 - AI 预标注模型选择使用显示名到绝对路径的映射；SAM 3 的显示名固定为 checkpoint 文件名，避免将项目目录结构暴露在下拉框中。
 - `sam_assist.py` 是不依赖 Qt 的 SAM 模型目录与几何服务：按项目优先级扫描所有 `sam` 前缀 checkpoint 以及完整的 SAM2 ONNX 双文件目录，识别 SAM 1 ViT、SAM 2/2.1 各架构、SAM2 ONNX 和官方 SAM 3，生成简化显示名称及运行后端标识；未知自定义名称保留原文件名并不猜测配置，将最大外轮廓转换为简化多边形、轴对齐矩形及角点顺序稳定的普通 OBB。
 - `sam_runtime.py` 延迟导入 Torch、SAM2、SAM3、OpenCV 与 Pillow，长期保留当前模型及图片 embedding；SAM 2/2.1 使用点提示 predictor，SAM 3 使用启用实例交互的 `predict_inst`，两者的 CUDA 路径使用 bfloat16 autocast，并按能力回退或限制 CPU。`sam_onnx_canvas.py` 使用 ONNX Runtime CPUExecutionProvider 运行 SAM2 双文件导出，固定 1024 编码、原图坐标映射和掩膜回缩放。点预测统一按项目参数选择最高质量候选后执行最低质量、最小面积和轮廓简化过滤；ONNX 导出解码器固定输出三候选，单结果设置只影响最终选择，不改变解码器计算。模型切换和页面生命周期结束时清理 predictor/model、ONNX 会话、图片 embedding，并执行垃圾回收和 CUDA cache 释放；关闭 SAM 开关只停止预览和推理，不终止页面运行时。
-- AI 预标注对话框由 `prelabel_state.py`、`prelabel_mapping.py`、`prelabel_runtime.py` 分担参数、类别映射和 worker 生命周期；`dialog.py` 只保留协调入口。SAM 控制器由模型状态、hover 调度和 runtime bridge 组成，公开的 `SamAssistController` 不变；文件浏览器的行控件与扫描职责也分离到 `file_item.py`。
+- AI 预标注对话框由 `prelabel_state.py`、`prelabel_mapping.py`、`prelabel_runtime.py` 分担参数、类别映射和 worker 生命周期；`dialog_model_layout.py`、`dialog_scope_layout.py` 与 `dialog_result_layout.py` 分别装配模型、范围和结果区域，`dialog.py` 只保留状态、信号和协调入口。SAM 控制器由模型状态、hover 调度和 runtime bridge 组成，公开的 `SamAssistController` 不变；文件浏览器的行控件与扫描职责也分离到 `file_item.py`。
 
 ### `src/services/conversion/`
 
@@ -207,15 +210,17 @@ yolo_tool/
 - 页面通过上下文提交设置变更并接收字段路径通知；控件刷新期间阻断信号，避免通知回写造成重复保存。
 - 项目路径字段分为三组共享路径：`paths.images_dir`（数据集划分、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、数据集划分、批量重命名）和 `paths.labels_dir`（标注预览、数据集划分）；图片压缩源目录单独使用 `image_resize.source_dir`。
 - 数据处理页的 `ModelExportTab` 负责模型转换页面装配，格式、路径、依赖、进程命令和扩展安装规则均由 `src/services/model_export/` 提供；与系统设置页共用附加包拖放处理。页面安装附加包时不再显示解压百分比进度条。
-- `src/ui/features/data/model_export/state.py` 负责公共字段持久化、格式专属字段的当前会话缓存、格式切换恢复和控件信号镜像；`src/ui/features/data/model_export/tab.py` 负责模型扫描、能力状态同步、统一配置采集、预览确认、转换进程和结果打开等页面协调职责。服务层仍由 `ExportCapabilities`、配置归一化和命令构建控制实际导出参数。
+- `src/ui/features/data/model_export/tab.py` 仅保留页面生命周期和兼容入口；`visibility.py` 负责格式/模型能力驱动的控件显隐，`compat.py` 集中保留历史页面方法委托，`selection.py` 负责模型/校准集选择，`config.py` 负责配置采集与路径解析，`availability.py` 负责格式与精度能力状态，`runtime_actions.py` 负责预览、启动、轮询、停止和结果收尾，`state.py` 继续负责设置持久化与格式选项缓存。
+- `layout.py` 是稳定的兼容导出入口；`layout_base.py` 负责基础字段与卡片，`layout_actions.py` 负责动作区，`layout_responsive.py` 负责选项重排与卡片比例，`layout_components.py` 仅保留兼容协调，格式专属控件仍位于 `layout_options.py`。这些模块通过参数化页面对象共享控件工厂，不改变模型转换页面布局或设置字段。
 - 标注页“更多设置”使用等权垂直伸缩项承接窗口额外高度，保证各设置行之间的间隔一致；复合设置内部（如直线扩展像素标题与数值框）不参与外层间隔分配。
 - 共享页面基础能力只能放在 `src/ui/shared/page_base.py`，不要回流到页面专属实现。
 - 通用短任务 worker 实现放在 `src/ui/shared/workers/`；需要维护交互式子进程协议的功能专属 worker 可留在对应 feature 包，例如 `annotation/sam/runtime.py`。页面持有 QThread 时必须在原生 `finished` 信号后再清理对象。
-- `src/ui/features/annotation/page.py` 与 `src/ui/features/annotation/canvas/widget.py` 都只保留页面 / 画布装配；交互、保存、菜单、快捷键、AI 与编辑细节继续拆在 feature 子模块。
+- `src/ui/features/annotation/page.py` 只保留页面状态初始化、布局装配和兼容导出；`project_paths.py` 负责路径/设置适配，`task_mode.py` 负责 YOLO 模式探测与控件同步，`lifecycle.py` 负责首显、状态栏、快捷键和关闭清理。`file_browser.py` 只编排扫描入口，文件项虚拟渲染位于 `file_list_render.py`，标注存在性缓存和异步 Worker 位于 `annotation_status_scan.py`；画布图片/绘制/SAM 生命周期仍位于 `canvas/lifecycle.py`。
+- `src/ui/features/annotation/canvas/configuration.py` 负责画布线宽、镜像编辑、交互模式、显示开关和十字线配置；`widget.py` 通过兼容方法转发，避免 Qt 入口重新承载配置细节。
 - `src/services/annotation/history.py` 保存不可变标注快照和最近 5 次操作；`src/ui/features/annotation/canvas/history.py` 只负责把新增、删除、拖动、变形和类别修改的提交边界通知页面。换页不产生历史，撤销/恢复按历史项所属图片自动定位；选中和未发生实际几何变化的鼠标操作不触发脏状态或历史记录。
 - `src/ui/features/annotation/sam/controller.py` 负责模型发现、项目级模型与高级参数保存、首帧立即提交与 `50~120 ms` 自适应移动调度（同一形状下小于 `2 px` 的微小移动过滤）、模型/图片编码状态及页面生命周期；参数保存只使旧悬停请求失效，不重载模型或图片 embedding。移动期间保留最近完成的预览帧，并使用失效代次隔离离开、命中标注、确认、切图和切模式前的结果。`sam/runtime.py` 通过隐藏子进程维持一个在途预测，只保留一个最新待发送坐标。
 - 标注画布只持有 SAM 启用状态、预览几何和输入回调，不导入 Torch、SAM2、OpenCV 或子进程实现。SAM 预览为独立绿色图层，复刻 LabelPaw 的纯绿色不透明边缘与低透明度填充，边框使用较粗、较长且 `cosmetic` 的固定像素虚线，确认时创建正式 `EditableAnnotation` 并复用 `_finish_annotation()`；命中已有标注的悬停不发起请求。
-- `DrawShapeDialog` 与画布右键菜单共用 `AnimatedToggleSwitch`；`240 px` 宽的窗口在模型框右侧提供 `50 x 36 px` 的紧凑`高级`按钮，SAM 标题行距窗口顶部 `12 px`，模型下拉框允许横向压缩并省略过长名称，由 `sam/settings_dialog.py` 承载独立参数窗口。高级窗口顶部通过模型下拉框切换候选 checkpoint，并可直接打开当前模型目录；取消不提交模型切换，保存后由标注窗口同步选择。最小掩码面积与轮廓简化比例共用对齐滑块/数值列，前者使用对数刻度覆盖 `1~100000000 px²`；最低预测质量、最小掩码面积和轮廓简化比例的数值框均关闭上下调按钮，保留直接输入和滑块联动。SAM 图标只保留在“画标注框”窗口，右键菜单的 SAM 行置于菜单底部、与标注形状之间使用分隔线并使用普通自定义菜单行间距，后者只负责同步开关；SAM 开启时只允许矩形、普通有向矩形、镜像有向矩形、多边形和编辑模式。
+- `DrawShapeDialog` 与画布右键菜单共用 `AnimatedToggleSwitch`；窗口控件布局位于 `draw_shape_layout.py`，兼容对话框保留 SAM 回调和高级设置协调。`240 px` 宽的窗口在模型框右侧提供 `50 x 36 px` 的紧凑`高级`按钮，SAM 标题行距窗口顶部 `12 px`，模型下拉框允许横向压缩并省略过长名称；`sam/settings_dialog.py` 保留参数读写与模型操作，`settings_model.py` 负责默认值和对数换算，`settings_layout.py` 装配独立参数窗口。高级窗口顶部通过模型下拉框切换候选 checkpoint，并可直接打开当前模型目录；取消不提交模型切换，保存后由标注窗口同步选择。最小掩码面积与轮廓简化比例共用对齐滑块/数值列，前者使用对数刻度覆盖 `1~100000000 px²`；最低预测质量、最小掩码面积和轮廓简化比例的数值框均关闭上下调按钮，保留直接输入和滑块联动。SAM 图标只保留在“画标注框”窗口，右键菜单的 SAM 行置于菜单底部、与标注形状之间使用分隔线并使用普通自定义菜单行间距，后者只负责同步开关；SAM 开启时只允许矩形、普通有向矩形、镜像有向矩形、多边形和编辑模式。
 - 标注页快捷键由 `src/ui/features/annotation/shortcuts.py` 集中注册；`W` 与左侧 `画标注框(W)` 按钮共用 `enable_draw_mode()`，`V/R/O/M/P/C/L` 持续切换对应画布模式，`L` 仅在直线扩展启用时生效。
 - `DrawShapeDialog` 的“编辑”选项与下方形状列表共用一个连续外框，中间使用固定 `2 px` 高的较粗分隔线，不额外保留垂直布局间距。
 - 标注画布右键菜单的“取消当前绘制”仅由未完成的临时绘制状态（起点、旋转矩形步骤或多边形顶点）触发；单纯切换到绘制形状不会显示该菜单项。
@@ -234,6 +239,7 @@ yolo_tool/
 - `ReleaseUpdateDialog` 的下载汇总进度从 `0%` 开始；程序与一个环境包按 `20%/80%` 分配，三项资源全选按 `10%/45%/45%` 分配，单资源选择占满 `100%`。
 - 更新窗口由 `update_dialog_layout.py`、`update_dialog_selection.py`、`update_dialog_download.py`、`update_dialog_install.py` 分担布局、资源选择、下载生命周期和安装器控制，`update_dialog.py` 保留 `ReleaseUpdateDialog` 协调入口；标题行右侧通过 worker 的附加进度信号显示下载速度和已下载/总字节数，总大小未知时使用 `--`，格式化逻辑位于 `update_dialog_state.py`。
 - 更新窗口下载期间关闭请求只隐藏并保留 `ReleaseUpdateDialog` 实例，设置页再次打开时复用该实例；停止按钮通过独立取消事件终止下载并清理临时文件，暂停事件仍只负责暂停读取。
+- `ReleaseUpdateDialog` 由工作台主窗口作为顶层宿主，并在显示前完成对话框样式 polish，避免 Windows 在创建更新窗口时暴露未绘制的瞬态白窗。
 - `apply_release_check` 除了刷新设置页版本卡片和通知，还会把结果转发给已打开的 `ReleaseUpdateDialog`；对话框的“检测更新”按钮复用 `release_check` 后台任务，检测期间禁用，结果返回后原地更新版本、说明、环境提示和资源选项。
 
 - 训练与检测都只允许一次启动；运行期间按钮禁用，任务结束后恢复。
@@ -259,11 +265,11 @@ yolo_tool/
 - 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；应用图标和 `sam_assist.svg` 由 PyInstaller/Qt 资源模块随程序本体提供。
 - GPU 基础包模型来源固定为 `data/models/yolo11s.pt`、`data/models/yolo26n.pt`、`data/models/yolov8n.pt` 和 `data/models/sam2.1_hiera_base_plus.pt`；CPU 基础包将最后一个替换为 `data/models/sam2.1_hiera_tiny.pt`。模型由 PowerShell 复制到对应冻结产物根目录的 `data/models/`，再进入 GPU BaseEnv 或 CPU 一体式运行时 staging；spec 不收集用户 checkpoint。SAM3 代码与推理依赖随基础包 v3 提供，但官方 `sam3.pt` 不进入源码、基础包或程序包，用户需自行接受条款并放入项目或程序根目录 `data/models/`。
 - `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型路径。
-- `src/devtools/program_package.py` 生成 `Program` staging，`base_runtime_builder.py` 生成 `BaseRuntimeModels` staging 和默认单卷 `.7z` 基础包，显式开启分卷时才生成最多两个 `.7z.001/.002` 分卷；`model_export_package.py` 以相同的 7-Zip 参数和卷大小限制生成 ExtraEnv 单卷或分卷归档。基础包与附加包的分卷大小参数均为 `1073700000b`，构建后再次验证每卷严格小于 `1 GiB`；`package_files.py` 负责复制、清单和源码过滤；`release_package.py` 只保留兼容导出。
+- `src/devtools/program_package.py` 生成 `Program` staging；`base_runtime_spec.py`、`base_runtime_dependencies.py`、`base_runtime_staging.py` 分担基础包模型/依赖/staging，`base_runtime_builder.py` 保留兼容入口；`model_export_collector.py` 与 `model_export_staging.py` 分担 ExtraEnv 收集和清单生成，`model_export_package.py` 保留 CLI 与兼容入口。两者共用 `archive_builder.py` 的 7-Zip 参数、卷大小限制和失败校验，默认单卷，显式开启分卷时才生成最多两个 `.7z.001/.002` 分卷；`package_files.py` 负责复制、清单和源码过滤，`release_package.py` 只保留兼容导出。
 - GPU 基础包和模型转换附加包都不生成或读取 `.cache.json`，完整发布时每次重新构建 staging 和归档；CPU 完整发布每次重新构建 staging 并由 Inno Setup 内嵌到安装器。GPU 基础包和附加包都通过原生 7-Zip `-mmt=on` 压缩，默认单卷，分别由 `-SplitBaseArchive`、`-SplitArchive` 启用分卷；单卷与分卷可同时保留，重建时只替换当前格式，基础归档构建完成后按本次分卷参数重新解析路径，避免旧分卷残留影响单卷发布；`-Clean` 仍可清理并强制重建当前格式输出。
 - `installer/yolo_tool.iss` 按变体生成 GPU `YOLOTool_Setup_<版本>.exe` 或 CPU `YOLOTool_CPU_Setup_<版本>.exe`。GPU 组件页按当前变体的版本化文件名识别默认单卷基础包 `.7z`、特殊分卷基础包 `.7z.001/.002` 和 GPU 附加包 `.7z` 候选，不绑定压缩大小或归档哈希；CPU 安装器默认目录为 `YOLOTool_CPU`，直接把完整 `dist/CPU/YOLOTool` 内嵌到安装器，但排除完整目录根部的 `YOLOTool.exe`，由程序 staging 提供唯一程序本体，隐藏 BaseEnv/ExtraEnv 控件并拒绝 GPU 基础包。程序与必选运行时在 staging/backup 事务中切换并执行冻结启动探测。文件事务失败时回滚，运行时版本自检不匹配或未通过时只警告并继续完成安装。安装器由 Inno Setup 7.0.2+ 编译，PowerShell 打包脚本只发现 Inno Setup 7。
 - 每个实例的 `install-instance.ini` 与其他安装清单存放在 `_internal/yolotool_metadata/`；基础包维护规范模型 `data/models/yolo26n.pt` 和受管的根目录兼容副本。
-- 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/bootstrap/cli_dispatch.py`；`--yolo-ort-probe` 由模型导出 handler 提供 GPU ONNX Runtime 隔离探测；训练、验证/预测、导出、标注和运行时实现分别位于 `bootstrap/cli_training.py`、`cli_validation.py`、`cli_model_export.py`、`cli_annotation.py`、`cli_runtime.py`，`src/train_cli.py` 仅保留兼容转发。
+- 打包后训练、导出、验证仍通过 `YOLOTool.exe --yolo-train / --yolo-export / --yolo-val` 进入 `src/bootstrap/cli_dispatch.py`；`--yolo-ort-probe` 由模型导出 handler 提供 GPU ONNX Runtime 隔离探测。`cli_validation.py` 与 `cli_annotation.py` 保留稳定 façade，验证命令与预测分别拆至 `cli_val.py`、`cli_predict.py`，模型类别、一次性 AI 标注、长期 AI 运行时和 SAM 运行时分别位于 `cli_annotation_labels.py`、`cli_annotation_batch.py`、`cli_annotation_runtime.py`、`cli_sam_runtime.py`；`runtime_protocol.py` 统一 AI/SAM 运行时结构化响应，`src/train_cli.py` 仅保留兼容转发。
 
 ## 维护建议
 
@@ -271,4 +277,4 @@ yolo_tool/
 - 新增页面逻辑直接放入 `src/ui/features/<feature>/`，不要恢复任何 `views`、`legacy` 或顶层 UI 兼容壳。
 - `src/services/<domain>/__init__.py` 只做轻量导出，不塞入业务实现。
 - 修改结构后同步更新 `docs/spec/*.md`、`docs/packaging-windows.md` 和 `docs/code-inventory.md`。
-- 当前阶段的结构围栏由 `src/tests/architecture/test_structure_boundaries.py` 的 8 项测试负责：分层依赖、旧路径与导入禁用、页面/worker/service 体量阈值、顶层 UI 类职责、已登记大型 UI 模块安全线，以及 Qt 延迟回调上下文和通配导入限制。模块体量采用“建议拆分线 + 硬安全线”：`page.py` 与标注画布模块建议在 250 行附近审查职责、硬上限 350 行，共享 worker 建议线 220 行、硬上限 300 行，服务实现建议线 300 行、硬上限 400 行；服务包 `__init__.py` 仍不得超过 80 行；未登记 UI 模块超过 600 行或登记模块超过 900 行时结构测试失败。超过建议线本身不导致测试失败，禁止为满足行数而压缩排版或删除合理空白。代码清单在结构变化后由生成器更新并通过 diff 审查，不再占用 pytest 时间。
+- 当前阶段的结构围栏由 `src/tests/architecture/test_structure_boundaries.py` 负责：分层依赖、旧路径与导入禁用、页面/worker/service 体量阈值、目标 façade 行数与兼容导出、顶层 UI 类职责、已登记大型 UI 模块安全线、模型转换支持模块边界，以及 Qt 延迟回调上下文和通配导入限制。模块体量采用“建议拆分线 + 硬安全线”：`page.py` 与标注画布模块建议在 250 行附近审查职责、硬上限 350 行，共享 worker 建议线 220 行、硬上限 300 行，服务实现建议线 300 行、硬上限 400 行；本次拆分的 façade 另有更低的专属上限，服务包 `__init__.py` 仍不得超过 80 行；未登记 UI 模块超过 600 行或登记模块超过 900 行时结构测试失败。超过建议线本身不导致测试失败，禁止为满足行数而压缩排版或删除合理空白。代码清单在结构变化后由生成器更新并通过 diff 审查，不再占用 pytest 时间。

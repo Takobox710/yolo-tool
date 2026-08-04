@@ -26,11 +26,15 @@ GPU 完整发布先生成完整 `dist/YOLOTool` 供基础环境包提取 `_inter
 
 附加包按共享的 Python distribution 文件清单增量收集，包含 `openvino`、`openvino-telemetry`、`nncf` 及其运行时依赖、`ncnn`、`pnnx`、`tensorrt`、`tensorrt-cu13`、`tensorrt-cu13-libs`、`tensorrt-cu13-bindings`，并将 `onnxruntime-gpu` 放入 `packages/_onnxruntime_gpu/` 隔离覆盖层；不复制 Python、Torch、CUDA、Ultralytics、ONNX、OpenCV 或 PySide6，也不使用宽泛的 `collect_all(...)`。GPU BaseEnv 过滤全部附加发行包和 GPU ORT 后，从 `release-cpu` 覆盖同版本 CPU ONNX Runtime；构建 ExtraEnv 时拒绝普通路径重复文件，运行时覆盖层由启动探测单独选择。附加包清单支持 `openvino`、`engine` 和 `ncnn` 三种扩展格式。
 
+打包实现按职责拆分为 `base_runtime_spec.py`、`base_runtime_dependencies.py`、`base_runtime_staging.py`、`model_export_collector.py`、`model_export_staging.py` 和共享 `archive_builder.py`；`base_runtime_builder.py` 与 `model_export_package.py` 继续保留原有 Python/CLI 入口和兼容导出。
+
 `installer/` 中的脚本保持按发布层次拆分：`build_windows.ps1` 负责冻结程序，`build_base_runtime_models.ps1` 负责 GPU 基础包，`build_model_export_runtime.ps1` 负责 GPU 附加包，`package_windows.ps1` 负责编排和生成安装器。完整 GPU 发布使用 `-BuildBaseRuntimeModels -BuildModelExportRuntime`；CPU 正式发布使用 `-Variant CPU -Clean`，完整冻结目录直接由 Inno Setup 内嵌。CPU 传入 `-BuildModelExportRuntime` 仍会失败。
 
 打包窗口会显示中文阶段提示和每个阶段耗时。PyInstaller 阶段显示构建开始、完成和耗时；GPU 基础包和附加包进入原生 7-Zip 压缩后会显示实时压缩百分比和压缩耗时。CPU 阶段只显示完整冻结和 Inno Setup 构建，不执行运行时 staging 或归档压缩。
 
 ## 构建命令
+
+Windows 安装器回归测试位于 `src/tests/integration/`，按安装生命周期、运行时层、CPU/GPU 变体和打包脚本接线拆分；可使用 `pixi run test-installer` 单独筛选。
 
 文档中早期版本的 `2.76 MB` program-only 体积仅作历史参考；当前体积会随应用代码和静态导入模块图变化，发布验证以安装器小于 `100 MB` 且最终 Program staging 不含 `_internal/` 为准。
 
@@ -111,7 +115,7 @@ Program 与基础环境先进入 `{app}\.install-staging/`。开始解压基础�
 
 ## 卸载与数据
 
-隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注、SAM 辅助标注和运行时维护划分的 handler；具体实现位于 `src/bootstrap/cli_training.py`、`cli_validation.py`、`cli_model_export.py`、`cli_annotation.py` 与 `cli_runtime.py`，`src/train_cli.py` 只保留 `run_*_cli` 兼容转发。冻结态与开发态继续使用同一命令协议。`--sam-assist-runtime` 从标准输入逐行接收 `load_model`、`set_image`、`predict_point`、`shutdown` JSON 命令，并以结构化行返回请求 ID、状态、错误或几何，不输出完整 mask。
+隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注、SAM 辅助标注和运行时维护划分的 handler；`cli_validation.py` 与 `cli_annotation.py` 保留兼容转发，具体实现分别拆入 `cli_val.py`/`cli_predict.py` 和 `cli_annotation_labels.py`/`cli_annotation_batch.py`/`cli_annotation_runtime.py`/`cli_sam_runtime.py`，`src/train_cli.py` 只保留 `run_*_cli` 兼容转发。冻结态与开发态继续使用同一命令协议。`--sam-assist-runtime` 从标准输入逐行接收 `load_model`、`set_image`、`predict_point`、`shutdown` JSON 命令，并以结构化行返回请求 ID、状态、错误或几何，不输出完整 mask。
 
 安装提交前的 `YOLOTool.exe --runtime-probe` 只读取程序清单和 `_internal` 基础环境清单，比较 `required_runtime_version` 与 `runtime_version`；不导入 Torch、PySide6、ONNX、ONNX Runtime、Ultralytics 或 OpenCV。比较不一致或自检无法完成时只显示“部分功能可能无法使用”的警告，不撤销已经完成的文件切换。附加包后台安装不显示解压百分比进度条。
 
@@ -131,6 +135,7 @@ GPU 安装器在压缩包校验页结束后使用普通百分比进度条显示�
 - 系统设置更新窗口的汇总下载进度从 `0%` 开始；程序与一个环境包按 `20%/80%` 分配，程序、基础环境和附加环境三项同时下载时按 `10%/45%/45%` 分配。
 - 应验证更新窗口进度条上方右侧显示下载速度和已下载/总大小；无 `Content-Length` 时总大小显示为 `--`。
 - 应验证下载期间关闭更新窗口后任务仍继续，重新打开时复用原进度；点击暂停后的“停止”按钮应取消下载并允许重新开始。
+- 应验证从系统设置打开更新窗口时由主工作台窗口拥有对话框，首次显示前已完成样式初始化，不出现瞬态白色小窗口。
 
 - GPU 完整发布完成后必须检查 `dist/packages/Program/YOLOTool.exe` 来自最后一次 `-ProgramOnly` 构建，且 `dist/packages/Program/` 不含 `_internal/`；CPU 直嵌模式还必须确认 Inno Setup 的完整目录输入排除了根目录 `YOLOTool.exe`，避免程序本体被携带两份。
 

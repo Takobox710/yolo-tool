@@ -4,17 +4,9 @@ import os
 
 import sys
 
-from pathlib import Path
-
 from types import SimpleNamespace
 
 import pytest
-
-def make_image(path: Path, size=(100, 100), color="white"):
-    from PIL import Image
-
-    Image.new("RGB", size, color).save(path)
-
 
 def test_training_command_and_detection_helpers(tmp_path):
     from src.services.validation import normalize_detection_item, scan_candidate_models

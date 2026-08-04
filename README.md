@@ -147,6 +147,14 @@ pixi run check
 pixi run test
 ```
 
+排查 Windows 原生窗口闪现时，可先启动生命周期监测器，再复现操作：
+
+```powershell
+pixi run window-monitor --duration 30 --process-name python.exe --jsonl windows.jsonl
+```
+
+输出的 JSONL 会记录窗口创建、显示、尺寸变化及销毁时的标题、类名、进程和矩形尺寸。冻结版可将 `python.exe` 改为 `YOLOTool.exe`，或用 `--pid` 精确过滤目标进程。
+
 分层回归：
 
 ```powershell
@@ -154,6 +162,12 @@ pixi run test-fast
 pixi run test-ui
 pixi run test-integration
 pixi run test-full
+
+# 按工作流回归
+pixi run test-annotation
+pixi run test-model-export
+pixi run test-release
+pixi run test-installer
 ```
 
 当前测试覆盖服务层、UI、集成入口、隐藏 CLI、PyInstaller、Windows 安装器和分层打包契约，也覆盖设置迁移、任务停止、日志清洗、模型转换和用户文件安全。

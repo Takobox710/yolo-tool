@@ -97,17 +97,17 @@ def build_release_update_layout(dialog) -> None:
     options_title = QLabel("下载内容")
     options_title.setObjectName("releaseDownloadOptionsTitle")
     options.addWidget(options_title)
-    dialog.program_checkbox = QCheckBox("程序安装包")
+    dialog.program_checkbox = QCheckBox("程序安装包", dialog)
     dialog.program_checkbox.setObjectName("releaseProgramCheckbox")
     dialog.program_checkbox.setChecked(bool(dialog.result.installer_asset_url))
     dialog.program_checkbox.setEnabled(bool(dialog.result.installer_asset_url))
     options.addWidget(dialog.program_checkbox)
-    dialog.base_environment_checkbox = QCheckBox("基础环境包")
+    dialog.base_environment_checkbox = QCheckBox("基础环境包", dialog)
     dialog.base_environment_checkbox.setObjectName("releaseBaseEnvironmentCheckbox")
     dialog.base_environment_checkbox.setVisible(
         normalize_variant(dialog.result.variant) != CPU_VARIANT
     )
-    dialog.extra_environment_checkbox = QCheckBox("附加环境包")
+    dialog.extra_environment_checkbox = QCheckBox("附加环境包", dialog)
     dialog.extra_environment_checkbox.setObjectName("releaseExtraEnvironmentCheckbox")
     dialog.extra_environment_checkbox.setVisible(
         normalize_variant(dialog.result.variant) != CPU_VARIANT

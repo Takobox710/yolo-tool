@@ -11,9 +11,14 @@ test-fast = "pytest src/tests/services src/tests/architecture src/tests/integrat
 test-full = "pytest src/tests -q -o cache_dir=.pixi/pytest-cache"
 test-ui = "pytest src/tests/ui -q -o cache_dir=.pixi/pytest-cache"
 test-integration = "pytest src/tests/integration -q -o cache_dir=.pixi/pytest-cache"
+test-annotation = "pytest -m workflow_annotation -q -o cache_dir=.pixi/pytest-cache"
+test-model-export = "pytest -m workflow_model_export -q -o cache_dir=.pixi/pytest-cache"
+test-release = "pytest -m workflow_release -q -o cache_dir=.pixi/pytest-cache"
+test-installer = "pytest -m workflow_installer -q -o cache_dir=.pixi/pytest-cache"
 app = "python -m src.main"
 app-qt = "python -m src.main"
 check = "python -m compileall src"
+window-monitor = "python -m src.devtools.window_lifecycle_monitor"
 
 [dependencies]
 python = "3.12.*"

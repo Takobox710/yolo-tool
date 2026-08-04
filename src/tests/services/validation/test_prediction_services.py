@@ -10,10 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-def make_image(path: Path, size=(100, 100), color="white"):
-    from PIL import Image
-
-    Image.new("RGB", size, color).save(path)
+from src.tests.helpers.images import make_image
 
 
 def test_video_prediction_writes_mp4_without_frame_labels(monkeypatch, tmp_path):

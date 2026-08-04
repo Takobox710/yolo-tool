@@ -42,7 +42,10 @@ def test_model_export_dependencies_are_split_between_pixi_environments():
 def test_model_export_runtime_build_contract_is_present():
     base_spec = Path("installer/YOLOTool.spec").read_text(encoding="utf-8")
     build_script = Path("installer/build_model_export_runtime.ps1").read_text(encoding="utf-8")
-    collector = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
+    collector = Path("src/devtools/model_export_collector.py").read_text(encoding="utf-8")
+    package_facade = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
+    staging = Path("src/devtools/model_export_staging.py").read_text(encoding="utf-8")
+    archive = Path("src/devtools/archive_builder.py").read_text(encoding="utf-8")
     boundaries = Path("src/devtools/runtime_package_boundaries.py").read_text(
         encoding="utf-8"
     )
@@ -72,15 +75,15 @@ def test_model_export_runtime_build_contract_is_present():
     assert "pixi run -e default python" in build_script
     assert "YOLOTool_ExtraEnv_${Version}.7z" in build_script
     assert "SplitArchive" in build_script
-    assert "GPU_EXTRA_DISTRIBUTIONS" in collector
+    assert "GPU_EXTRA_DISTRIBUTIONS" in package_facade
     assert "collect_runtime_overlays" in collector
     assert "ORT_GPU_OVERLAY_DIR" in collector
-    assert 'shutil.which("7z") or shutil.which("7z.exe")' in collector
-    assert '"-m0=lzma2"' in collector
-    assert '"-mmt=on"' in collector
-    assert '"--split"' in collector
-    assert '"-v{EXTRA_ARCHIVE_VOLUME_BYTES}b"' in collector
-    assert "--base-staging" in collector
+    assert 'shutil.which("7z") or shutil.which("7z.exe")' in archive
+    assert '"-m0=lzma2"' in archive
+    assert '"-mmt=on"' in archive
+    assert '"--split"' in package_facade
+    assert 'command.append(f"-v{volume_bytes}b")' in archive
+    assert "--base-staging" in package_facade
     assert not Path("installer/model_export_runtime.iss").exists()
 
 
@@ -94,6 +97,8 @@ def test_runtime_package_boundaries_are_shared_between_base_and_extra_builders()
     collector = Path("src/devtools/model_export_package.py").read_text(
         encoding="utf-8"
     )
+    staging = Path("src/devtools/model_export_staging.py").read_text(encoding="utf-8")
+    base_staging = Path("src/devtools/base_runtime_staging.py").read_text(encoding="utf-8")
 
     for package in (
         "openvino",
@@ -108,14 +113,14 @@ def test_runtime_package_boundaries_are_shared_between_base_and_extra_builders()
     ):
         assert f'"{package}"' in boundaries
     assert "extension_distribution_paths" in base_builder
-    assert "exclude_roots=extension_roots" in base_builder
+    assert "exclude_roots=extension_roots" in base_staging
     assert "_validate_no_base_overlap" in collector
     assert "GPU_BASE_EXCLUDED_DISTRIBUTIONS" in boundaries
     assert '"onnxruntime-gpu"' in boundaries
 
 
 def test_extension_manifest_supports_optional_openvino_and_ncnn_formats():
-    collector = Path("src/devtools/model_export_package.py").read_text(encoding="utf-8")
+    collector = Path("src/devtools/model_export_staging.py").read_text(encoding="utf-8")
 
     assert '"supported_formats": ["openvino", "engine", "ncnn"]' in collector
     assert '"runtime_overlays": {ORT_GPU_OVERLAY_KEY: ORT_GPU_OVERLAY_DIR}' in collector
