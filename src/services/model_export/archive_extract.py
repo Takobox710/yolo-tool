@@ -8,6 +8,7 @@ from typing import Callable
 
 import py7zr
 
+from src.services.model_export.manifest import is_split_7z_volume
 from src.services.model_export.native_archive import NativeArchiveError, extract_archive
 
 
@@ -42,8 +43,9 @@ def extract_7z(
     try:
         extract_archive(archive_path, destination, progress=progress)
         return manifest
-    except NativeArchiveError:
-        pass
+    except NativeArchiveError as exc:
+        if is_split_7z_volume(archive_path):
+            raise ArchiveExtractionError("分卷 7z 环境包需要原生 7-Zip 才能解压。") from exc
     targets = ["extension-manifest.json", *manifest["files"]]
     try:
         with py7zr.SevenZipFile(archive_path, "r") as archive:

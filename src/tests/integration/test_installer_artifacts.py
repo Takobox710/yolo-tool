@@ -70,3 +70,33 @@ def test_component_page_uses_environment_version_without_archive_hashing():
     assert "BaseCompressedSize" not in source
     assert "ExtensionCompressedSize" not in source
     assert "VerifyArchiveHash" not in prepare
+
+def test_component_page_discovers_extra_archive_when_build_macro_is_missing():
+    source = INSTALLER.read_text(encoding="utf-8")
+
+    assert "function DiscoverExtensionArchive(): String;" in source
+    assert "YOLOTool_ExtraEnv_*.7z" in source
+    assert "ExtensionArchivePath := DiscoverExtensionArchive();" in source
+    assert "IsVersionedArchiveCandidate(Candidate, '')" in source
+    assert "YOLOTool_ExtraEnv_*.7z.001" in source
+    assert source.index("YOLOTool_ExtraEnv_*.7z', Search") < source.index(
+        "YOLOTool_ExtraEnv_*.7z.001', Search"
+    )
+    assert "FileExists(ChangeFileExt(FileName, '.002'))" in source
+
+
+def test_program_packaging_registers_split_extra_archive_when_single_volume_is_absent():
+    package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+
+    assert 'ExtensionArchiveFirstVolume = "${ExtensionArchivePath}.001"' in package_script
+    assert "} elseif (Test-Path -LiteralPath $ExtensionArchiveFirstVolume) {" in package_script
+    assert "        $ExtensionArchiveFirstVolume" in package_script
+
+
+def test_component_page_discovers_split_base_archive_when_single_volume_is_absent():
+    source = INSTALLER.read_text(encoding="utf-8")
+
+    assert "function DiscoverBaseArchive(): String;" in source
+    assert "YOLOTool_BaseEnv_*.7z.001" in source
+    assert "BaseArchivePath := DiscoverBaseArchive();" in source
+    assert "(Pos('YOLOTool_BaseEnv_', ArchiveName) <> 1)" in source

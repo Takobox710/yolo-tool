@@ -325,11 +325,25 @@ begin
 end;
 
 function IsVersionedArchiveCandidate(const FileName, ExpectedName: String): Boolean;
+var
+  CandidateName, ArchiveName: String;
 begin
   Result := False;
-  if (FileName = '') or (ExpectedName = '') or not FileExists(FileName) then
+  if (FileName = '') or not FileExists(FileName) then
     exit;
-  if CompareText(ExtractFileName(FileName), ExpectedName) <> 0 then
+  CandidateName := ExtractFileName(FileName);
+  ArchiveName := CandidateName;
+  if CompareText(ExtractFileExt(FileName), '.001') = 0 then
+    ArchiveName := Copy(CandidateName, 1, Length(CandidateName) - 4);
+  if ExpectedName <> '' then
+  begin
+    if CompareText(ArchiveName, ExpectedName) <> 0 then
+      exit;
+  end
+  else if ((Pos('YOLOTool_BaseEnv_', ArchiveName) <> 1) and
+    (Pos('YOLOTool_ExtraEnv_', ArchiveName) <> 1)) or
+    (Length(ArchiveName) <= Length('YOLOTool_ExtraEnv_.7z')) or
+    (CompareText(Copy(ArchiveName, Length(ArchiveName) - 2, 3), '.7z') <> 0) then
     exit;
   if CompareText(ExtractFileExt(FileName), '.7z') = 0 then
   begin
@@ -338,6 +352,7 @@ begin
   end;
   Result :=
     (CompareText(ExtractFileExt(FileName), '.001') = 0) and
+    FileExists(ChangeFileExt(FileName, '.002')) and
     (not FileExists(ChangeFileExt(FileName, '.003')));
 end;
 
@@ -364,6 +379,86 @@ begin
     ExtensionArchiveChecked := True;
   end;
   Result := ExtensionArchiveValid;
+end;
+
+function DiscoverBaseArchive(): String;
+var
+  Search: TFindRec;
+  Candidate: String;
+begin
+  Result := '';
+  if FindFirst(AddBackslash(ExpandConstant('{src}')) +
+    'YOLOTool_BaseEnv_*.7z', Search) then
+  begin
+    try
+      repeat
+        Candidate := AddBackslash(ExpandConstant('{src}')) + Search.Name;
+        if IsVersionedArchiveCandidate(Candidate, '') then
+        begin
+          Result := Candidate;
+          exit;
+        end;
+      until not FindNext(Search);
+    finally
+      FindClose(Search);
+    end;
+  end;
+  if FindFirst(AddBackslash(ExpandConstant('{src}')) +
+    'YOLOTool_BaseEnv_*.7z.001', Search) then
+  begin
+    try
+      repeat
+        Candidate := AddBackslash(ExpandConstant('{src}')) + Search.Name;
+        if IsVersionedArchiveCandidate(Candidate, '') then
+        begin
+          Result := Candidate;
+          exit;
+        end;
+      until not FindNext(Search);
+    finally
+      FindClose(Search);
+    end;
+  end;
+end;
+
+function DiscoverExtensionArchive(): String;
+var
+  Search: TFindRec;
+  Candidate: String;
+begin
+  Result := '';
+  if FindFirst(AddBackslash(ExpandConstant('{src}')) +
+    'YOLOTool_ExtraEnv_*.7z', Search) then
+  begin
+    try
+      repeat
+        Candidate := AddBackslash(ExpandConstant('{src}')) + Search.Name;
+        if IsVersionedArchiveCandidate(Candidate, '') then
+        begin
+          Result := Candidate;
+          exit;
+        end;
+      until not FindNext(Search);
+    finally
+      FindClose(Search);
+    end;
+  end;
+  if FindFirst(AddBackslash(ExpandConstant('{src}')) +
+    'YOLOTool_ExtraEnv_*.7z.001', Search) then
+  begin
+    try
+      repeat
+        Candidate := AddBackslash(ExpandConstant('{src}')) + Search.Name;
+        if IsVersionedArchiveCandidate(Candidate, '') then
+        begin
+          Result := Candidate;
+          exit;
+        end;
+      until not FindNext(Search);
+    finally
+      FindClose(Search);
+    end;
+  end;
 end;
 
 function NextVersionPart(const Version: String; var Position: Integer): Integer;
@@ -453,6 +548,12 @@ begin
       ProgramStatus.Caption := '程序本体：' + ExistingAppVersion + ' 降级至 {#MyAppVersion}（需要确认）';
   end;
 
+  if (not IsIntegratedRuntime()) and
+    ((BaseArchivePath = '') or (not FileExists(BaseArchivePath))) then
+  begin
+    BaseArchivePath := DiscoverBaseArchive();
+    BaseArchiveChecked := False;
+  end;
   BaseCheck.Checked := BaseIsRequired and IsValidBaseArchive();
   BaseCheck.Enabled := (not BaseIsRequired) and IsValidBaseArchive();
   BasePathEdit.Text := BaseArchivePath;
@@ -490,6 +591,11 @@ begin
   ExtensionPathEdit.Visible := ExtensionCheck.Visible;
   ExtensionBrowseButton.Visible := ExtensionCheck.Visible;
   ExtensionStatus.Visible := ExtensionCheck.Visible;
+  if (ExtensionArchivePath = '') or (not FileExists(ExtensionArchivePath)) then
+  begin
+    ExtensionArchivePath := DiscoverExtensionArchive();
+    ExtensionArchiveChecked := False;
+  end;
   ExtensionCheck.Enabled := ExtensionCheck.Visible and IsValidExtensionArchive();
   ExtensionPathEdit.Text := ExtensionArchivePath;
   if IsValidExtensionArchive() then
@@ -532,7 +638,7 @@ var
 begin
   Selected := ExtensionArchivePath;
   if GetOpenFileName('选择模型转换附加包', Selected,
-    ExtractFileDir(Selected), '7z 压缩包|*.7z', '7z') then
+    ExtractFileDir(Selected), '7z 压缩包|*.7z;*.7z.001', '7z') then
   begin
     ExtensionArchivePath := Selected;
     ExtensionArchiveChecked := False;
@@ -688,7 +794,11 @@ begin
       Result := Result + ' & del /f /q "' + ChangeFileExt(BaseArchivePath, '.002') + '"';
   end;
   if ExtensionCheck.Checked then
+  begin
     Result := Result + ' & del /f /q "' + ExtensionArchivePath + '"';
+    if CompareText(ExtractFileExt(ExtensionArchivePath), '.001') = 0 then
+      Result := Result + ' & del /f /q "' + ChangeFileExt(ExtensionArchivePath, '.002') + '"';
+  end;
 end;
 
 function GetBaseArchivePath(Param: String): String;

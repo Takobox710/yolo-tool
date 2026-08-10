@@ -197,7 +197,15 @@ try {
     $ExtensionArchive = ""
     if ($Variant -eq "GPU") {
         $ExtensionVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "model-export-runtime-version.txt") -Raw).Trim()
-        $ExtensionArchive = Join-Path $InstallerOutputDir "YOLOTool_ExtraEnv_${ExtensionVersion}.7z"
+        $ExtensionArchivePath = Join-Path $InstallerOutputDir "YOLOTool_ExtraEnv_${ExtensionVersion}.7z"
+        $ExtensionArchiveFirstVolume = "${ExtensionArchivePath}.001"
+        $ExtensionArchive = if (Test-Path -LiteralPath $ExtensionArchivePath) {
+            $ExtensionArchivePath
+        } elseif (Test-Path -LiteralPath $ExtensionArchiveFirstVolume) {
+            $ExtensionArchiveFirstVolume
+        } else {
+            $ExtensionArchivePath
+        }
     }
     $ProgramStaging = Join-Path $Root "dist\packages\Program"
     $CatalogPath = Join-Path $ProgramStaging "companion-catalog.json"

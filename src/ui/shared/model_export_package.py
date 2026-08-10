@@ -27,7 +27,7 @@ class ModelExportPackageDropMixin:
             self,
             "选择模型转换附加包",
             str(self.project_root()),
-            "模型转换附加包 (*.7z *.zip);;7z 压缩包 (*.7z);;ZIP 压缩包 (*.zip)",
+            "模型转换附加包 (*.7z *.7z.001 *.7z.002 *.zip);;7z 压缩包 (*.7z *.7z.001 *.7z.002);;ZIP 压缩包 (*.zip)",
         )
         if path:
             self.confirm_model_export_package(Path(path))

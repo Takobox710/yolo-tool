@@ -102,7 +102,7 @@
 | `src/services/home/summary.py` | 84 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/__init__.py` | 48 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/activation.py` | 106 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/archive_extract.py` | 53 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/archive_extract.py` | 55 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/backend.py` | 136 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/calibration.py` | 36 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/calibration_images.py` | 45 | 服务层与可测试业务逻辑实现。 |
@@ -113,15 +113,15 @@
 | `src/services/model_export/commands.py` | 105 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/execute.py` | 283 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/formats.py` | 159 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/inspection.py` | 54 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/manifest.py` | 107 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/inspection.py` | 57 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/manifest.py` | 131 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/native_archive.py` | 150 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/onnx_quantization.py` | 75 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/onnx_utils.py` | 124 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/onnx_validation.py` | 59 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/options.py` | 108 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/package.py` | 223 | 服务层与可测试业务逻辑实现。 |
-| `src/services/model_export/package_inspection.py` | 110 | 服务层与可测试业务逻辑实现。 |
+| `src/services/model_export/package_inspection.py` | 114 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/probe.py` | 48 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/runtime.py` | 132 | 服务层与可测试业务逻辑实现。 |
 | `src/services/model_export/sam_onnx.py` | 146 | 服务层与可测试业务逻辑实现。 |
@@ -181,7 +181,7 @@
 | `src/tests/integration/test_app_entry.py` | 228 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_cli_facades.py` | 18 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_cpu_package_guard.py` | 54 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/integration/test_installer_artifacts.py` | 72 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/integration/test_installer_artifacts.py` | 102 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_installer_lifecycle.py` | 118 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_installer_packaging_wiring.py` | 144 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_installer_variants.py` | 136 | pytest 测试、结构约束与回归用例。 |
@@ -211,7 +211,7 @@
 | `src/tests/services/model_export/test_capability_matrix.py` | 148 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_command_generation.py` | 156 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_export_cli.py` | 120 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/model_export/test_extension_package.py` | 297 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/model_export/test_extension_package.py` | 348 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_model_export_services.py` | 331 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_package_collector.py` | 220 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/model_export/test_sam2_export.py` | 275 | pytest 测试、结构约束与回归用例。 |

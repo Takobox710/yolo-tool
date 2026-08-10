@@ -17,6 +17,7 @@ from src.services.model_export.manifest import (
     PACKAGE_MANIFEST_NAME,
     ExtensionPackageError,
     archive_fingerprint,
+    canonical_7z_volume_path,
     load_json,
     validate_extension_manifest,
 )
@@ -116,12 +117,11 @@ def install_extension_package(
         raise ExtensionPackageError(
             "CPU 版已将 OpenVINO、NCNN、PNNX 内置，不接受 GPU 模型转换附加包。"
         )
-    package_path = Path(package_path)
-    if not package_path.is_file():
-        raise ExtensionPackageError("请选择存在的模型转换环境包。")
-    suffix = package_path.suffix.lower()
-    if suffix not in {".7z", ".zip"}:
-        raise ExtensionPackageError("模型转换环境包必须是 .7z 或 .zip 压缩包。")
+    package_path = canonical_7z_volume_path(Path(package_path))
+    if not is_extension_package_path(package_path):
+        raise ExtensionPackageError(
+            "模型转换环境包必须是 .7z、.7z.001 或 .zip 压缩包。"
+        )
     return _install_archive_package(
         package_path,
         base_root=_base_root(base_root),
@@ -165,7 +165,7 @@ def _install_archive_package(
                         )
                     ),
                 )
-                if archive_path.suffix.lower() == ".7z"
+                if archive_path.suffix.lower() != ".zip"
                 else extract_zip(archive_path, staging, manifest)
             )
         except ArchiveExtractionError as exc:

@@ -225,3 +225,5 @@ yolo_tool/
 - [系统设置规格](docs/spec/settings.md)
 - [Windows 发布说明](docs/packaging-windows.md)
 - [代码清单](docs/code-inventory.md)
+
+GPU 基础包和模型转换附加包均支持单卷 `.7z` 与完整两卷 `.7z.001/.002`；安装器同时发现两种格式时优先单卷，单卷缺失时自动登记并发现分卷首卷。

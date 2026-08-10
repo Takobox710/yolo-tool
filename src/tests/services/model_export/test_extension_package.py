@@ -88,6 +88,57 @@ def test_7z_extension_package_installs_from_lzma2_archive(tmp_path):
     assert values == sorted(values)
 
 
+def test_split_extension_archive_path_requires_exactly_two_volumes(tmp_path):
+    from src.services.model_export.package_inspection import is_extension_package_path
+
+    first_volume = tmp_path / "YOLOTool_ExtraEnv_v3.7z.001"
+    first_volume.write_bytes(b"part 1")
+
+    assert not is_extension_package_path(first_volume)
+
+    first_volume.with_suffix(".002").write_bytes(b"part 2")
+    assert is_extension_package_path(first_volume)
+
+    first_volume.with_suffix(".003").write_bytes(b"part 3")
+    assert not is_extension_package_path(first_volume)
+    assert not is_extension_package_path(first_volume.with_suffix(".002"))
+
+
+def test_fast_extension_inspection_accepts_split_volume_path(tmp_path, monkeypatch):
+    from src.services.model_export import inspection
+
+    first_volume = tmp_path / "YOLOTool_ExtraEnv_v3.7z.001"
+    first_volume.write_bytes(b"part 1")
+    first_volume.with_suffix(".002").write_bytes(b"part 2")
+    manifest = {"version": "v3", "supported_formats": ["engine"]}
+
+    monkeypatch.setattr(inspection, "read_7z_manifest", lambda _path: manifest)
+
+    assert inspection.inspect_extension_package_fast(first_volume) == manifest
+
+
+def test_selecting_second_split_volume_uses_first_volume_for_fast_inspection(
+    tmp_path, monkeypatch
+):
+    from src.services.model_export import inspection
+
+    first_volume = tmp_path / "YOLOTool_ExtraEnv_v3.7z.001"
+    second_volume = first_volume.with_suffix(".002")
+    first_volume.write_bytes(b"part 1")
+    second_volume.write_bytes(b"part 2")
+    manifest = {"version": "v3", "supported_formats": ["engine"]}
+    captured: list[Path] = []
+
+    def read_manifest(path: Path):
+        captured.append(path)
+        return manifest
+
+    monkeypatch.setattr(inspection, "read_7z_manifest", read_manifest)
+
+    assert inspection.inspect_extension_package_fast(second_volume) == manifest
+    assert captured == [first_volume]
+
+
 def test_native_7z_reports_incremental_extraction_progress(tmp_path, monkeypatch):
     from src.services.model_export import native_archive
 

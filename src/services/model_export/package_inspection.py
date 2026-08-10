@@ -11,6 +11,8 @@ from src.services.model_export.manifest import (
     PACKAGE_MANIFEST_NAME,
     ExtensionPackageError,
     archive_fingerprint,
+    canonical_7z_volume_path,
+    is_7z_archive_path,
     read_7z_manifest,
     safe_relative_path,
     validate_extension_manifest,
@@ -21,7 +23,9 @@ _INSPECTION_CACHE: dict[tuple[str, int, int], dict] = {}
 
 def is_extension_package_path(path: str | Path) -> bool:
     value = Path(path)
-    return value.is_file() and value.suffix.lower() in {".7z", ".zip"}
+    return value.is_file() and (
+        value.suffix.lower() == ".zip" or is_7z_archive_path(value)
+    )
 
 
 def _is_zip_symlink(info: zipfile.ZipInfo) -> bool:
@@ -91,9 +95,9 @@ def _inspect_7z(archive_path: Path, manifest: dict | None = None) -> dict:
 
 
 def inspect_extension_package(package_path: str | Path) -> dict:
-    package_path = Path(package_path)
+    package_path = canonical_7z_volume_path(Path(package_path))
     if not is_extension_package_path(package_path):
-        raise ExtensionPackageError("请选择 .7z 或 .zip 模型转换环境包。")
+        raise ExtensionPackageError("请选择 .7z、.7z.001 或 .zip 模型转换环境包。")
     try:
         key = archive_fingerprint(package_path)
     except OSError as exc:
@@ -103,7 +107,7 @@ def inspect_extension_package(package_path: str | Path) -> dict:
         return cached
     manifest = (
         _inspect_7z(package_path)
-        if package_path.suffix.lower() == ".7z"
+        if is_7z_archive_path(package_path)
         else _inspect_zip(package_path)
     )
     _INSPECTION_CACHE[key] = manifest

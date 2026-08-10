@@ -36,6 +36,28 @@ def archive_fingerprint(path: Path) -> tuple[str, int, int]:
     return (str(path.resolve()).lower(), stat_result.st_size, stat_result.st_mtime_ns)
 
 
+def is_split_7z_volume(path: Path) -> bool:
+    path = canonical_7z_volume_path(path)
+    return (
+        path.name.casefold().endswith(".7z.001")
+        and path.is_file()
+        and path.with_suffix(".002").is_file()
+        and not path.with_suffix(".003").exists()
+    )
+
+
+def canonical_7z_volume_path(path: Path) -> Path:
+    path = Path(path)
+    if path.name.casefold().endswith(".7z.002"):
+        return path.with_suffix(".001")
+    return path
+
+
+def is_7z_archive_path(path: Path) -> bool:
+    path = Path(path)
+    return path.suffix.casefold() == ".7z" or is_split_7z_volume(path)
+
+
 def safe_relative_path(value: str) -> Path:
     normalized = str(value).replace("\\", "/")
     path = Path(normalized)
@@ -96,6 +118,8 @@ def read_7z_manifest(archive_path: Path) -> dict:
             raise ExtensionPackageError(
                 "压缩包中的环境包清单不是合法 JSON。"
             ) from exc
+    if is_split_7z_volume(archive_path):
+        raise ExtensionPackageError("分卷 7z 环境包需要原生 7-Zip 才能读取。")
     with tempfile.TemporaryDirectory(prefix="yolo-tool-extension-manifest-") as temp:
         try:
             with py7zr.SevenZipFile(archive_path, "r") as archive:

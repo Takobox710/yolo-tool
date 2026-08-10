@@ -147,4 +147,4 @@ GPU 安装器在压缩包校验页结束后使用普通百分比进度条显示�
 - 覆盖首次安装、仅程序升级、强制基础包升级、主动重装、确认降级、并行实例与卸载保留数据。
 - 使用 detect 与 OBB 模型完成五格式烟雾导出，并使用 SAM2.1 Base+ 完成双文件 ONNX 烟雾导出；GPU 版 TensorRT 仅在兼容 NVIDIA CUDA 13 发布机验证，CPU 版验证 ONNX、TorchScript、OpenVINO 和 NCNN，并确认 TensorRT 不可用。
 
-Inno Setup 要求 7.0.2 或更高版本。`installer/package_windows.ps1` 会搜索 Inno Setup 7 的标准/自定义安装目录和注册表路径；不再使用 Inno Setup 6 编译器。简体中文语言资源固定在 `installer/languages/ChineseSimplified.isl`，构建机无需额外安装语言包。
+Inno Setup 要求 7.0.2 或更高版本。`installer/package_windows.ps1` 会搜索 Inno Setup 7 的标准/自定义安装目录和注册表路径；不再使用 Inno Setup 6 编译器。简体中文语言资源固定在 `installer/languages/ChineseSimplified.isl`，构建机无需额外安装语言包。GPU 程序安装器构建会优先登记单卷基础包/附加包，单卷缺失时登记对应 `.7z.001` 首卷；组件页会自动发现基础包和附加包的单卷或完整 `.7z.001/.002` 分卷，同时存在时优先单卷，缺少 `.002` 或多出 `.003` 的分卷不予识别。
