@@ -77,7 +77,7 @@ def test_release_update_option_visibility_never_uses_a_top_level_checkbox(monkey
 
     monkeypatch.setattr(update_dialog_layout, "QCheckBox", TrackingCheckBox)
     host = QMainWindow()
-    dialog = ReleaseUpdateDialog(host, ReleaseCheckResult(current_version="1.3.4"))
+    dialog = ReleaseUpdateDialog(host, ReleaseCheckResult(current_version="1.3.5"))
 
     assert visible_parent_widgets
     assert all(parent is dialog for parent in visible_parent_widgets)

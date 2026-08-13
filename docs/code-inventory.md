@@ -4,7 +4,7 @@
 
 ## 目录摘要
 
-- `src`: 445 个文件，48207 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `src`: 445 个文件，48229 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
 - `docs`: 8 个文件，958 行文本；架构、规格、打包与代码清单文档。
 - `installer`: 16 个文件，2892 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
@@ -77,7 +77,7 @@
 | `src/services/annotation/history.py` | 123 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/labelme_document.py` | 104 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/preview_render.py` | 174 | 服务层与可测试业务逻辑实现。 |
-| `src/services/annotation/sam3_compat.py` | 36 | 服务层与可测试业务逻辑实现。 |
+| `src/services/annotation/sam3_compat.py` | 50 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/sam3_text.py` | 232 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/sam_assist.py` | 298 | 服务层与可测试业务逻辑实现。 |
 | `src/services/annotation/sam_onnx_canvas.py` | 110 | 服务层与可测试业务逻辑实现。 |
@@ -202,7 +202,7 @@
 | `src/tests/services/annotation/test_annotation_history_and_targets.py` | 155 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/annotation/test_keypoint_containment.py` | 30 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/annotation/test_pose_annotation_document.py` | 42 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/services/annotation/test_sam3_compat.py` | 36 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/services/annotation/test_sam3_compat.py` | 44 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/annotation/test_sam3_text.py` | 281 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/annotation/test_sam_assist.py` | 430 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/services/conversion/__init__.py` | 0 | pytest 测试、结构约束与回归用例。 |

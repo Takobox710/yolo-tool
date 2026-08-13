@@ -103,4 +103,4 @@ def test_settings_page_starts_release_check_when_shown(tmp_path, monkeypatch):
     page.on_show()
 
     assert started == ["env", "release_check", "env"]
-    assert checked_versions == ["1.3.4"]
+    assert checked_versions == ["1.3.5"]

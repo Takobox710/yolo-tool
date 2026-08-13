@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import sys
+import warnings
 from pathlib import Path
 
 
@@ -23,7 +24,9 @@ def test_sam3_compat_imports_vendor_runtime_when_pkg_resources_is_missing(
 
     monkeypatch.setattr(builtins, "__import__", import_without_pkg_resources)
 
-    processor, builder = load_sam3_components()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("default")
+        processor, builder = load_sam3_components()
     from sam3 import model_builder
 
     resource = model_builder.pkg_resources.resource_filename(
@@ -34,3 +37,8 @@ def test_sam3_compat_imports_vendor_runtime_when_pkg_resources_is_missing(
     assert builder is model_builder.build_sam3_image_model
     assert Path(resource).is_file()
     assert "pkg_resources" not in sys.modules
+    assert not [
+        warning
+        for warning in caught
+        if warning.category in {DeprecationWarning, FutureWarning}
+    ]
