@@ -155,7 +155,10 @@ class AnnotationCanvasRenderMixin(AnnotationCanvasHandleRenderMixin):
             fill.setAlpha(0)
         painter.setBrush(fill)
         points = [self._image_to_widget(point) for point in annotation.points]
-        if annotation.shape == "circle":
+        if annotation.shape == "point" and points:
+            radius = 4.0
+            painter.drawEllipse(QRectF(points[0].x() - radius, points[0].y() - radius, radius * 2, radius * 2))
+        elif annotation.shape == "circle":
             x1, y1, x2, y2 = self._detect_points_to_rect(annotation.points)
             top_left = self._image_to_widget((x1, y1))
             bottom_right = self._image_to_widget((x2, y2))

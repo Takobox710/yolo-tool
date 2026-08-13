@@ -15,7 +15,7 @@
   <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows-0078D4">
 </p>
 
-YOLOTool 是一个基于 Python、Qt 和 Ultralytics 的 Windows 桌面 YOLO 训练工作台，覆盖图片标注、数据集整理、模型训练、模型验证和格式转换，支持 YOLO 的 `detect`、`obb` 和 `seg` 任务
+YOLOTool 是一个基于 Python、Qt 和 Ultralytics 的 Windows 桌面 YOLO 训练工作台，覆盖图片标注、数据集整理、模型训练、模型验证和格式转换，支持 YOLO 的 `detect`、`obb`、`seg` 和 `pose` 任务
 
 ## 快速开始
 
@@ -43,7 +43,7 @@ pixi run python -m src.main
 | 数据标注 | Labelme 标注读写、矩形/圆形/有向矩形/多边形/直线扩展、类别管理、撤销恢复和自动保存。 |
 | AI 标注 | YOLO / SAM 预标注，SAM 2/2.1 画布悬停辅助标注，SAM 3 文本提示预标注。 |
 | 数据处理 | Labelme 转 YOLO、YOLO 原生数据集划分、标注预览、批量重命名和图片压缩。 |
-| 模型训练 | 自动识别任务类型，统一生成训练命令，支持增强参数、命令编辑和中途停止。 |
+| 模型训练 | 自动识别任务类型，支持方形与矩形批次训练、增强参数、命令编辑和中途停止。 |
 | 模型验证 | 图片、视频、摄像头和数据集验证；按模式保存图片、标签或视频结果。 |
 | 模型转换 | YOLO 支持 ONNX、TorchScript、OpenVINO、TensorRT、NCNN；支持 SAM 模型导出。 |
 | 系统设置 | 环境状态、项目设置、默认值恢复、Release 检查和 GPU/CPU 更新资源选择。 |
@@ -52,11 +52,11 @@ pixi run python -m src.main
 
 支持的任务和标注链路：
 
-- YOLO `detect`、`obb`、`seg` 三种任务类型。
+- YOLO `detect`、`obb`、`seg`、`pose` 四种任务类型。
 - Labelme `.json` 与 YOLO `.txt` 互转，支持类别映射和转换产物备份。
-- 标注编辑器提供矩形、圆形、有向矩形、多边形和直线等标注形状；这些形状与 YOLO 任务类型是两个不同层次的概念。
+- 标注编辑器提供矩形、圆形、有向矩形、多边形、直线和可选关键点等标注形状；开启关键点标注时，未落入任意标注形状的点会在右侧列表显示红色提醒；这些形状与 YOLO 任务类型是两个不同层次的概念。
 - 有向矩形标注可用于构建 OBB 数据集，直线可按半宽扩展为区域后参与数据集转换。
-- SAM 2/2.1 画布辅助标注和 SAM 3 文本提示预标注；官方 `sam3.pt` 由用户自行放入 `data/models/`。
+- SAM 2/2.1 画布辅助标注和 SAM 3 文本提示预标注；官方 `sam3.pt` 由用户自行放入 `data/models/`，软件目录、SAM checkpoint 或待识别图片路径包含中文时仍可加载和推理。
 
 模型格式转换能力：
 
@@ -65,7 +65,7 @@ pixi run python -m src.main
 | GPU | ONNX、TorchScript、OpenVINO、TensorRT、NCNN |
 | CPU | ONNX、TorchScript、OpenVINO、NCNN |
 
-模型转换默认扫描 `result/**/weights/*.pt`；基础模型和 SAM checkpoint 可通过浏览按钮选择，默认输出到 `data/models/model_exports/<模型名>/`。YOLO 转换支持多种精度、动态输入、NMS、校准和转换后验证。
+模型转换默认扫描 `result/**/weights/*.pt`；基础模型和 SAM checkpoint 可通过浏览按钮选择，默认输出到 `data/models/model_exports/<模型名>/`。YOLO 转换支持多种精度、动态输入、NMS、校准和转换后验证；输入尺寸默认 `640×640`，也可按“宽×高”导出矩形输入（如 `640×384`）。
 
 Pixi 环境由 `pixi.toml` 管理：
 
@@ -85,7 +85,7 @@ pixi run -e release-cpu python -m src.devtools.cpu_package_guard
 1. **创建项目**：在主页或系统设置中选择项目目录，确认基础模型和类别设置。
 2. **准备标注**：在数据标注页读写 Labelme 标注；需要 YOLO 输出时，在更多设置中开启自动转换或保存 YOLO 标注。
 3. **整理数据集**：在数据处理中选择 Labelme 转换模式或 YOLO 原生划分模式。默认比例为 `train=0.8`、`val=0.2`、`test=0.0`，空 split 不预建目录。
-4. **训练模型**：默认基础模型为 `data/models/yolo11s.pt`；训练页根据模型名称自动选择 `detect`、`obb` 或 `seg` 任务，其余训练参数在页面中配置。
+4. **训练模型**：默认基础模型为 `data/models/yolo11s.pt`；训练页根据模型名称自动选择 `detect`、`obb`、`seg` 或 `pose` 任务，基础模型下拉框自动排除 SAM 系列 checkpoint。图片尺寸内置 `640×640`、`960×960`、`1280×1280`，也可手动输入其他宽×高尺寸；矩形配置会按当前模型能力转换为矩形批次训练参数。
 5. **验证结果**：模型验证默认显示训练产物中的 `best.pt`；开启“模型验证显示 last”后才显示 `last.pt`。普通图片检测默认输出到 `result/gui_val`，标签位于输出目录的 `labels/` 子目录；视频输出为 MP4。
 6. **导出模型**：在数据处理中选择目标格式，按需配置精度、动态轴、NMS、opset、校准和验证参数。
 

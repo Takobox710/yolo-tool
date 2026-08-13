@@ -265,6 +265,86 @@ def test_sam_runtime_predicts_with_single_positive_point(monkeypatch):
     assert result["geometry"] is not None
 
 
+def test_sam_runtime_stages_non_ascii_model_and_image_paths(tmp_path, monkeypatch):
+    from src.services.annotation.sam_runtime import SamAssistRuntime
+    import src.services.annotation.sam_path_compat as sam_path_compat
+
+    workspace = tmp_path / "中文项目"
+    workspace.mkdir()
+    checkpoint = workspace / "sam2.1_hiera_tiny.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    image_path = workspace / "焊缝图片.png"
+    from PIL import Image
+
+    Image.new("RGB", (16, 12), "white").save(image_path)
+    staged_paths = []
+
+    monkeypatch.setattr(sam_path_compat, "_ascii_windows_path", lambda _path: None)
+    monkeypatch.setattr(sam_path_compat, "_ascii_temp_base", lambda: tmp_path)
+
+    class FakeTorch:
+        cuda = SimpleNamespace(is_available=lambda: False)
+
+        @staticmethod
+        def inference_mode():
+            return nullcontext()
+
+    class FakePredictor:
+        def set_image(self, array):
+            staged_paths.append(array.shape)
+
+    def build_sam2(_config, *, ckpt_path, device):
+        staged_paths.append(Path(ckpt_path))
+        assert Path(ckpt_path).is_file()
+        assert str(ckpt_path).isascii()
+        assert device == "cpu"
+        return object()
+
+    monkeypatch.setitem(__import__("sys").modules, "torch", FakeTorch)
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "sam2.build_sam",
+        SimpleNamespace(build_sam2=build_sam2),
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "sam2.sam2_image_predictor",
+        SimpleNamespace(SAM2ImagePredictor=lambda _model: FakePredictor()),
+    )
+
+    runtime = SamAssistRuntime()
+    runtime.load_model(str(checkpoint), "configs/sam2.1/sam2.1_hiera_t.yaml", 1)
+    result = runtime.set_image(str(image_path), 2, 1)
+
+    assert staged_paths[0] != checkpoint
+    assert staged_paths[1] == (12, 16, 3)
+    assert result["image_path"] == str(image_path.resolve())
+    runtime.close()
+
+
+def test_sam_path_stager_handles_non_ascii_onnx_model_directory(tmp_path, monkeypatch):
+    from src.services.annotation.sam_path_compat import SamAsciiPathStager
+    import src.services.annotation.sam_path_compat as sam_path_compat
+
+    model_dir = tmp_path / "中文模型" / "sam2_onnx"
+    model_dir.mkdir(parents=True)
+    (model_dir / "image_encoder.onnx").write_bytes(b"encoder")
+    (model_dir / "mask_decoder.onnx").write_bytes(b"decoder")
+
+    monkeypatch.setattr(sam_path_compat, "_ascii_windows_path", lambda _path: None)
+    monkeypatch.setattr(sam_path_compat, "_ascii_temp_base", lambda: tmp_path)
+
+    stager = SamAsciiPathStager()
+    staged_dir = stager.stage_directory(model_dir)
+
+    assert staged_dir != model_dir
+    assert str(staged_dir).isascii()
+    assert (staged_dir / "image_encoder.onnx").read_bytes() == b"encoder"
+    assert (staged_dir / "mask_decoder.onnx").read_bytes() == b"decoder"
+    stager.close()
+    assert not staged_dir.exists()
+
+
 def test_sam_runtime_selects_best_candidate_and_applies_advanced_filters(monkeypatch):
     from src.services.annotation.sam_runtime import SamAssistRuntime
 

@@ -5,10 +5,10 @@ from src.services.training import infer_task_mode_from_config
 
 def _run_val_cli_impl(argv: list[str]) -> int:
     if len(argv) < 2:
-        raise SystemExit("Usage: --yolo-val <detect|obb|seg> val key=value ...")
+        raise SystemExit("Usage: --yolo-val <detect|obb|seg|pose> val key=value ...")
     task_mode, command, *items = argv
-    if task_mode not in {"detect", "obb", "seg"}:
-        raise SystemExit("验证任务类型必须是 detect、obb 或 seg")
+    if task_mode not in {"detect", "obb", "seg", "pose"}:
+        raise SystemExit("验证任务类型必须是 detect、obb、seg 或 pose")
     if command != "val":
         raise SystemExit(f"Unsupported validation command: {command}")
 
@@ -25,7 +25,7 @@ def _run_val_cli_impl(argv: list[str]) -> int:
     if not data_path:
         raise SystemExit("Missing data=... for validation")
     inferred_mode = infer_task_mode_from_config({"model": model_path})
-    if task_mode == "detect" and inferred_mode in {"obb", "seg"}:
+    if task_mode == "detect" and inferred_mode in {"obb", "seg", "pose"}:
         task_mode = inferred_mode
     model = YOLO(str(model_path))
     model.val(task=task_mode, **options)

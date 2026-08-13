@@ -181,3 +181,31 @@ def test_settings_service_migrates_legacy_model_export_fields(tmp_path):
     assert settings.model_export.output_dir == str(
         (tmp_path / "data" / "models" / "model_exports").resolve()
     )
+
+
+def test_settings_service_migrates_square_model_export_size_to_width_height_text(tmp_path):
+    from src.services.settings import SettingsService
+
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps({"model_export": {"imgsz": 960}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    result = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
+
+    assert result.settings.model_export.imgsz == "960×960"
+
+
+def test_settings_service_migrates_square_training_size_to_width_height_text(tmp_path):
+    from src.services.settings import SettingsService
+
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps({"training": {"imgsz": 960}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    result = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
+
+    assert result.settings.training.imgsz == "960×960"

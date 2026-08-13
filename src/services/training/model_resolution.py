@@ -31,12 +31,16 @@ def training_model_dirs(project_root, app_root=None):
     return _training_model_dirs(project_root, ROOT if app_root is None else app_root)
 
 
-def find_training_model_paths(project_root, app_root=None):
-    return _find_training_model_paths(project_root, ROOT if app_root is None else app_root)
+def find_training_model_paths(project_root, app_root=None, *, exclude_sam=False):
+    return _find_training_model_paths(
+        project_root, ROOT if app_root is None else app_root, exclude_sam=exclude_sam
+    )
 
 
-def find_training_model_names(project_root, app_root=None):
-    return _find_training_model_names(project_root, ROOT if app_root is None else app_root)
+def find_training_model_names(project_root, app_root=None, *, exclude_sam=False):
+    return _find_training_model_names(
+        project_root, ROOT if app_root is None else app_root, exclude_sam=exclude_sam
+    )
 
 
 def resolve_training_model_reference(model_text, project_root, app_root=None):

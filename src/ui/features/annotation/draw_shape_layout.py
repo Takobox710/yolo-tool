@@ -26,6 +26,7 @@ from src.shared.qt import (
 def build_dialog_ui(
     dialog,
     line_expand_enabled: bool,
+    keypoint_enabled: bool,
     selected_sam_model: str = "",
 ) -> None:
     layout = QVBoxLayout(dialog)
@@ -113,6 +114,8 @@ def build_dialog_ui(
     ]
     if line_expand_enabled:
         options.append(("直线扩展", "line_expand"))
+    if keypoint_enabled:
+        options.append(("点", "point"))
     dialog._options = options
     dialog._shape_buttons = {}
     

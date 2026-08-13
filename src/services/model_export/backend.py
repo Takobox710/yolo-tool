@@ -5,6 +5,7 @@ from pathlib import Path
 from src.services.model_export.calibration import CalibrationSet, resolve_calibration_images
 from src.services.model_export.capabilities import capabilities_for, dynamic_axes, model_kind_from_path
 from src.services.model_export.formats import resolve_export_format
+from src.services.model_export.image_size import parse_image_size
 
 
 def backend_options(config) -> dict:
@@ -16,7 +17,7 @@ def backend_options(config) -> dict:
     )
     options = {
         "format": config.export_format,
-        "imgsz": int(config.imgsz),
+        "imgsz": parse_image_size(config.imgsz),
     }
     if config.export_format == "torchscript" and config.precision == "fp16":
         options["device"] = "0"

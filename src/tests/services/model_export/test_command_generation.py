@@ -130,6 +130,20 @@ def test_backend_options_keep_fp16_torchscript_on_gpu(tmp_path):
     assert options["device"] == "0"
     assert options["dynamic"] is True
 
+
+def test_rectangular_size_reaches_cli_and_ultralytics_backend(tmp_path):
+    from src.services.model_export import ModelExportConfig, build_model_export_command
+    from src.services.model_export.backend import backend_options
+
+    config = ModelExportConfig(
+        model_path=tmp_path / "model.pt",
+        output_dir=tmp_path / "output",
+        imgsz=(384, 640),
+    )
+
+    assert "imgsz=640x384" in build_model_export_command(config)
+    assert backend_options(config)["imgsz"] == (384, 640)
+
 def test_backend_options_map_public_nms_fields_to_ultralytics_names(tmp_path):
     from src.services.model_export import ModelExportConfig
     from src.services.model_export.backend import backend_options

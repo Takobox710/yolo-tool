@@ -82,7 +82,7 @@ class TrainingSettings:
     patience: int
     workers: int
     batch: int
-    imgsz: int
+    imgsz: str
     device: str
     mosaic: float
     fliplr: float
@@ -124,7 +124,7 @@ class ModelExportSettings:
     model_path: str
     output_dir: str
     format: str
-    imgsz: int
+    imgsz: str
     simplify: bool
     precision: str
     batch: int
@@ -184,6 +184,7 @@ class AnnotationSettings:
     line_expand_enabled: bool
     line_expand_pixels: int
     optimize_mirror_edit: bool
+    keypoint_enabled: bool
     ai_prelabel: AiPrelabelSettings
     sam_assist: SamAssistSettings
 

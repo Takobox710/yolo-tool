@@ -12,6 +12,7 @@ class Annotation:
     label: str
     points: list[tuple[float, float]]
     confidence: float | None = None
+    keypoints: list[tuple[float, float]] | None = None
 
 
 def _infer_annotation_mode(values: list[float], fallback_mode: str) -> str:
@@ -34,8 +35,23 @@ def load_yolo_annotations(image_size: tuple[int, int], label_path: Path, task_mo
         class_id = int(float(parts[0]))
         label = class_names[class_id] if 0 <= class_id < len(class_names) else str(class_id)
         values = [float(item) for item in parts[1:]]
-        active_mode = task_mode if task_mode in {"detect", "obb", "seg"} else _infer_annotation_mode(values, task_mode)
-        if active_mode == "seg" and len(values) >= 6 and len(values) % 2 == 0:
+        active_mode = task_mode if task_mode in {"detect", "obb", "seg", "pose"} else _infer_annotation_mode(values, task_mode)
+        keypoints: list[tuple[float, float]] | None = None
+        if active_mode == "pose" and len(values) >= 7 and (len(values) - 4) % 3 == 0:
+            cx, cy, bw, bh = values[:4]
+            x_center, y_center = cx * width, cy * height
+            box_width, box_height = bw * width, bh * height
+            x1 = x_center - box_width / 2
+            y1 = y_center - box_height / 2
+            x2 = x_center + box_width / 2
+            y2 = y_center + box_height / 2
+            points = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+            keypoints = [
+                (values[index] * width, values[index + 1] * height)
+                for index in range(4, len(values), 3)
+                if values[index + 2] > 0
+            ]
+        elif active_mode == "seg" and len(values) >= 6 and len(values) % 2 == 0:
             points = [(values[i] * width, values[i + 1] * height) for i in range(0, len(values), 2)]
         elif active_mode == "obb" and len(values) >= 8:
             points = [(values[i] * width, values[i + 1] * height) for i in range(0, 8, 2)]
@@ -50,7 +66,7 @@ def load_yolo_annotations(image_size: tuple[int, int], label_path: Path, task_mo
             points = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
         else:
             continue
-        annotations.append(Annotation(class_id=class_id, label=label, points=points))
+        annotations.append(Annotation(class_id=class_id, label=label, points=points, keypoints=keypoints))
     return annotations
 
 
@@ -110,6 +126,16 @@ def render_annotation_preview(image_path: Path, annotations: list[Annotation]) -
         color = _yolo_color(annotation.class_id)
         points = annotation.points + [annotation.points[0]]
         draw.line(points, fill=color, width=line_width)
+        for index, point in enumerate(annotation.keypoints or [], start=1):
+            radius = max(3, line_width * 2)
+            x_pos, y_pos = point
+            draw.ellipse(
+                [(x_pos - radius, y_pos - radius), (x_pos + radius, y_pos + radius)],
+                fill=color,
+                outline=(255, 255, 255),
+                width=max(1, line_width // 2),
+            )
+            draw.text((x_pos + radius + 2, y_pos - radius - 2), str(index), fill=color, font=font)
         if annotation.points:
             caption = annotation.label
             if annotation.confidence is not None:

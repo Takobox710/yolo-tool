@@ -109,7 +109,7 @@ def test_model_export_layout_balances_columns_and_groups_options(tmp_path):
         assert page.onnx_simplify_btn.text().startswith("简化 ONNX")
         assert abs(page.imgsz_edit.height() - page.batch_spin.height()) <= 1
         assert page.imgsz_edit.objectName() == "modelExportFlatEdit"
-        assert page.imgsz_edit.text() == "640"
+        assert page.imgsz_edit.text() == "640×640"
         assert page.onnx_dynamic_row.indexOf(page.onnx_dynamic_batch_check) >= 0
         assert page.onnx_dynamic_row.indexOf(page.onnx_dynamic_size_check) >= 0
         assert page.onnx_dynamic_batch_check.isCheckable()

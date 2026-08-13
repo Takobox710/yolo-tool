@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.services.model_export.image_size import ImageSizeValue
+
 
 @dataclass(frozen=True, slots=True)
 class ExportFormatSpec:
@@ -18,7 +20,7 @@ class ModelExportConfig:
     model_path: Path
     output_dir: Path
     export_format: str = "onnx"
-    imgsz: int = 640
+    imgsz: ImageSizeValue = (640, 640)
     simplify: bool = True
     precision: str = "fp32"
     batch: int = 1

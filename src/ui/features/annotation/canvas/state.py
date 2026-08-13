@@ -23,6 +23,7 @@ def initialize_canvas_state(canvas) -> None:
     canvas.hovered_polygon_close_index = -1
     canvas.crosshair_position = None
     canvas.line_expand_enabled = False
+    canvas.keypoint_enabled = False
     canvas.line_expand_pixels = 10
     canvas.optimize_mirror_edit = False
     canvas.continuous_draw = False

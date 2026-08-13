@@ -16,9 +16,7 @@ from src.ui.features.annotation.dialogs import (
 class AnnotationPageSettingsMixin:
     def enable_draw_mode(self) -> None:
         self.sam_assist.refresh_models()
-        dialog = DrawShapeDialog(
-            self.canvas.line_expand_enabled,
-            self,
+        draw_kwargs = dict(
             sam_models=self.sam_assist.models,
             selected_sam_model=(
                 self.sam_assist.selected_model.key
@@ -31,6 +29,9 @@ class AnnotationPageSettingsMixin:
             sam_settings=self.sam_assist.parameters(),
             sam_settings_callback=self.sam_assist.apply_parameters,
         )
+        if self.canvas.keypoint_enabled:
+            draw_kwargs["keypoint_enabled"] = True
+        dialog = DrawShapeDialog(self.canvas.line_expand_enabled, self, **draw_kwargs)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         if dialog.selected_sam_model:
@@ -61,6 +62,7 @@ class AnnotationPageSettingsMixin:
             show_annotation_names=current.show_annotation_names,
             show_canvas_status=current.show_canvas_status,
             optimize_mirror_edit=current.optimize_mirror_edit,
+            keypoint_enabled=current.keypoint_enabled,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -76,6 +78,7 @@ class AnnotationPageSettingsMixin:
             yolo_dir,
             show_annotation_names,
             show_canvas_status,
+            keypoint_enabled,
             optimize_mirror_edit,
         ) = dialog.values()
         current.line_expand_enabled = enabled
@@ -89,6 +92,8 @@ class AnnotationPageSettingsMixin:
         current.show_annotation_names = show_annotation_names
         current.show_canvas_status = show_canvas_status
         current.optimize_mirror_edit = optimize_mirror_edit
+        current.keypoint_enabled = keypoint_enabled
+        self.canvas.set_keypoint_config(keypoint_enabled)
         if yolo_dir:
             resolved_yolo_dir = Path(resolve_project_path(yolo_dir, self.project_root()))
             self.context.settings.paths.labels_dir = str(resolved_yolo_dir)

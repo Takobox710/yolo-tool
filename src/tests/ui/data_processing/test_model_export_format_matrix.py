@@ -122,7 +122,7 @@ def test_model_export_options_follow_format_model_and_precision(monkeypatch, tmp
     assert not page.batch_box.isHidden()
     assert not page.imgsz_edit.isEnabled()
     assert not page.batch_spin.isEnabled()
-    assert page.imgsz_edit.text() == "1024"
+    assert page.imgsz_edit.text() == "1024×1024"
     assert page.batch_spin.value() == 1
     assert page.dynamic_box.isHidden()
     assert page.nms_box.isHidden()

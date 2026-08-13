@@ -6,12 +6,13 @@ from typing import Any, Iterable
 from src.services.model_export.calibration_images import load_image_tensor
 from src.services.model_export.calibration_sources import CalibrationSet
 from src.services.model_export.onnx_utils import topologically_sort_onnx_graph
+from src.services.model_export.image_size import ImageSizeValue, parse_image_size
 
 
 class OnnxCalibrationDataReader:
     """ONNX Runtime static-quantization reader for NCHW image inputs."""
 
-    def __init__(self, model_path: str | Path, images: Iterable[str | Path], *, default_imgsz: int = 640) -> None:
+    def __init__(self, model_path: str | Path, images: Iterable[str | Path], *, default_imgsz: ImageSizeValue = (640, 640)) -> None:
         import onnx
 
         model = onnx.load(str(model_path), load_external_data=False)
@@ -21,8 +22,9 @@ class OnnxCalibrationDataReader:
         tensor_shape = input_value.type.tensor_type.shape.dim
         self.input_name = input_value.name
         self.batch = _dimension(tensor_shape, 0, 1)
-        self.height = _dimension(tensor_shape, 2, default_imgsz)
-        self.width = _dimension(tensor_shape, 3, default_imgsz)
+        default_height, default_width = parse_image_size(default_imgsz)
+        self.height = _dimension(tensor_shape, 2, default_height)
+        self.width = _dimension(tensor_shape, 3, default_width)
         self.images = tuple(Path(path) for path in images)
         self._index = 0
 
@@ -47,7 +49,7 @@ def convert_onnx_to_fp16(source: str | Path, target: str | Path) -> Path:
     return target
 
 
-def quantize_onnx_static(source: str | Path, target: str | Path, calibration: CalibrationSet, *, default_imgsz: int = 640) -> Path:
+def quantize_onnx_static(source: str | Path, target: str | Path, calibration: CalibrationSet, *, default_imgsz: ImageSizeValue = (640, 640)) -> Path:
     reader = OnnxCalibrationDataReader(source, calibration.images, default_imgsz=default_imgsz)
     return quantize_onnx_static_with_reader(source, target, reader)
 

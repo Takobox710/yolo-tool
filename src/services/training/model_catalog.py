@@ -9,6 +9,8 @@ from src.shared.paths import ROOT
 
 def infer_task_mode_from_model(model_name: str | Path | None) -> str:
     name = Path(str(model_name or "")).name.lower()
+    if "pose" in name:
+        return "pose"
     if "seg" in name:
         return "seg"
     return "obb" if "obb" in name else "detect"
@@ -24,21 +26,45 @@ def training_model_dirs(project_root: Path, app_root: Path | None = None) -> lis
     return model_dirs
 
 
-def find_training_model_paths(project_root: Path, app_root: Path | None = None) -> list[Path]:
+SAM_MODEL_MARKERS = ("sam", "fastsam", "mobilesam")
+
+
+def is_sam_model(path_like: str | Path) -> bool:
+    name = Path(str(path_like or "")).name.lower()
+    return any(marker in name for marker in SAM_MODEL_MARKERS)
+
+
+def find_training_model_paths(
+    project_root: Path,
+    app_root: Path | None = None,
+    *,
+    exclude_sam: bool = False,
+) -> list[Path]:
     paths: list[Path] = []
     names: set[str] = set()
     for models_dir in training_model_dirs(project_root, app_root):
         if not models_dir.exists():
             continue
         for path in sorted(models_dir.glob("*.pt")):
-            if path.is_file() and path.name not in names:
-                paths.append(path.resolve())
-                names.add(path.name)
+            if not path.is_file() or path.name in names:
+                continue
+            if exclude_sam and is_sam_model(path):
+                continue
+            paths.append(path.resolve())
+            names.add(path.name)
     return paths
 
 
-def find_training_model_names(project_root: Path, app_root: Path | None = None) -> list[str]:
-    return [path.name for path in find_training_model_paths(project_root, app_root)]
+def find_training_model_names(
+    project_root: Path,
+    app_root: Path | None = None,
+    *,
+    exclude_sam: bool = False,
+) -> list[str]:
+    return [
+        path.name
+        for path in find_training_model_paths(project_root, app_root, exclude_sam=exclude_sam)
+    ]
 
 
 def find_model_yaml_files(data_dir: Path) -> list[str]:
@@ -131,6 +157,6 @@ def select_training_model(config: dict) -> str:
 def infer_task_mode_from_config(config: dict) -> str:
     for key in ("model_yaml", "base_model", "model", "pretrained"):
         mode = infer_task_mode_from_model(config.get(key))
-        if mode in {"seg", "obb"}:
+        if mode in {"pose", "seg", "obb"}:
             return mode
     return "detect"

@@ -14,6 +14,7 @@ from src.services.model_export.capabilities import (
     normalize_precision,
 )
 from src.services.model_export.types import ModelExportConfig
+from src.services.model_export.image_size import parse_image_size
 
 
 def config_from_options(
@@ -40,7 +41,10 @@ def config_from_options(
         model_path=model_path,
         output_dir=output_dir,
         export_format=export_format,
-        imgsz=_as_int(options.get("imgsz", default_imgsz), default_imgsz),
+        imgsz=parse_image_size(
+            options.get("imgsz", default_imgsz),
+            default=(default_imgsz, default_imgsz),
+        ),
         simplify=_as_bool(options.get("simplify", default_simplify), default_simplify),
         precision=normalize_precision(quantize),
         batch=_as_int(options.get("batch", 1), 1),

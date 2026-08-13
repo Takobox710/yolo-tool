@@ -62,7 +62,7 @@ def test_legacy_format_and_quantize_values_are_normalized(tmp_path):
 
     assert normalized.export_format == "onnx"
     assert normalized.precision == "fp16"
-    assert normalized.imgsz == 1024
+    assert normalized.imgsz == (1024, 1024)
     assert normalized.batch == 1
     assert normalized.dynamic_batch is False
     assert normalized.nms is False

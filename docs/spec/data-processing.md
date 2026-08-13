@@ -22,7 +22,7 @@
 
 - 数据处理页保留“模型格式转换”工具。GPU 版支持 ONNX、TorchScript、OpenVINO、TensorRT 和 NCNN 五种格式入口；CPU 版隐藏 TensorRT，仅显示 ONNX、TorchScript、OpenVINO 和 NCNN。
 - 模型列表默认只扫描 `result/**/weights/*.pt` 训练产物；`data/models/` 中的基础模型和 SAM checkpoint 不主动列入列表，但可通过浏览按钮选择其他 `.pt` 文件。默认导出目录为 `data/models/model_exports/<模型名>/`。
-- YOLO 模型转换支持 FP32、FP16、INT8、图简化、Batch/高/宽动态轴、NMS、opset、校准和量化后冒烟验证；SAM2/SAM2.1 ONNX 固定 `batch=1`、输入尺寸 `1024`、单点提示，输出 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`，只提供 FP32/FP16。SAM2 的 ORT 静态 INT8 会破坏点提示质量，因此不生成该精度；YOLO、OpenVINO 和 TensorRT 的 INT8 能力不受影响。校准数据可使用 `dataset.yaml`、图片目录或图片列表，也可按需缓存 COCO128 通用校准集。
+- YOLO 模型转换支持 FP32、FP16、INT8、图简化、Batch/高/宽动态轴、NMS、opset、校准和量化后冒烟验证。输入尺寸默认 `640×640`，可按“宽×高”填写矩形尺寸（如 `640×384`）；单值 `640` 兼容解释为 `640×640`，宽和高均须为不小于 32 的 32 倍数。SAM2/SAM2.1 ONNX 固定 `batch=1`、输入尺寸 `1024×1024`、单点提示，输出 `image_encoder.onnx`、`mask_decoder.onnx` 和 `metadata.json`，只提供 FP32/FP16。SAM2 的 ORT 静态 INT8 会破坏点提示质量，因此不生成该精度；YOLO、OpenVINO 和 TensorRT 的 INT8 能力不受影响。校准数据可使用 `dataset.yaml`、图片目录或图片列表，也可按需缓存 COCO128 通用校准集。
 - 模型转换日志框为只读展示控件，但必须允许鼠标选中文本并使用 `Ctrl+C` 复制。
 - GPU 版模型转换附加包可从模型转换页或系统设置页选择/拖入，支持单卷 `.7z` 和完整 `.7z.001/.002` 分卷；选择或拖入 `.002` 时自动使用同目录 `.001` 首卷，替换已有版本前需确认；安装完成后自检会先加载候选附属包目录，再校验 OpenVINO、NNCF、NCNN、PNNX 与 TensorRT 依赖；CPU 版已内置非 TensorRT 转换依赖，OpenVINO 仅使用 CPU 插件和模型前端，不显示附加包安装/替换按钮。
 - 左侧导航按钮保持与数据标注页相近的深色 hover / 选中高亮样式。
@@ -31,7 +31,8 @@
 
 - `Labelme 转 YOLO 并划分数据集`：读取 Labelme `.json`，转换为 YOLO 标签并执行 train/val/test 分组。
 - `YOLO 原生数据集划分`：读取已有 YOLO `.txt` 标注，只执行 train/val/test 分组、图片与标签复制、`data.yaml` 生成和 labels 汇总。
-- `detect`、`obb` 与 `seg`
+- `detect`、`obb`、`seg` 与 `pose`
+- `pose` 输出每个目标一行的边界框和关键点三元组标签，并在 `data.yaml` 写入统一的 `kpt_shape: [N, 3]`；点与框的类别、包含关系和点数必须通过完整校验。
 - `seg` 输出每个实例一行的 YOLO 多边形标签：类别 ID 后跟至少三个归一化坐标点。
 - `oriented_rectangle` 转 OBB
 - `rectangle`、`oriented_rectangle`、`circle` 和 `polygon` 均可转换为 Seg 多边形；`line` 在开启线宽时按半宽扩展为区域。
@@ -51,7 +52,8 @@
 - 左侧卡片标题为"数据集划分配置"，上方 2x2 放置图片目录、Labelme 标注目录、YOLO 标注目录、数据集输出目录；下方放置"备份标注文件"和"自定义类别名称"。
 - 右侧卡片标题为"转换参数"；"模式选择"独占一行并位于"任务类型"之前，随后按从左到右、从上到下排列任务类型、训练、验证和测试。
 - "模式选择"下拉框固定包含"Labelme 转 YOLO 并划分数据集"和"YOLO 原生数据集划分"两项。
-- 任务类型下拉框默认值为 `detect`，下拉顺序固定为 `detect`、`obb`、`seg`。
+- 任务类型下拉框默认值为 `detect`，下拉顺序固定为 `detect`、`obb`、`seg`、`pose`。
+- Pose 预览会显示边界框、关键点、关键点序号和类别；预览发现不合格图片时，执行转换拒绝写入任何输出。
 - YOLO 原生模式下任务类型字段显示为禁用态，文字变灰且不可选择；Labelme 模式下恢复可选。
 - 默认数据集划分比例为 `train=0.8`、`val=0.2`、`test=0.0`。
 - 解释方式固定采用方案 B：直接在字段名称后追加 `ⓘ`，tooltip 继续挂在对应名称控件本身，不要再实现独立解释图标控件、悬浮说明层或自定义气泡。

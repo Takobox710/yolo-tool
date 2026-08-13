@@ -38,6 +38,7 @@ from src.services.model_export.onnx_utils import (
     update_onnx_metadata,
 )
 from src.services.model_export.options import config_from_options
+from src.services.model_export.image_size import parse_image_size
 
 
 def _remove_path(path: Path) -> None:
@@ -203,7 +204,7 @@ def _export_yolo_onnx(
             dynamic_height=height_dynamic,
             dynamic_width=width_dynamic,
             batch=config.batch,
-            imgsz=config.imgsz,
+            imgsz=parse_image_size(config.imgsz),
         )
     check_onnx(generated)
     if config.precision == "fp32":

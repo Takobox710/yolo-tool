@@ -11,6 +11,7 @@ from src.services.training.model_catalog import (
     read_yaml_mapping,
     select_training_model,
 )
+from src.services.training.image_size import training_size_options
 
 
 def app_cli_command(*args: str) -> list[str]:
@@ -22,12 +23,13 @@ def app_cli_command(*args: str) -> list[str]:
 def build_train_command(config: dict) -> list[str]:
     model = select_training_model(config)
     task_mode = infer_task_mode_from_config(config)
+    size_options = training_size_options(model, config.get("imgsz", 640))
     command = app_cli_command("--yolo-train", task_mode, "train")
     fields = [
         ("model", model),
         ("data", config.get("data")),
         ("epochs", config.get("epochs")),
-        ("imgsz", config.get("imgsz")),
+        ("imgsz", size_options.imgsz),
         ("batch", config.get("batch")),
         ("workers", config.get("workers")),
         ("patience", config.get("patience")),
@@ -51,6 +53,8 @@ def build_train_command(config: dict) -> list[str]:
         if value in (None, ""):
             continue
         command.append(f"{key}={value}")
+    if size_options.rect:
+        command.append("rect=true")
     return command
 
 

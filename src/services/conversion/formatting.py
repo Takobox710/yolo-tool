@@ -49,6 +49,14 @@ def format_conversion_result(
             sample = ", ".join(names[:5])
             more = f" 等 {len(names)} 项" if len(names) > 5 else ""
             lines.append(f"  - 标签 '{label}': {sample}{more}")
+    invalid_images = getattr(result, "invalid_images", None) or {}
+    if invalid_images:
+        lines.extend(["", "Pose 校验失败图片:"])
+        for name, reason in sorted(invalid_images.items()):
+            lines.append(f"  - {name}: {reason}")
+    keypoint_count = getattr(result, "keypoint_count", None)
+    if config.task_mode == "pose" and keypoint_count:
+        lines.append(f"  - 关键点数量: {keypoint_count}")
     lines.extend(
         [
             "",

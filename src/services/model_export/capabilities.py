@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from src.services.model_export.types import ExportCapabilities, ModelExportConfig
+from src.services.model_export.image_size import parse_image_size, validate_image_size
 from src.services.model_export.capability_rules import (
     model_kind_from_path,
     normalize_format as _normalize_format,
@@ -106,7 +107,12 @@ def normalize_model_export_config(
     normalized = replace(config, export_format=export_format, precision=precision)
     capabilities = capabilities_for(export_format, kind)
     if capabilities.fixed_imgsz is not None:
-        normalized = replace(normalized, imgsz=capabilities.fixed_imgsz)
+        normalized = replace(
+            normalized,
+            imgsz=(capabilities.fixed_imgsz, capabilities.fixed_imgsz),
+        )
+    else:
+        normalized = replace(normalized, imgsz=parse_image_size(normalized.imgsz))
     if capabilities.fixed_batch is not None:
         normalized = replace(normalized, batch=capabilities.fixed_batch)
     if kind == "sam2" and export_format == "onnx":
@@ -175,8 +181,7 @@ def validate_model_export_config(
         raise ValueError("batch 必须是不小于 1 的整数。")
     if capabilities.fixed_batch is not None and normalized.batch != capabilities.fixed_batch:
         raise ValueError(f"当前模型固定 batch={capabilities.fixed_batch}。")
-    if normalized.imgsz < 32 or normalized.imgsz % 32:
-        raise ValueError("输入尺寸必须是不小于 32 的 32 倍数。")
+    validate_image_size(normalized.imgsz)
     if not capabilities.supports_batch and normalized.batch != 1:
         raise ValueError("当前格式不支持自定义 batch。")
     for field, enabled, supported in (

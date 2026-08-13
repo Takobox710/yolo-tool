@@ -25,7 +25,7 @@ class ModelExportVisibilityMixin:
         self._set_precision_items(capabilities.precisions, spec.argument, model_kind)
         is_sam2 = model_kind == "sam2" and spec.argument == "onnx"
         if is_sam2:
-            self._set_line_edit(self.imgsz_edit, "1024")
+            self._set_line_edit(self.imgsz_edit, "1024×1024")
             self._set_spin_value(self.batch_spin, 1)
         self.imgsz_box.setVisible(True)
         self.batch_box.setVisible(True)

@@ -14,6 +14,12 @@ class AnnotationCanvasHitTestMixin:
     def _hit_test(self, point: tuple[float, float]) -> int:
         for index in reversed(range(len(self.annotations))):
             annotation = self.annotations[index]
+            if annotation.shape == "point" and annotation.points:
+                dx = point[0] - annotation.points[0][0]
+                dy = point[1] - annotation.points[0][1]
+                if dx * dx + dy * dy <= (self._handle_radius() * HANDLE_HIT_RADIUS_FACTOR) ** 2:
+                    return index
+                continue
             if annotation.shape == "circle":
                 x1, y1, x2, y2 = self._detect_points_to_rect(annotation.points)
                 center_x = (x1 + x2) / 2

@@ -2,10 +2,12 @@
 
 训练页必须按旧版整体设计重建，并遵循当前交互约定：
 
-- 左侧：基础模型（下拉框，自动读取 `data/models/*.pt`，也可手动输入）、数据集 YAML、模型 YAML（默认空白）、项目输出、数据增强选项。
+- 左侧：基础模型（下拉框，自动读取 `data/models/*.pt` 并排除 SAM 系列 checkpoint，也可手动输入）、数据集 YAML、模型 YAML（默认空白）、项目输出、数据增强选项。
 - 右侧：优化器（auto/SGD/Adam/AdamW/RMSProp 下拉框）、设备、学习率、训练轮数、早停轮数、线程数、批次大小、图片尺寸。
-- 默认基础模型为 `yolo11s.pt`，默认训练参数为：优化器 `auto`、学习率 `0.001`、`训练轮数=500`、`早停轮数=100`、`线程数=2`、`批次大小=16`、`图片尺寸=640`、`设备=0`。
-- 训练页“图片尺寸”使用可编辑下拉框，内置 `640`、`960`、`1280` 三个候选值，同时允许手动输入其他尺寸。
+- 默认基础模型为 `yolo11s.pt`，默认训练参数为：优化器 `auto`、学习率 `0.001`、`训练轮数=500`、`早停轮数=100`、`线程数=2`、`批次大小=16`、`图片尺寸=640×640`、`设备=0`。
+- 训练页“图片尺寸”使用可编辑下拉框，内置 `640×640`、`960×960`、`1280×1280`，同时允许按“宽×高”手动输入其他尺寸；宽和高均须为不小于 32 的 32 倍数，旧单值设置读取时迁移为等宽高。
+- 训练页“设备”下拉选项按运行时检测的 CUDA GPU 自动生成，显示友好标签并映射原始 device 值：CUDA 不可用（CPU 版）时仅显示 `CPU`（device=`cpu`）；检测到 1 张 GPU 时显示 `GPU`（device=`0`）与 `CPU`；检测到多张 GPU 时显示 `GPU`、`GPU 1`、`GPU 2`…与 `CPU`，不提供 `0,1` 多卡预设。命令与实际保存仍使用原始 device 值。已保存设备不在当前选项内时自动修复为 `0`（有 GPU）或 `cpu`（无 GPU）。
+- 方形尺寸沿用常规 `imgsz=<边长>` 训练。YOLO 模型使用矩形尺寸时，命令生成与实际 CLI 都统一转换为 `imgsz=<长边> rect=true`，适配当前 Ultralytics 训练器的单值 `imgsz` 约束；矩形批次会关闭 Mosaic、MixUp 等不兼容增强，且多 GPU 训练时运行时会自动关闭 `rect`。不支持矩形批次的模型族会在启动前拒绝执行，提示改用方形尺寸。
 - 默认增强勾选状态与当前界面一致：随机拼图、缩放、平移、调色、左右翻转默认开启；上下翻转、旋转、混合默认关闭。
 - 中部左侧保留训练控制模块（开始训练、停止训练、查看模型报告），但不显示"训练控制"标题。
 - 中部右侧保留系统状态模块（GPU/显存/CPU/内存），但不显示"系统状态"标题。
@@ -31,6 +33,7 @@
 
 - 模型名称包含 `obb` 时使用 `obb`。
 - 模型名称包含 `seg` 时使用 `seg`。
+- 模型名称包含 `pose` 时使用 `pose`。
 - 其他模型默认使用 `detect`。
 
 不要恢复"任务类型"和"导出格式"这两个训练页选项。
@@ -40,7 +43,7 @@
 训练命令由 `src.services.training.build_train_command()` 生成，格式类似：
 
 ```powershell
-python -m src.main --yolo-train seg train model=... data=... epochs=... imgsz=... batch=... optimizer=...
+python -m src.main --yolo-train pose train model=... data=... epochs=... imgsz=... batch=... optimizer=... rect=true
 ```
 
 打包后训练/导出命令通过 `YOLOTool.exe --yolo-train ...` 或 `YOLOTool.exe --yolo-export ...` 进入 `src/bootstrap/cli_dispatch.py`，再转发到 `src/train_cli.py`；目标机器不需要安装 Python、pixi 或 Ultralytics CLI。不要把训练命令恢复为依赖 `pixi run yolo ...` 的形式。
@@ -50,7 +53,7 @@ python -m src.main --yolo-train seg train model=... data=... epochs=... imgsz=..
 模型目录约定：
 
 - `data/models/` 是统一的基础模型目录。
-- 训练页基础模型下拉框默认从 `data/models/*.pt` 读取，不再优先扫描项目根目录下的 `.pt`。
+- 训练页基础模型下拉框默认从 `data/models/*.pt` 读取，并自动排除 `sam`、`fastsam`、`mobilesam` 等 SAM 系列 checkpoint（仅保留可训练 YOLO 模型），不再优先扫描项目根目录下的 `.pt`。SAM checkpoint 仍用于数据标注页 AI 预标注和模型格式转换页。
 - 当基础模型输入的是模型文件名，例如 `yolo11n.pt`、`yolov8m-obb.pt`，训练命令中的 `model=` 与 `pretrained=` 都应解析为 `data/models/` 下的绝对路径。
 - 若本地不存在该模型，Ultralytics 触发自动下载时，也应下载到 `data/models/`，不要落到项目根目录或其他默认目录。
 - Windows 打包只由 `installer/build_windows.ps1` 复制 `data/models/*.pt`；项目根目录下的 `.pt` 不属于打包模型来源。

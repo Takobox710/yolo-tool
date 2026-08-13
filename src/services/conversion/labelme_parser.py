@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 from src.services.conversion.class_mapping import normalize_class_name_mapping
+from src.services.conversion.pose import convert_pose_payload
 from src.services.conversion.types import ConversionConfig
 from src.services.annotation.circle_geometry import circle_polygon
 
@@ -20,6 +21,17 @@ def convert_label_file(
     height = payload.get("imageHeight")
     if not width or not height:
         raise ValueError(f"{json_path.name} 缺少 imageWidth/imageHeight")
+
+    if config.task_mode == "pose":
+        pose = convert_pose_payload(payload, config, missing_labels, json_path.name)
+        if pose.keypoint_count is not None:
+            if config.pose_keypoint_count is None:
+                config.pose_keypoint_count = pose.keypoint_count
+            elif config.pose_keypoint_count != pose.keypoint_count:
+                raise ValueError(
+                    f"{json_path.name} 的关键点数量为 {pose.keypoint_count}，与数据集要求 {config.pose_keypoint_count} 不一致"
+                )
+        return pose.lines
 
     lines: list[str] = []
     mapping = normalize_class_name_mapping(config.class_name_mapping or {})

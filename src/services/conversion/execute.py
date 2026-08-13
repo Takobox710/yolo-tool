@@ -47,9 +47,16 @@ def preview_conversion(config: ConversionConfig) -> ConversionPreview:
     stats = build_empty_stats()
     missing_labels: defaultdict[str, list[str]] = defaultdict(list)
     total_boxes = 0
+    invalid_images: dict[str, str] = {}
     for split, pairs in split_map.items():
         for _image_path, label_source_path in pairs:
-            lines = _read_output_lines(active, label_source_path, missing_labels)
+            try:
+                lines = _read_output_lines(active, label_source_path, missing_labels)
+            except ValueError as exc:
+                if active.task_mode != "pose":
+                    raise
+                invalid_images[label_source_path.name] = str(exc)
+                continue
             add_label_stats(
                 stats[split],
                 lines,
@@ -70,11 +77,20 @@ def preview_conversion(config: ConversionConfig) -> ConversionPreview:
         missing_labels={key: value[:] for key, value in missing_labels.items()},
         stats={key: dict(value) for key, value in stats.items()},
         class_names=class_names,
+        invalid_images=invalid_images,
+        keypoint_count=active.pose_keypoint_count,
     )
 
 
 def run_conversion(config: ConversionConfig) -> ConversionResult:
     active = config.validate()
+    if active.task_mode == "pose":
+        preview = preview_conversion(active)
+        if preview.invalid_images:
+            details = "; ".join(
+                f"{name}: {reason}" for name, reason in sorted(preview.invalid_images.items())
+            )
+            raise ValueError(f"Pose 转换校验失败，未写入任何文件：{details}")
     labeled, unlabeled = collect_inputs(active)
     if not labeled:
         raise ValueError("没有找到可转换的已标注图片")
@@ -124,6 +140,7 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
         stats={key: dict(value) for key, value in stats.items()},
         class_names=class_names,
         backup_dir=backup_dir,
+        keypoint_count=active.pose_keypoint_count,
     )
 
 
@@ -135,4 +152,16 @@ def _read_output_lines(
     if config.source_format == "labelme":
         return convert_label_file(label_source_path, config, missing_labels)
     label_text = label_source_path.read_text(encoding="utf-8")
-    return [line.strip() for line in label_text.splitlines() if line.strip()]
+    lines = [line.strip() for line in label_text.splitlines() if line.strip()]
+    if config.task_mode == "pose":
+        from src.services.conversion.pose import validate_pose_yolo_lines
+
+        keypoint_count = validate_pose_yolo_lines(lines)
+        if keypoint_count is not None:
+            if config.pose_keypoint_count is None:
+                config.pose_keypoint_count = keypoint_count
+            elif config.pose_keypoint_count != keypoint_count:
+                raise ValueError(
+                    f"{label_source_path.name} 的关键点数量为 {keypoint_count}，与数据集要求 {config.pose_keypoint_count} 不一致"
+                )
+    return lines

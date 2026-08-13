@@ -6,8 +6,11 @@ from src.services.runtime import system_status, torch_cuda_summary
 from src.services.settings import build_default_settings
 from src.services.training import (
     build_train_command,
+    default_training_device,
+    format_training_image_size,
     infer_task_mode_from_model,
     resolve_training_model_reference,
+    training_device_options,
 )
 
 
@@ -30,6 +33,60 @@ def apply_train_status(page, payload):
     page.metric_labels["vram"].setText(status.get("vram", "待检测"))
     page.metric_labels["cpu"].setText(status.get("cpu", "待检测"))
     page.metric_labels["memory"].setText(status.get("memory", "待检测"))
+    apply_detected_device_options(page, cuda)
+
+
+def current_device_value(page) -> str:
+    value = page.device_combo.currentData()
+    return str(value) if value is not None else page.device_combo.currentText()
+
+
+def apply_detected_device_options(page, cuda_summary: dict | None) -> None:
+    """按检测到的 CUDA GPU 数量重建训练设备选项，并修复无效的已保存设备值。"""
+    summary = dict(cuda_summary or {})
+    available = str(summary.get("available", "")).strip().lower() == "true"
+    try:
+        gpu_count = max(0, int(summary.get("count") or 0))
+    except (TypeError, ValueError):
+        gpu_count = 0
+    if str(summary.get("gpu") or "") in {"", "不可用", "未知", "未安装"}:
+        available = False
+        gpu_count = 0
+    option_pairs = training_device_options(
+        cuda_available=available, gpu_count=gpu_count
+    )
+    raw_values = {value for _label, value in option_pairs}
+    combo = page.device_combo
+    existing = [
+        (combo.itemText(index), combo.itemData(index))
+        for index in range(combo.count())
+    ]
+    current = current_device_value(page)
+    changed = False
+    if existing != option_pairs:
+        if current not in raw_values:
+            current = default_training_device(
+                cuda_available=available, gpu_count=gpu_count
+            )
+        combo.blockSignals(True)
+        combo.clear()
+        for label, value in option_pairs:
+            combo.addItem(label, value)
+        index = combo.findData(current)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+        changed = True
+    elif current not in raw_values:
+        current = default_training_device(
+            cuda_available=available, gpu_count=gpu_count
+        )
+        index = combo.findData(current)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        changed = True
+    if changed or getattr(page.context.settings.training, "device", "") != current:
+        page.context.settings.training.device = current
+        page.save_settings()
+        refresh_command_preview(page)
 
 
 def collect_config(page):
@@ -63,16 +120,17 @@ def collect_config(page):
     config["imgsz"] = (
         page.imgsz_combo.currentText() if hasattr(page, "imgsz_combo") else "640"
     )
-    config["device"] = page.device_combo.currentText()
+    config["device"] = current_device_value(page)
     selected_model = page._resolve_model_reference(page.pretrained_combo.currentText())
     config["base_model"] = selected_model
     config["pretrained"] = selected_model
     config["optimizer"] = page.optimizer_combo.currentText()
-    for key in ("epochs", "patience", "workers", "batch", "imgsz"):
+    for key in ("epochs", "patience", "workers", "batch"):
         try:
             config[key] = int(config[key])
         except (ValueError, TypeError):
             config[key] = int(getattr(page.context.settings.training, key))
+    config["imgsz"] = format_training_image_size(config["imgsz"])
     try:
         config["lr"] = float(config["lr"])
     except (ValueError, TypeError):
@@ -169,10 +227,10 @@ def connect_training_persistence(page):
         lambda value: persist_training_value(page, "optimizer", value)
     )
     page.imgsz_combo.currentTextChanged.connect(
-        lambda value: persist_training_value(page, "imgsz", int(value))
+        lambda value: persist_training_image_size(page, value)
     )
     page.device_combo.currentTextChanged.connect(
-        lambda value: persist_training_value(page, "device", value)
+        lambda _value: persist_training_device(page)
     )
     for key, check in page.checks.items():
         check.toggled.connect(
@@ -198,6 +256,18 @@ def persist_training_value(page, key: str, value):
     setattr(page.context.settings.training, key, value)
     page.save_settings()
     refresh_command_preview(page)
+
+
+def persist_training_device(page):
+    persist_training_value(page, "device", current_device_value(page))
+
+
+def persist_training_image_size(page, value: str):
+    try:
+        normalized = format_training_image_size(value)
+    except ValueError:
+        return
+    persist_training_value(page, "imgsz", normalized)
 
 
 def persist_model_selection(page):
@@ -246,9 +316,12 @@ def resolve_model_reference(page, model_text: str) -> str:
 
 
 def refresh_command_preview(page):
-    page.log.setPlainText(
-        " ".join(build_train_command(page.collect_config())) + "\n等待开始训练..."
-    )
+    try:
+        command = build_train_command(page.collect_config())
+    except ValueError as exc:
+        page.log.setPlainText(f"训练参数无效：{exc}")
+        return
+    page.log.setPlainText(" ".join(command) + "\n等待开始训练...")
 
 
 def normalize_command_model_targets(page, command: list[str]) -> list[str]:

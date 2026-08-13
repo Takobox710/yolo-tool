@@ -39,6 +39,8 @@ def register_annotation_shortcuts(page) -> None:
     def activate_shape(shape: str) -> None:
         if shape == "line_expand" and not page.canvas.line_expand_enabled:
             return
+        if shape == "point" and not page.canvas.keypoint_enabled:
+            return
         if page.canvas.sam_assist_enabled and shape not in {
             "select",
             "rect",
@@ -58,6 +60,7 @@ def register_annotation_shortcuts(page) -> None:
         ("P", "polygon"),
         ("C", "circle"),
         ("L", "line_expand"),
+        ("K", "point"),
     ):
         shortcut = QShortcut(QKeySequence(key), page)
         shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)

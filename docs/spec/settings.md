@@ -60,15 +60,16 @@
 
 ## 设置项行为
 
-- `model_export` 保存模型导出页的完整配置：`format`、`precision`、`batch`、`imgsz`、`simplify`、`dynamic_batch`、`dynamic_height`、`dynamic_width`、`nms`、`nms_conf`、`nms_iou`、`nms_max_det`、`agnostic_nms`、`opset`、`workspace`、`optimize`、`calibration_data`、`calibration_samples`、`validate_quantized` 和 `validation_samples`。
+- `model_export` 保存模型导出页的完整配置：`format`、`precision`、`batch`、`imgsz`、`simplify`、`dynamic_batch`、`dynamic_height`、`dynamic_width`、`nms`、`nms_conf`、`nms_iou`、`nms_max_det`、`agnostic_nms`、`opset`、`workspace`、`optimize`、`calibration_data`、`calibration_samples`、`validate_quantized` 和 `validation_samples`。其中 `imgsz` 以“宽×高”文本保存，默认 `640×640`；旧整数值读取时迁移为等宽高尺寸。
 - 模型格式转换页的公共字段始终共享当前设置；格式专属字段切换时在页面内按格式缓存未提交值，当前选中格式仍实时写入上述 `model_export` 字段。应用重启后恢复当前选中格式的持久化配置。
 - `format` 的用户入口只有 `onnx`、`torchscript`、`openvino`、`engine`（TensorRT）和 `ncnn`；旧值 `sam2_onnx` / `SAM2 ONNX` 读取时迁移为 `onnx`。选择 ONNX 后由可识别的 checkpoint 文件名区分 YOLO 与 SAM2/SAM2.1，SAM2 固定 1024、batch=1、单点提示。
 - `precision` 统一使用 `fp32`、`fp16`、`int8`；旧 `quantize=32/16/8` 读取时迁移。INT8 字段只在选中 INT8 且后端支持校准时参与页面配置，校准路径可为 `dataset.yaml`、图片目录或图片列表，样本数量是上限；通用校准集下载到应用运行时缓存，不写入项目设置之外的模型产物。
 - 无效后端字段不写入导出命令：TorchScript 不接收 INT8/图简化，OpenVINO 不接收图简化，TensorRT 不接收 ONNX `opset`，NCNN 不接收 INT8、动态轴、NMS 或图简化；旧 `simplify` 字段仍保留并按能力归一化。
 
 - `annotation.sam_assist` 按项目保存画布辅助模型文件名及四项高级参数：`multimask_output=false`、`minimum_score=0.0`、`minimum_area=4`、`polygon_simplification_ratio=0.002`（可调范围 `0.0~0.015`）；启用状态不保存。旧设置缺少字段时按默认值补齐，非法类型只回退对应字段。
-- 标注页保存 `annotation.load_yolo_when_labelme_missing`，默认关闭；开启后无 Labelme JSON 时自动读取同名 YOLO 标注显示，任务类别探测始终独立执行。任务设置同时保存 `task.mode_selected`，用于区分全局任务类型与初始化时的`未选择`占位状态。
+- 标注页保存 `annotation.load_yolo_when_labelme_missing` 和 `annotation.keypoint_enabled`，默认均关闭；开启前者后无 Labelme JSON 时自动读取同名 YOLO 标注显示，任务类别探测始终独立执行；开启后者才显示新增点形状。任务设置同时保存 `task.mode_selected`，用于区分全局任务类型与初始化时的`未选择`占位状态。
 - `训练前显示自定义命令框` 控制训练页是否弹出命令编辑对话框。
+- `training.imgsz` 以“宽×高”文本保存，默认 `640×640`；旧整数值读取时迁移为等宽高，训练执行时再按模型能力转译为实际 Ultralytics 参数。
 - `显示配置解释符号` 只控制字段名后的 `ⓘ` 是否显示；关闭后仍保留字段名称自身的 Qt tooltip。
 - `模型验证显示 last` 控制模型验证页是否显示训练结果中的 `last.pt`，默认关闭时只显示 `best.pt`。
 - `恢复默认设置` 将当前项目设置恢复到代码默认值，但保留当前项目目录不变。

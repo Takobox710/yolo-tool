@@ -16,6 +16,13 @@ from src.services.conversion.execute import (
     preview_conversion,
     run_conversion,
 )
+from src.services.conversion.pose import (
+    PoseConversion,
+    PoseValidationError,
+    build_pose_lines_from_annotations,
+    convert_pose_payload,
+    validate_pose_yolo_lines,
+)
 
 __all__ = [
     "ClassMappingRow",
@@ -31,4 +38,9 @@ __all__ = [
     "parse_class_mapping_rows",
     "preview_conversion",
     "run_conversion",
+    "PoseConversion",
+    "PoseValidationError",
+    "convert_pose_payload",
+    "build_pose_lines_from_annotations",
+    "validate_pose_yolo_lines",
 ]

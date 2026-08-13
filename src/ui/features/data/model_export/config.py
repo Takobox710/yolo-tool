@@ -11,6 +11,7 @@ from src.services.model_export import (
     validate_model_export_config,
     validate_model_export_source,
 )
+from src.services.model_export.image_size import validate_image_size
 
 
 def collect_config(page) -> ModelExportConfig:
@@ -21,14 +22,9 @@ def collect_config(page) -> ModelExportConfig:
     spec = resolve_export_format(page.format_combo.currentText())
     model_kind = model_kind_from_path(model_path)
     if model_kind == "sam2":
-        imgsz = 1024
+        imgsz = (1024, 1024)
     else:
-        try:
-            imgsz = int(page.imgsz_edit.text())
-        except ValueError as exc:
-            raise ValueError("输入尺寸必须是整数。") from exc
-        if imgsz < 32 or imgsz % 32:
-            raise ValueError("输入尺寸必须是不小于 32 的 32 倍数。")
+        imgsz = validate_image_size(page.imgsz_edit.text())
     validate_model_export_source(model_path, spec.argument)
     output_root = Path(page.resolve_path_text(page.output_edit))
     precision = {"FP16": "fp16", "INT8": "int8"}.get(

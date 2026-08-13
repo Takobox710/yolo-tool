@@ -10,6 +10,8 @@ from PIL import Image
 
 from src.shared.paths import ROOT
 from src.services.annotation.sam_assist import sam_geometry_from_mask
+from src.services.annotation.sam_path_compat import SamAsciiPathStager
+from src.services.annotation.sam3_compat import load_sam3_components
 
 
 SAM3_CHECKPOINT_NAME = "sam3.pt"
@@ -145,6 +147,7 @@ class Sam3TextRuntime:
         self.processor = None
         self.state: dict[str, Any] | None = None
         self.checkpoint_path = ""
+        self._path_stager = SamAsciiPathStager()
 
     def load_model(self, checkpoint_path: str) -> None:
         import torch
@@ -157,11 +160,11 @@ class Sam3TextRuntime:
         if not is_sam3_checkpoint(checkpoint):
             raise ValueError("SAM 3 文本预标注只支持官方 sam3.pt 权重。")
         self.release_model()
-        from sam3.model.sam3_image_processor import Sam3Processor
-        from sam3.model_builder import build_sam3_image_model
+        self._path_stager = SamAsciiPathStager()
+        Sam3Processor, build_sam3_image_model = load_sam3_components()
 
         self.model = build_sam3_image_model(
-            checkpoint_path=str(checkpoint.resolve()),
+            checkpoint_path=str(self._path_stager.stage_file(checkpoint)),
             load_from_HF=False,
             device="cuda",
             compile=False,
@@ -172,8 +175,12 @@ class Sam3TextRuntime:
     def set_image(self, image_path: Path) -> None:
         if self.processor is None:
             raise RuntimeError("SAM 3 文本预标注模型尚未加载。")
-        with Image.open(image_path) as image:
-            self.state = self.processor.set_image(image.convert("RGB"))
+        runtime_path = self._path_stager.stage_file(image_path)
+        try:
+            with Image.open(runtime_path) as image:
+                self.state = self.processor.set_image(image.convert("RGB"))
+        finally:
+            self._path_stager.discard_file(runtime_path)
 
     def predict_prompt(self, prompt: str, confidence: float) -> tuple[list[Any], list[Any]]:
         if self.processor is None or self.state is None:
@@ -191,6 +198,7 @@ class Sam3TextRuntime:
         self.processor = None
         self.model = None
         self.checkpoint_path = ""
+        self._path_stager.close()
         gc.collect()
         try:
             import torch

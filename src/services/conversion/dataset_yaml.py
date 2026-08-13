@@ -21,6 +21,11 @@ def write_data_yaml(
                 *split_lines,
                 f"nc: {len(config.class_names)}",
                 f"names: {config.class_names}",
+                *(
+                    [f"kpt_shape: [{config.pose_keypoint_count}, 3]"]
+                    if config.task_mode == "pose" and config.pose_keypoint_count
+                    else []
+                ),
                 "",
             ]
         ),

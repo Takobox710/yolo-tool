@@ -6,7 +6,7 @@
 
 定位是“通用 YOLO 优先，同时兼容焊缝 OBB 项目”：
 
-- 支持 YOLO `detect`、`obb` 与 `seg` 三类任务。
+- 支持 YOLO `detect`、`obb`、`seg` 与 `pose` 四类任务。
 - 兼容焊缝识别习惯配置，例如类别 `weld`、Labelme 转 YOLO-OBB、直线标注扩展为旋转矩形；新项目不预置具体类别名称。
 - 使用本项目本地 `pixi` 环境管理依赖，不依赖外部 conda 环境。
 
@@ -76,9 +76,9 @@ yolo_tool/
 - `src/ui/shell/` 负责主窗口、导航、页面注册、关闭保护、程序日志和整体样式。
 - `src/ui/shared/` 负责跨页面 UI 复用能力，例如页面基类、共享表单、共享对话框、后台 worker、`WorkbenchContext` 和 `TaskCoordinator`。
 - `src/ui/features/<feature>/` 负责各页面真实实现；`page.py` 只做页面装配，复杂逻辑继续拆到该功能包子模块。
-- 数据标注页的目标类型联动由 `src/ui/features/annotation/selection.py` 统一维护：选中画布或列表标注时同步右侧下拉框，选中标注时修改下拉框会回写该标注类别；未选中标注时下拉框仍只控制新建标注的默认类别。任务类别是独立的项目全局 YOLO 输出设置，不随图片切换。
+- 数据标注页的目标类型联动由 `src/ui/features/annotation/selection.py` 统一维护：选中画布或列表标注时同步右侧下拉框，选中标注时修改下拉框会回写该标注类别；未选中标注时下拉框仍只控制新建标注的默认类别。任务类别是独立的项目全局 YOLO 输出设置，不随图片切换。开启关键点标注时，`services/annotation/geometry.py` 统一判定点是否被任意非点形状包含，`class_panel.py` 为孤立点条目追加红色警告括号。
 - `src/services/annotation/class_names.py` 扫描当前项目 Labelme 标注目录中的非空类别名并追加到项目设置；`ClassManagerDialog` 负责类别编辑、删除依赖保护和转换按钮，`ClassConversionDialog` 作为独立窗口选择源/目标类别；确认后由标注页统一保存设置和标注，取消不产生转换。
-- `src/services/annotation/yolo_format.py` 按排序后的 YOLO `.txt` 文件探测首个有效格式，处理空文件、detect/seg 判定和 OBB/四点 Seg 歧义；标注页以此初始化或重新判断全局任务类别。
+- `src/services/annotation/yolo_format.py` 按排序后的 YOLO `.txt` 文件探测首个有效格式，处理空文件、detect/seg/pose 判定和 OBB/四点 Seg 歧义；标注页以此初始化或重新判断全局任务类别。
 - `src/ui/shared/widgets/` 放基础控件与图表组件，旧的 `src/ui/widgets/` 已删除。主页 `DatasetDistributionWidget` 和 `TrainingCurveWidget` 使用当前控件 DPR 创建物理 pixmap、以逻辑坐标绘制，并通过 `refresh_for_device_pixel_ratio()` 响应主窗口跨屏切换，避免高 DPI 下图表文字、坐标轴和曲线被放大模糊；图表内框在 pixmap 内部绘制，与训练历史表格统一使用 `1 px #CFD9E3` 边框和 `5 px` 圆角，避免 QLabel 内容覆盖圆角造成断开空隙；各类别图片分布坐标轴保持 `20 px` 左边距、`38 px` 顶部位置和 `33 px` 底部留白；训练曲线横轴使用 `results.csv` 的 `epoch` 列。
 - `src/tests/architecture/` 只保留依赖方向、旧入口、模块体量、UI 顶层类职责和 Qt 生命周期五类结构围栏，不扫描文档措辞或代码清单内容。
 - `src/tests/services/` 按领域保护文件读写、转换、设置、命令构造和运行时安全等业务规则；发布、模型导出和标注服务测试按发现、执行、归档等工作流拆分。
@@ -98,8 +98,8 @@ yolo_tool/
 - 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
 - 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
 - `src/runtime/settings.json` 仅作为源码内默认配置参考。
-- 设置文件写入 `schema_version: 1`；旧版本或无版本文件按 v0 迁移，保持原有字段含义、相对路径存储、外部绝对路径和裸模型名规则。
-- `model_export` 节点保存 `model_path`、`output_dir`、`format`、`imgsz`、`precision`、`batch`、三项动态轴、`simplify`、NMS 参数、`opset`、TensorRT `workspace`、TorchScript `optimize`、校准数据、校准样本数和量化后验证参数；旧 `simplify` 字段继续读取，旧 `format=sam2_onnx` 在加载时迁移为 `onnx`。扩展安装状态从当前安装目录 `_internal/extensions/` 下的活动清单读取，不写入项目设置。旧版本位于 `%LOCALAPPDATA%/YOLOTool/instances/<实例ID>/extensions/` 或 `%LOCALAPPDATA%/YOLOTool/extensions/` 的扩展会在升级时迁移，同盘使用原子移动，跨盘复制完成后删除旧目录。
+- 设置文件写入 `schema_version: 1`；旧版本或无版本文件按 v0 迁移，保持原有字段含义、相对路径存储、外部绝对路径和裸模型名规则。训练与模型导出的旧整数 `imgsz` 分别迁移为等宽高文本，避免设置层丢失矩形输入信息。
+- `model_export` 节点保存 `model_path`、`output_dir`、`format`、`imgsz`、`precision`、`batch`、三项动态轴、`simplify`、NMS 参数、`opset`、TensorRT `workspace`、TorchScript `optimize`、校准数据、校准样本数和量化后验证参数。`imgsz` 持久化为“宽×高”文本，导出服务内部统一为 `(height, width)`，旧整数值迁移为等宽高；旧 `simplify` 字段继续读取，旧 `format=sam2_onnx` 在加载时迁移为 `onnx`。扩展安装状态从当前安装目录 `_internal/extensions/` 下的活动清单读取，不写入项目设置。旧版本位于 `%LOCALAPPDATA%/YOLOTool/instances/<实例ID>/extensions/` 或 `%LOCALAPPDATA%/YOLOTool/extensions/` 的扩展会在升级时迁移，同盘使用原子移动，跨盘复制完成后删除旧目录。
 - 标注页名称显示由项目设置 `annotation.show_annotation_names` 控制，默认值为 `false`。
 - 标注页的 Labelme 与 YOLO 脏状态独立维护；右键 YOLO 保存开启时，图片列表和退出确认显示对应格式的未保存提示，关闭该选项时隐藏的 YOLO 脏状态不触发退出确认；未选择任务类别时所有 YOLO 保存动作均不可用。
 - 标注页未配置 `dataset.class_names` 时类别下拉框保持为空，不再自动添加 `weld`；进入项目标注目录时会按文件顺序读取所有 Labelme JSON 的非空 `label`，将缺少的类别追加到当前项目 `data/runtime/settings.json`。
@@ -117,6 +117,7 @@ yolo_tool/
 
 - `model_catalog.py` 负责训练模型目录、模型 YAML 与模型路径解析。
 - `commands.py` 负责训练 / 导出 / 验证命令构造与 `data.yaml` 的验证路径修复。
+- `device_options.py` 按 CUDA 可用性与 GPU 数量生成训练设备下拉的“显示标签 / device 值”映射，并提供无 GPU 时的默认设备。
 - `results_reader.py` 负责 `results.csv` 曲线与指标摘要读取。
 - 基础模型目录统一是 `data/models/`。
 
@@ -161,7 +162,7 @@ yolo_tool/
 ### `src/services/annotation/`
 
 - 负责 Labelme/YOLO 标注读写、可编辑标注模型、预览渲染和 AI 预标注业务逻辑。
-- `editable_document.py` 仅保留兼容导出；`annotation_models.py` 定义唯一的 `EditableAnnotation`，`yolo_document.py` 负责 YOLO detect/seg/obb 读写与几何归一化，`labelme_document.py` 负责 Labelme 读写、类别映射和 shape flags。镜像有向矩形和直线扩展仍统一保存为内部 `obb_mirror`；Labelme 仍写标准 `oriented_rectangle`，通过 shape 级 `flags.yolo_tool_shape` 恢复内部形状，旧的无 flags 文件继续按普通 `obb` 兼容读取。
+- `editable_document.py` 仅保留兼容导出；`annotation_models.py` 定义唯一的 `EditableAnnotation`，`yolo_document.py` 负责 YOLO detect/seg/obb/pose 读写与几何归一化，`labelme_document.py` 负责 Labelme 读写、类别映射和 shape flags；`conversion/pose.py` 集中负责 Pose 框点配对、点数一致性和原子校验。镜像有向矩形和直线扩展仍统一保存为内部 `obb_mirror`；Labelme 仍写标准 `oriented_rectangle`，通过 shape 级 `flags.yolo_tool_shape` 恢复内部形状，旧的无 flags 文件继续按普通 `obb` 兼容读取。
 - `sam3_text.py` 提供官方 `sam3.pt` 识别、项目优先模型发现、文本提示词规范化、mask IoU 去重和三种 mask 几何转换；SAM3 运行时不依赖 Qt，仅在 CUDA 上加载官方图片模型。`ai_labeling.py` 复用一次图片编码、多提示词推理、面积过滤、稳定去重和 Labelme/YOLO 写入。
 - 标注页图片列表的大目录扫描、标注存在性判断与首屏批量渲染应尽量拆成“首批同步 + 后台分批补齐”，避免首次进入标注页时阻塞主线程；对大量不可见行不要同步创建整套行内 `QCheckBox`/`QWidget`。
 - 标注页首次进入时，应避免在 `AnnotationPage` 构造阶段直接触发整套图片扫描；首轮图片扫描应延后到页面首次显示后启动，先让导航切页完成，再逐步进入标注工作状态。
@@ -173,14 +174,14 @@ yolo_tool/
 - `AiPrelabelDialog` 根据模型后端切换参数布局：YOLO 显示置信度与 NMS IoU，SAM 3 隐藏这组普通模型控件，并将高级参数开关放在标注形状选择右侧；SAM 3 的模型文件与标注形状下拉框文本左边缘对齐，轮廓简化比例数值框隐藏上下箭头；SAM 3 的内部置信度与 mask 去重 IoU 仍由已保存值承接推理协议。
 - AI 预标注模型选择使用显示名到绝对路径的映射；SAM 3 的显示名固定为 checkpoint 文件名，避免将项目目录结构暴露在下拉框中。
 - `sam_assist.py` 是不依赖 Qt 的 SAM 模型目录与几何服务：按项目优先级扫描所有 `sam` 前缀 checkpoint 以及完整的 SAM2 ONNX 双文件目录，识别 SAM 1 ViT、SAM 2/2.1 各架构、SAM2 ONNX 和官方 SAM 3，生成简化显示名称及运行后端标识；未知自定义名称保留原文件名并不猜测配置，将最大外轮廓转换为简化多边形、轴对齐矩形及角点顺序稳定的普通 OBB。
-- `sam_runtime.py` 延迟导入 Torch、SAM2、SAM3、OpenCV 与 Pillow，长期保留当前模型及图片 embedding；SAM 2/2.1 使用点提示 predictor，SAM 3 使用启用实例交互的 `predict_inst`，两者的 CUDA 路径使用 bfloat16 autocast，并按能力回退或限制 CPU。`sam_onnx_canvas.py` 使用 ONNX Runtime CPUExecutionProvider 运行 SAM2 双文件导出，固定 1024 编码、原图坐标映射和掩膜回缩放。点预测统一按项目参数选择最高质量候选后执行最低质量、最小面积和轮廓简化过滤；ONNX 导出解码器固定输出三候选，单结果设置只影响最终选择，不改变解码器计算。模型切换和页面生命周期结束时清理 predictor/model、ONNX 会话、图片 embedding，并执行垃圾回收和 CUDA cache 释放；关闭 SAM 开关只停止预览和推理，不终止页面运行时。
+- `sam_runtime.py` 延迟导入 Torch、SAM2、SAM3、OpenCV 与 Pillow，长期保留当前模型及图片 embedding；SAM 2/2.1 使用点提示 predictor，SAM 3 使用启用实例交互的 `predict_inst`，两者的 CUDA 路径使用 bfloat16 autocast，并按能力回退或限制 CPU。`sam_path_compat.py` 为 SAM checkpoint、SAM2 ONNX 模型目录和每次图片编码提供 Windows 非 ASCII 路径适配：优先使用可用的 ASCII 短路径，否则使用仅限运行会话的 ASCII 临时硬链接或副本；原始路径不改变，模型会话结束即清理临时数据。`sam3_compat.py` 在 vendor 代码导入前检测 `pkg_resources`，缺失时以 `importlib.resources` 补充其实际使用的 `resource_filename()`，使程序更新可兼容已移除旧接口的基础环境。`sam_onnx_canvas.py` 使用 ONNX Runtime CPUExecutionProvider 运行 SAM2 双文件导出，固定 1024 编码、原图坐标映射和掩膜回缩放。点预测统一按项目参数选择最高质量候选后执行最低质量、最小面积和轮廓简化过滤；ONNX 导出解码器固定输出三候选，单结果设置只影响最终选择，不改变解码器计算。模型切换和页面生命周期结束时清理 predictor/model、ONNX 会话、图片 embedding，并执行垃圾回收和 CUDA cache 释放；关闭 SAM 开关只停止预览和推理，不终止页面运行时。
 - AI 预标注对话框由 `prelabel_state.py`、`prelabel_mapping.py`、`prelabel_runtime.py` 分担参数、类别映射和 worker 生命周期；`dialog_model_layout.py`、`dialog_scope_layout.py` 与 `dialog_result_layout.py` 分别装配模型、范围和结果区域，`dialog.py` 只保留状态、信号和协调入口。SAM 控制器由模型状态、hover 调度和 runtime bridge 组成，公开的 `SamAssistController` 不变；文件浏览器的行控件与扫描职责也分离到 `file_item.py`。
 
 ### `src/services/conversion/`
 
 - `types.py` 定义转换配置与结果模型。
 - `class_mapping.py` 负责类别识别、类别映射和映射表解析。
-- `labelme_parser.py` 负责 Labelme 形状解析与 Labelme -> YOLO detect/OBB/Seg 行转换。
+- `labelme_parser.py` 负责 Labelme 形状解析与 Labelme -> YOLO detect/OBB/Seg/Pose 行转换，Pose 规则委托 `conversion/pose.py`。
 - `dataset_split.py` 负责输入收集、数据集划分和统计汇总。
 - `dataset_yaml.py` 负责 `data.yaml` 输出，并只写入本次实际产出的 split 条目。
 - 数据处理页的数据集划分配置直接读取当前项目 `dataset.class_names`；该字段由数据标注页“管理类别”维护，自定义类别映射窗口也使用这组类别作为来源。

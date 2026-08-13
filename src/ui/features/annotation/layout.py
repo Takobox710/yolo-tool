@@ -12,6 +12,7 @@ from src.shared.qt import (
     QVBoxLayout,
 )
 from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+from src.ui.features.annotation.annotation_list_delegate import AnnotationListDelegate
 
 
 def build_center(page) -> QVBoxLayout:
@@ -57,7 +58,7 @@ def build_right_panel(page) -> QFrame:
     page.output_mode_label = mode_label
     layout.addWidget(mode_label)
     page.output_mode_combo = QComboBox()
-    page.output_mode_combo.addItems(["detect", "obb", "seg"])
+    page.output_mode_combo.addItems(["detect", "obb", "seg", "pose"])
     page.output_mode_combo.setPlaceholderText("未选择")
     page.output_mode_combo.setCurrentText(page.output_mode or "")
     page.output_mode_combo.currentTextChanged.connect(page.change_output_mode)
@@ -74,6 +75,7 @@ def build_right_panel(page) -> QFrame:
     manage_btn.clicked.connect(page.manage_classes)
     layout.addWidget(manage_btn)
     page.annotation_list = QListWidget()
+    page.annotation_list.setItemDelegate(AnnotationListDelegate(page.annotation_list))
     page.annotation_list.currentRowChanged.connect(page.select_annotation)
     page.annotation_list.setContextMenuPolicy(page._custom_context_menu_policy())
     page.annotation_list.customContextMenuRequested.connect(page.open_annotation_list_context_menu)

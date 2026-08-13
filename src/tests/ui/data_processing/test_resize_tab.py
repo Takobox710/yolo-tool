@@ -84,6 +84,7 @@ def test_dataset_split_tab_reads_annotation_managed_categories(tmp_path):
         "detect",
         "obb",
         "seg",
+        "pose",
     ]
     assert [page.mode_combo.itemText(index) for index in range(page.mode_combo.count())] == [
         "Labelme 转 YOLO 并划分数据集",

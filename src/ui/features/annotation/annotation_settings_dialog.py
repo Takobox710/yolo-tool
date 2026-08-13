@@ -45,6 +45,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
         show_annotation_names: bool = False,
         show_canvas_status: bool = True,
         optimize_mirror_edit: bool = False,
+        keypoint_enabled: bool = False,
     ):
         super().__init__(parent)
         self.setWindowTitle("更多设置")
@@ -99,6 +100,11 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             help_text="开启后可在标注类型中使用直线扩展；关闭后该绘制类型不会显示。",
         )
         self.line_expand_label = self.line_expand_check
+        keypoint_box, self.keypoint_check = self.checkbox_with_help(
+            "开启关键点标注",
+            bool(keypoint_enabled),
+            help_text="开启后可在标注类型中使用点；关闭后保留已存在的点标注，但不再提供新增点入口。",
+        )
 
         yolo_setting = QWidget()
         yolo_layout = QVBoxLayout(yolo_setting)
@@ -145,6 +151,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             quick_box,
             optimize_mirror_box,
             line_label_box,
+            keypoint_box,
             yolo_setting,
             pixel_setting,
         ]
@@ -198,7 +205,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
 
     def values(
         self,
-    ) -> tuple[bool, int, bool, bool, bool, bool, bool, bool, str, bool, bool, bool]:
+    ) -> tuple[bool, int, bool, bool, bool, bool, bool, bool, str, bool, bool, bool, bool]:
         return (
             self.line_expand_check.isChecked(),
             int(self.pixel_spin.value()),
@@ -211,6 +218,7 @@ class AnnotationSettingsDialog(FormPageMixin, QDialog):
             self.yolo_dir_edit.text().strip(),
             self.show_annotation_names_check.isChecked(),
             self.show_canvas_status_check.isChecked(),
+            self.keypoint_check.isChecked(),
             self.optimize_mirror_check.isChecked(),
         )
 

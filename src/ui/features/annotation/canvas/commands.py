@@ -17,6 +17,9 @@ class AnnotationCanvasCommandMixin:
     def set_line_expand_config(self, enabled: bool, pixels: int) -> None:
         canvas_configuration.set_line_expand_config(self, enabled, pixels)
 
+    def set_keypoint_config(self, enabled: bool) -> None:
+        canvas_configuration.set_keypoint_config(self, enabled)
+
     def set_optimize_mirror_edit(self, enabled: bool) -> None:
         canvas_configuration.set_optimize_mirror_edit(self, enabled)
 

@@ -110,6 +110,67 @@ def test_sam3_prediction_encodes_each_image_once_for_multiple_prompts(tmp_path):
     assert stats == {"raw_count": 2, "area_filtered": 0, "overlap_filtered": 0}
 
 
+def test_sam3_text_runtime_stages_non_ascii_model_and_image_paths(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from src.services.annotation.sam3_text import Sam3TextRuntime
+    import src.services.annotation.sam_path_compat as sam_path_compat
+
+    workspace = tmp_path / "中文项目"
+    workspace.mkdir()
+    checkpoint = workspace / "sam3.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    image_path = workspace / "焊缝图片.png"
+    Image.new("RGB", (16, 12), "white").save(image_path)
+    calls = {}
+
+    monkeypatch.setattr(sam_path_compat, "_ascii_windows_path", lambda _path: None)
+    monkeypatch.setattr(sam_path_compat, "_ascii_temp_base", lambda: tmp_path)
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "torch",
+        type(
+            "Torch",
+            (),
+            {
+                "cuda": type(
+                    "Cuda",
+                    (),
+                    {
+                        "is_available": staticmethod(lambda: True),
+                        "empty_cache": staticmethod(lambda: None),
+                    },
+                )
+            },
+        ),
+    )
+
+    class FakeProcessor:
+        def __init__(self, _model, **_kwargs):
+            pass
+
+        def set_image(self, image):
+            calls["size"] = image.size
+            return {"image": image}
+
+    def build_model(*, checkpoint_path, **_kwargs):
+        calls["checkpoint"] = Path(checkpoint_path)
+        return object()
+
+    monkeypatch.setattr(
+        "src.services.annotation.sam3_text.load_sam3_components",
+        lambda: (FakeProcessor, build_model),
+    )
+
+    runtime = Sam3TextRuntime()
+    runtime.load_model(str(checkpoint))
+    runtime.set_image(image_path)
+
+    assert calls["checkpoint"].is_file()
+    assert str(calls["checkpoint"]).isascii()
+    assert calls["size"] == (16, 12)
+    runtime.close()
+
+
 def test_apply_ai_labeling_accepts_sam3_backend_and_writes_shapes(tmp_path):
     from src.services.annotation.ai_labeling import apply_ai_labeling
     from src.services.annotation.editable_document import (

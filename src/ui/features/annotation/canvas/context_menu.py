@@ -68,6 +68,14 @@ class AnnotationCanvasContextMenuMixin:
             line_expand_action.setShortcutVisibleInContextMenu(True)
             menu.addAction(line_expand_action)
             shape_actions[line_expand_action] = "line_expand"
+        if self.keypoint_enabled:
+            point_action = QAction("点", menu)
+            point_action.setCheckable(True)
+            point_action.setChecked(self.draw_shape == "point")
+            point_action.setShortcut(QKeySequence("K"))
+            point_action.setShortcutVisibleInContextMenu(True)
+            menu.addAction(point_action)
+            shape_actions[point_action] = "point"
         def apply_sam_enabled(enabled: bool) -> None:
             actual = False
             if self.sam_toggle_callback is not None:

@@ -51,7 +51,13 @@ def test_torch_cuda_summary_can_use_subprocess_helper(monkeypatch):
             {
                 "returncode": 0,
                 "stdout": json.dumps(
-                    {"torch": "2.0.0", "cuda": "13.0", "gpu": "Test GPU"},
+                    {
+                        "torch": "2.0.0",
+                        "cuda": "13.0",
+                        "gpu": "Test GPU",
+                        "available": "True",
+                        "count": "2",
+                    },
                     ensure_ascii=False,
                 ),
             },
@@ -64,7 +70,13 @@ def test_torch_cuda_summary_can_use_subprocess_helper(monkeypatch):
     assert calls["args"] == ("torch_cuda_summary_subprocess", 60.0)
     assert calls["command"][-1] == "--torch-summary"
     assert calls["creationflags"] == getattr(environment_service.subprocess, "CREATE_NO_WINDOW", 0)
-    assert summary == {"torch": "2.0.0", "cuda": "13.0", "gpu": "Test GPU"}
+    assert summary == {
+        "torch": "2.0.0",
+        "cuda": "13.0",
+        "gpu": "Test GPU",
+        "available": "True",
+        "count": "2",
+    }
 
 
 def test_module_version_fallback_covers_frozen_build_without_dist_info(monkeypatch):

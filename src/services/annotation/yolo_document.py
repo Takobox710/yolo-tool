@@ -21,7 +21,16 @@ def load_editable_annotations(image_size: tuple[int, int], label_path: Path, tas
             values = [float(item) for item in parts[1:]]
         except ValueError:
             continue
-        if task_mode == "seg":
+        if task_mode == "pose":
+            if len(values) < 7 or (len(values) - 4) % 3:
+                continue
+            cx, cy, box_w, box_h = values[:4]
+            x_center, y_center = cx * width, cy * height
+            half_w, half_h = box_w * width / 2, box_h * height / 2
+            annotations.append(EditableAnnotation(class_id, "rect", [(x_center - half_w, y_center - half_h), (x_center + half_w, y_center - half_h), (x_center + half_w, y_center + half_h), (x_center - half_w, y_center + half_h)]))
+            for index in range(4, len(values), 3):
+                annotations.append(EditableAnnotation(class_id, "point", [(values[index] * width, values[index + 1] * height)]))
+        elif task_mode == "seg":
             if len(values) < 6 or len(values) % 2:
                 continue
             points = [(values[index] * width, values[index + 1] * height) for index in range(0, len(values), 2)]
@@ -54,6 +63,17 @@ def save_editable_annotations(image_size: tuple[int, int], label_path: Path, ann
     width, height = image_size
     label_path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
+    if output_mode == "pose":
+        from src.services.conversion.pose import build_pose_lines_from_annotations
+
+        lines, _keypoint_count = build_pose_lines_from_annotations(
+            (width, height), annotations
+        )
+        if lines:
+            label_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        elif label_path.exists():
+            label_path.write_text("", encoding="utf-8")
+        return
     for annotation in annotations:
         if output_mode == "seg":
             points = annotation_to_seg_points(annotation)

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from src.services.annotation.geometry import uncontained_keypoint_indices
+from src.shared.qt import Qt
+from src.ui.features.annotation.annotation_list_delegate import KEYPOINT_WARNING
 
 _SHAPE_LABELS = {
     "rect": "矩形框",
@@ -9,6 +12,7 @@ _SHAPE_LABELS = {
     "obb_single": "有向矩形",
     "polygon": "多边形",
     "line_expand": "直线拓展",
+    "point": "点",
 }
 
 
@@ -40,6 +44,7 @@ class AnnotationClassPanelMixin:
                 annotation_settings.line_expand_enabled,
                 annotation_settings.line_expand_pixels,
             )
+            self.canvas.set_keypoint_config(annotation_settings.keypoint_enabled)
             self.canvas.set_optimize_mirror_edit(
                 annotation_settings.optimize_mirror_edit
             )
@@ -59,6 +64,11 @@ class AnnotationClassPanelMixin:
 
     def refresh_annotation_list(self) -> None:
         names = self.class_names()
+        uncontained_points = (
+            uncontained_keypoint_indices(self.canvas.annotations)
+            if self.canvas.keypoint_enabled
+            else set()
+        )
         self.annotation_list.blockSignals(True)
         self.annotation_list.clear()
         for index, annotation in enumerate(self.canvas.annotations):
@@ -70,9 +80,11 @@ class AnnotationClassPanelMixin:
             shape_text = _SHAPE_LABELS.get(annotation.shape, annotation.shape)
             format_text = self.output_mode or ""
             suffix = f"（{format_text}）" if self.yolo_features_enabled() and format_text else ""
+            warning = KEYPOINT_WARNING if index in uncontained_points else ""
             item = self._list_widget_item_factory(
-                f"{index + 1}.{label}-{shape_text}{suffix}"
+                f"{index + 1}.{label}-{shape_text}{suffix}{warning}"
             )
+            item.setData(Qt.ItemDataRole.UserRole, bool(warning))
             self.annotation_list.addItem(item)
         self.annotation_list.setCurrentRow(self.canvas.selected_index)
         self.annotation_list.blockSignals(False)

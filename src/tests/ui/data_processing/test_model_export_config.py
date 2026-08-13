@@ -123,7 +123,7 @@ def test_model_export_non_onnx_uses_fixed_controls_and_preserves_format_options(
         config = page.collect_config()
 
         assert config.export_format == "engine"
-        assert config.imgsz == 640
+        assert config.imgsz == (640, 640)
         assert config.batch == 2
         assert config.dynamic_batch is True
         assert config.dynamic_height is True
@@ -149,5 +149,35 @@ def test_model_export_non_onnx_uses_fixed_controls_and_preserves_format_options(
         assert not page.imgsz_box.isHidden()
         assert not page.batch_box.isHidden()
         assert not page.conf_spin.isEnabled()
+    finally:
+        page.close()
+
+
+def test_model_export_collects_rectangular_input_size(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.data.model_export.tab import ModelExportTab
+
+    app = QApplication.instance() or QApplication([])
+    model = tmp_path / "result" / "train-1" / "weights" / "best.pt"
+    model.parent.mkdir(parents=True)
+    model.write_bytes(b"model")
+    fake_app = SimpleNamespace(
+        settings=build_default_settings(tmp_path),
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        workers=[],
+        export_handle=None,
+    )
+    page = ModelExportTab(fake_app)
+    try:
+        page.model_combo.setCurrentText("train-1\\best.pt")
+        page.imgsz_edit.setText("640×384")
+
+        config = page.collect_config()
+
+        assert config.imgsz == (384, 640)
+        assert page.context.settings.model_export.imgsz == "640×384"
     finally:
         page.close()

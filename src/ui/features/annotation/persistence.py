@@ -22,7 +22,7 @@ class AnnotationPersistenceMixin:
         mode = infer_yolo_file_mode(yolo_path)
         if mode == "ambiguous":
             mode = detect_yolo_mode(self.path_from_setting("labels_dir"))
-        return mode if mode in {"detect", "obb", "seg"} else None
+        return mode if mode in {"detect", "obb", "seg", "pose"} else None
 
     def _yolo_needs_save(self, yolo_path: Path, annotations: list[EditableAnnotation]) -> bool:
         if not self.yolo_features_enabled() or not self.output_mode:
@@ -103,7 +103,7 @@ class AnnotationPersistenceMixin:
             if save_yolo is not None
             else (self.annotation_settings().auto_convert_yolo or force)
         )
-        should_save_yolo = should_save_yolo and self.output_mode in {"detect", "obb", "seg"}
+        should_save_yolo = should_save_yolo and self.output_mode in {"detect", "obb", "seg", "pose"}
         if not self.dirty and not force and not should_save_yolo:
             return False
         if self.current_json_path is None or self.current_image_path is None:
@@ -121,12 +121,21 @@ class AnnotationPersistenceMixin:
             )
             saved_any = True
         if should_save_yolo and self.current_yolo_path is not None:
-            save_editable_annotations(
-                self.canvas.image_size,
-                self.current_yolo_path,
-                self.canvas.annotations,
-                self.output_mode,
-            )
+            try:
+                save_editable_annotations(
+                    self.canvas.image_size,
+                    self.current_yolo_path,
+                    self.canvas.annotations,
+                    self.output_mode,
+                )
+            except ValueError as exc:
+                self.yolo_dirty = True
+                self._sync_dirty_flag()
+                status = getattr(self.context, "status", None)
+                if status is not None:
+                    status.setText(f"YOLO Pose 未保存：{exc}")
+                self._refresh_manual_action_buttons()
+                return saved_any
             saved_any = True
         if save_json:
             self.labelme_dirty = False
@@ -139,7 +148,7 @@ class AnnotationPersistenceMixin:
 
     def mark_dirty_and_save(self) -> None:
         self.labelme_dirty = True
-        if self.output_mode in {"detect", "obb", "seg"}:
+        if self.output_mode in {"detect", "obb", "seg", "pose"}:
             self.yolo_dirty = True
         self._sync_dirty_flag()
         sync_target_type = getattr(self, "_sync_target_type_to_selection", None)

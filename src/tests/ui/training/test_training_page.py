@@ -55,11 +55,97 @@ def test_training_page_persists_updated_fields_to_settings(tmp_path):
 
     page = TrainPage(fake_app)
     page.edits["epochs"].setText("123")
+    page.imgsz_combo.setCurrentText("960×960")
     page.pretrained_combo.setCurrentText("custom.pt")
 
+    assert "640×384" not in [
+        page.imgsz_combo.itemText(i) for i in range(page.imgsz_combo.count())
+    ]
     assert fake_app.settings.training.epochs == "123"
+    assert fake_app.settings.training.imgsz == "960×960"
     assert Path(fake_app.settings.training.pretrained).name == "custom.pt"
     assert "training" in saved
+
+
+def test_training_device_options_follow_detected_cuda_gpus(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.training.page import TrainPage
+
+    app = QApplication.instance() or QApplication([])
+    saved = {}
+    settings = build_default_settings(tmp_path)
+    fake_app = SimpleNamespace(
+        settings=settings,
+        settings_service=SimpleNamespace(save=lambda data: saved.update(data)),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+    )
+
+    page = TrainPage(fake_app)
+    combo = page.device_combo
+    assert [combo.itemText(i) for i in range(combo.count())] == ["GPU", "CPU"]
+    assert combo.itemData(0) == "0"
+    assert combo.itemData(1) == "cpu"
+
+    base_status = {"gpu": "", "gpu_usage": "", "vram": "", "cpu": "", "memory": ""}
+
+    page.apply_train_status(
+        {
+            "status": base_status,
+            "cuda": {"gpu": "不可用", "available": "False", "count": "0"},
+        }
+    )
+    assert [combo.itemText(i) for i in range(combo.count())] == ["CPU"]
+    assert combo.currentData() == "cpu"
+    assert fake_app.settings.training.device == "cpu"
+
+    page.apply_train_status(
+        {
+            "status": base_status,
+            "cuda": {"gpu": "Test GPU", "available": "True", "count": "1"},
+        }
+    )
+    assert [combo.itemText(i) for i in range(combo.count())] == ["GPU", "CPU"]
+    assert combo.currentData() == "cpu"
+
+    page.apply_train_status(
+        {
+            "status": base_status,
+            "cuda": {"gpu": "Test GPU", "available": "True", "count": "2"},
+        }
+    )
+    assert [combo.itemText(i) for i in range(combo.count())] == [
+        "GPU",
+        "GPU 1",
+        "CPU",
+    ]
+    assert combo.currentData() == "cpu"
+
+    combo.setCurrentIndex(1)
+    assert combo.currentData() == "1"
+    page.apply_train_status(
+        {
+            "status": base_status,
+            "cuda": {"gpu": "Test GPU", "available": "True", "count": "1"},
+        }
+    )
+    assert [combo.itemText(i) for i in range(combo.count())] == ["GPU", "CPU"]
+    assert combo.currentData() == "0"
+    assert fake_app.settings.training.device == "0"
+
+    page.apply_train_status(
+        {
+            "status": base_status,
+            "cuda": {"gpu": "Test GPU", "available": "True", "count": "2"},
+        }
+    )
+    combo.setCurrentIndex(2)
+    assert combo.currentData() == "cpu"
+    assert page.collect_config()["device"] == "cpu"
 
 
 def test_train_page_stop_flow_recovers_buttons_and_hides_stop_noise(tmp_path, monkeypatch):

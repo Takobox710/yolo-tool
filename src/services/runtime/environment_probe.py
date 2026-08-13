@@ -171,13 +171,23 @@ def _load_torch_cuda_summary_in_process() -> dict[str, str]:
     try:
         import torch
 
+        cuda_available = bool(torch.cuda.is_available())
+        gpu_count = int(torch.cuda.device_count()) if cuda_available else 0
         return {
             "torch": getattr(torch, "__version__", "未知"),
             "cuda": str(getattr(torch.version, "cuda", "未知")),
-            "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "不可用",
+            "gpu": torch.cuda.get_device_name(0) if cuda_available else "不可用",
+            "available": str(cuda_available),
+            "count": str(gpu_count),
         }
     except Exception:
-        return {"torch": "未安装", "cuda": "未知", "gpu": "不可用"}
+        return {
+            "torch": "未安装",
+            "cuda": "未知",
+            "gpu": "不可用",
+            "available": "False",
+            "count": "0",
+        }
 
 
 def _torch_summary_command() -> list[str]:
@@ -207,6 +217,8 @@ def _load_torch_cuda_summary_subprocess() -> dict[str, str]:
         "torch": str(payload.get("torch", "未知")),
         "cuda": str(payload.get("cuda", "未知")),
         "gpu": str(payload.get("gpu", "不可用")),
+        "available": str(payload.get("available", "False")),
+        "count": str(payload.get("count", "0")),
     }
 
 

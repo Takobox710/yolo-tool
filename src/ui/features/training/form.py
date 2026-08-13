@@ -29,7 +29,7 @@ def build_training_layout(page) -> None:
     current_pretrained = training.pretrained
     current_name = Path(current_pretrained).name if current_pretrained else ""
     model_files = find_training_model_names(
-        Path(page.context.settings.project.root)
+        Path(page.context.settings.project.root), exclude_sam=True
     )
     base_box, page.pretrained_combo = page.stacked_combo_field(
         "基础模型",
@@ -158,20 +158,20 @@ def build_training_layout(page) -> None:
     imgsz_box, page.imgsz_combo = page.inline_combo_field(
         "图片尺寸",
         str(training.imgsz),
-        ["640", "960", "1280"],
-        help_text="训练输入尺寸（imgsz）；更大可能更准，但更吃显存，也会占用更多系统内存和时间。",
+        ["640×640", "960×960", "1280×1280"],
+        help_text="按宽×高填写。方形尺寸使用常规训练；矩形尺寸会按模型能力启用 rect=True 的矩形批次训练，保留原图比例并自动关闭 Mosaic、MixUp 等不兼容增强。",
         editable=True,
-        placeholder="例如 640",
+        placeholder="例如 640×640 或 640×416",
         label_width=80,
     )
-    page.imgsz_combo.setMinimumContentsLength(5)
+    page.imgsz_combo.setMinimumContentsLength(9)
     params.addWidget(imgsz_box, 3, 0)
 
     page.device_box, page.device_combo = page.inline_combo_field(
         "设备",
         str(training.device),
-        ["0", "cpu", "0,1"],
-        help_text="训练设备（device）；0 表示首张 GPU，cpu 表示使用处理器，也可填写多个 GPU 编号。",
+        [("GPU", "0"), ("CPU", "cpu")],
+        help_text="训练设备（device）；GPU 表示首张显卡（device=0），CPU 表示使用处理器，多 GPU 时提供 GPU 1、GPU 2 等选项。",
         label_width=80,
     )
     params.addWidget(page.device_box, 3, 1)

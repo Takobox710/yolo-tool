@@ -59,7 +59,7 @@ def test_annotation_page_exposes_seg_task_type(tmp_path):
     assert [
         page.output_mode_combo.itemText(index)
         for index in range(page.output_mode_combo.count())
-    ] == ["detect", "obb", "seg"]
+    ] == ["detect", "obb", "seg", "pose"]
 
     page.output_mode_combo.setCurrentText("seg")
     assert page.output_mode == "seg"

@@ -26,7 +26,7 @@ def constrain_onnx_dynamic_axes(
     dynamic_height: bool,
     dynamic_width: bool,
     batch: int,
-    imgsz: int,
+    imgsz: tuple[int, int],
 ) -> Path:
     import onnx
 
@@ -37,8 +37,9 @@ def constrain_onnx_dynamic_axes(
     input_tensor = model.graph.input[0]
     dimensions = input_tensor.type.tensor_type.shape.dim
     _set_dimension(dimensions, 0, dynamic_batch, "batch", batch)
-    _set_dimension(dimensions, 2, dynamic_height, "height", imgsz)
-    _set_dimension(dimensions, 3, dynamic_width, "width", imgsz)
+    height, width = imgsz
+    _set_dimension(dimensions, 2, dynamic_height, "height", height)
+    _set_dimension(dimensions, 3, dynamic_width, "width", width)
     for output in model.graph.output:
         output_dimensions = output.type.tensor_type.shape.dim
         _set_dimension(output_dimensions, 0, dynamic_batch, "batch", batch)

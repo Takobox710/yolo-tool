@@ -42,6 +42,8 @@ def load_labelme_annotations(image_size: tuple[int, int], json_path: Path, class
             left, right = sorted((x1, x2))
             top, bottom = sorted((y1, y2))
             annotations.append(EditableAnnotation(class_id, "rect", [(left, top), (right, top), (right, bottom), (left, bottom)]))
+        elif shape_type == "point" and len(points) >= 1:
+            annotations.append(EditableAnnotation(class_id, "point", [points[0]]))
         elif shape_type == "circle" and len(points) >= 2:
             center, edge = points[:2]
             radius = ((edge[0] - center[0]) ** 2 + (edge[1] - center[1]) ** 2) ** 0.5
@@ -77,6 +79,9 @@ def save_labelme_annotations(image_size: tuple[int, int], json_path: Path, image
             x1, y1, x2, y2 = detect_points_to_rect(points)
             shape_type = "rectangle"
             labelme_points = [[float(x1), float(y1)], [float(x2), float(y2)]]
+        elif annotation.shape == "point" and points:
+            shape_type = "point"
+            labelme_points = [[float(points[0][0]), float(points[0][1])]]
         elif annotation.shape == "circle":
             x1, y1, x2, y2 = detect_points_to_rect(points)
             center = ((x1 + x2) / 2, (y1 + y2) / 2)

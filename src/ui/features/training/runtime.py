@@ -8,16 +8,20 @@ from src.shared.paths import ROOT
 from src.services.runtime import spawn_logged_process, stop_process
 from src.services.training import build_train_command, repair_validation_path_if_needed
 from src.ui.shared.dialogs import CommandDialog
-from src.shared.qt import QDialog
+from src.shared.qt import QDialog, QMessageBox
 
 
 def start_training(page):
     if page.is_training:
         return
-    config = page.collect_config()
+    try:
+        config = page.collect_config()
+        command = build_train_command(config)
+    except ValueError as exc:
+        QMessageBox.warning(page, "训练参数无效", str(exc))
+        return
     repaired = repair_validation_path_if_needed(config.get("data"))
     page._save_training_settings(config)
-    command = build_train_command(config)
     command = page._normalize_command_model_targets(command)
 
     if page.context.settings.features.custom_command_dialog:

@@ -31,6 +31,12 @@ def test_training_command_and_detection_helpers(tmp_path):
     )
     assert "seg" in seg_command
 
+    rectangular_command = build_train_command(
+        {"base_model": "yolo11n.pt", "data": "data.yaml", "imgsz": "640×384"}
+    )
+    assert "imgsz=640" in rectangular_command
+    assert "rect=true" in rectangular_command
+
     train1 = tmp_path / "train"
     train2 = tmp_path / "train-2"
     (train1 / "weights").mkdir(parents=True)
@@ -72,6 +78,56 @@ def test_training_model_helpers_merge_project_and_app_models_with_project_priori
     assert shared_resolved == str((project_root / "data" / "models" / "shared.pt").resolve())
     assert app_only_resolved == str((app_root / "data" / "models" / "app-only.pt").resolve())
     assert missing_resolved == str((project_root / "data" / "models" / "missing.pt").resolve())
+
+
+def test_training_device_options_follow_cuda_and_gpu_count():
+    from src.services.training import default_training_device, training_device_options
+
+    assert training_device_options(cuda_available=False, gpu_count=0) == [
+        ("CPU", "cpu")
+    ]
+    assert training_device_options(cuda_available=False, gpu_count=2) == [
+        ("CPU", "cpu")
+    ]
+    assert training_device_options(cuda_available=True, gpu_count=1) == [
+        ("GPU", "0"),
+        ("CPU", "cpu"),
+    ]
+    assert training_device_options(cuda_available=True, gpu_count=2) == [
+        ("GPU", "0"),
+        ("GPU 1", "1"),
+        ("CPU", "cpu"),
+    ]
+    assert training_device_options(cuda_available=True, gpu_count=3) == [
+        ("GPU", "0"),
+        ("GPU 1", "1"),
+        ("GPU 2", "2"),
+        ("CPU", "cpu"),
+    ]
+    assert default_training_device(cuda_available=True, gpu_count=1) == "0"
+    assert default_training_device(cuda_available=True, gpu_count=2) == "0"
+    assert default_training_device(cuda_available=False, gpu_count=0) == "cpu"
+
+
+def test_training_model_list_can_exclude_sam_models(tmp_path, monkeypatch):
+    from src.services.training import model_resolution as training_service
+
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "app"
+    (project_root / "data" / "models").mkdir(parents=True)
+    for name in ("yolo11s.pt", "sam3.pt", "sam2.1_hiera_tiny.pt", "fastsam_x.pt"):
+        (project_root / "data" / "models" / name).write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(training_service, "ROOT", app_root)
+
+    all_names = training_service.find_training_model_names(project_root)
+    assert "sam3.pt" in all_names
+    assert "sam2.1_hiera_tiny.pt" in all_names
+
+    train_names = training_service.find_training_model_names(
+        project_root, exclude_sam=True
+    )
+    assert train_names == ["yolo11s.pt"]
 
 
 def test_app_cli_command_uses_module_entry_under_current_python():
@@ -196,3 +252,50 @@ def test_train_cli_falls_back_to_pretrained_when_model_points_to_dataset_yaml(mo
     assert calls["kwargs"]["task"] == "obb"
     assert calls["kwargs"]["data"] == str(dataset_yaml)
     assert calls["kwargs"]["pretrained"] == str(obb_model)
+
+
+def test_train_cli_translates_rectangular_size_to_runtime_supported_arguments(
+    monkeypatch, tmp_path
+):
+    from src.train_cli import run_train_cli
+
+    model_path = tmp_path / "yolo26n.pt"
+    model_path.write_text("weights", encoding="utf-8")
+    calls = {}
+
+    class FakeYOLO:
+        def __init__(self, _model):
+            pass
+
+        def train(self, **kwargs):
+            calls.update(kwargs)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "src.services.ultralytics_compat",
+        SimpleNamespace(ensure_cv2_highgui_compat=lambda: None),
+    )
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+
+    exit_code = run_train_cli(
+        [
+            "detect",
+            "train",
+            f"model={model_path}",
+            "data=data.yaml",
+            "imgsz=640x384",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["imgsz"] == 640
+    assert calls["rect"] is True
+
+
+def test_rectangular_training_rejects_model_families_without_rect_support():
+    from src.services.training import build_train_command
+
+    with pytest.raises(ValueError, match="不支持矩形批次训练"):
+        build_train_command(
+            {"base_model": "rtdetr-l.pt", "data": "data.yaml", "imgsz": "640×384"}
+        )

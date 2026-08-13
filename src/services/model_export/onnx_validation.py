@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from src.services.model_export.calibration_images import load_image_tensor
+from src.services.model_export.image_size import ImageSizeValue, parse_image_size
 
 
-def smoke_validate_onnx(model_path: str | Path, images: Iterable[str | Path], sample_limit: int, *, default_imgsz: int = 640) -> dict[str, Any]:
+def smoke_validate_onnx(model_path: str | Path, images: Iterable[str | Path], sample_limit: int, *, default_imgsz: ImageSizeValue = (640, 640)) -> dict[str, Any]:
     import numpy as np
     import onnxruntime as ort
 
@@ -26,8 +27,9 @@ def smoke_validate_onnx(model_path: str | Path, images: Iterable[str | Path], sa
     if len(shape) < 4:
         raise ValueError("ONNX 模型输入不是 NCHW 图像张量。")
     batch = _runtime_dimension(shape, 0, 1)
-    height = _runtime_dimension(shape, 2, default_imgsz)
-    width = _runtime_dimension(shape, 3, default_imgsz)
+    default_height, default_width = parse_image_size(default_imgsz)
+    height = _runtime_dimension(shape, 2, default_height)
+    width = _runtime_dimension(shape, 3, default_width)
     checked = 0
     output_shapes: list[list[int]] = []
     for path in image_paths:

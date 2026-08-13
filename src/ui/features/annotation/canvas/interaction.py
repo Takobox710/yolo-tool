@@ -73,6 +73,12 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
             self.update()
             return
         self._clear_selection()
+        if self.draw_shape == "point":
+            self._finish_annotation(
+                EditableAnnotation(self.current_class_id, "point", [image_point])
+            )
+            self.update()
+            return
         if self.draw_shape in {"obb_mirror", "obb_single", "line_expand"}:
             if self.draw_shape == "line_expand" and self.quick_draw:
                 self.drag_start = image_point

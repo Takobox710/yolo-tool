@@ -34,6 +34,7 @@ class DrawShapeDialog(QDialog):
         line_expand_enabled: bool,
         parent=None,
         *,
+        keypoint_enabled: bool = False,
         sam_models=None,
         selected_sam_model: str = "",
         sam_enabled: bool = False,
@@ -51,10 +52,10 @@ class DrawShapeDialog(QDialog):
         self.sam_settings = dict(sam_settings or {})
         self.sam_settings_callback = sam_settings_callback
         self.setWindowTitle("选择标注类型")
-        self.resize(240, 424 if line_expand_enabled else 380)
+        self.resize(240, 468 if line_expand_enabled and keypoint_enabled else 424 if line_expand_enabled or keypoint_enabled else 380)
         from src.ui.features.annotation.draw_shape_layout import build_dialog_ui
 
-        build_dialog_ui(self, line_expand_enabled, selected_sam_model)
+        build_dialog_ui(self, line_expand_enabled, keypoint_enabled, selected_sam_model)
 
     @property
     def selected_sam_model(self) -> str:

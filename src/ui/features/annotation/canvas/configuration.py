@@ -11,6 +11,13 @@ def set_optimize_mirror_edit(canvas, enabled: bool) -> None:
     canvas.update()
 
 
+def set_keypoint_config(canvas, enabled: bool) -> None:
+    canvas.keypoint_enabled = bool(enabled)
+    if not canvas.keypoint_enabled and canvas.draw_shape == "point":
+        canvas.set_draw_shape("select")
+    canvas.update()
+
+
 def set_interaction_config(canvas, continuous_draw: bool, quick_draw: bool) -> None:
     canvas.continuous_draw = bool(continuous_draw)
     canvas.quick_draw = bool(quick_draw)

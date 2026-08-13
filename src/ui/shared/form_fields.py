@@ -174,7 +174,7 @@ class FormFieldMixin:
         self,
         label: str,
         value: str,
-        values: list[str],
+        values: list[str] | list[tuple[str, str]],
         help_text: str = "",
         *,
         editable: bool = False,
@@ -192,11 +192,19 @@ class FormFieldMixin:
         )
         combo = QComboBox()
         combo.setEditable(editable)
-        combo.addItems(values)
+        if values and isinstance(values[0], tuple):
+            for display, raw in values:
+                combo.addItem(str(display), str(raw))
+        else:
+            combo.addItems(values)
         if editable:
             self._configure_editable_combo(combo, placeholder)
         if str(value):
-            combo.setCurrentText(str(value))
+            index = combo.findData(str(value))
+            if index >= 0:
+                combo.setCurrentIndex(index)
+            else:
+                combo.setCurrentText(str(value))
         layout.addWidget(caption_box)
         layout.addWidget(combo, 1)
         return box, combo

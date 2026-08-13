@@ -90,6 +90,7 @@ class SettingsService:
             issues.append(SettingsIssue("settings", "配置文件必须是对象，已恢复默认值"))
 
         migrated = int(payload.get("schema_version", 0) or 0) != 1
+        self._migrate_training_config(payload)
         self._migrate_model_export_config(payload)
         payload["schema_version"] = 1
         payload.setdefault("project", {})["root"] = str(self.project_root)
@@ -121,6 +122,9 @@ class SettingsService:
                 "8": "int8",
             }.get(quantize, "fp32")
         model_export.pop("quantize", None)
+        imgsz = model_export.get("imgsz")
+        if isinstance(imgsz, int) and not isinstance(imgsz, bool):
+            model_export["imgsz"] = f"{imgsz}×{imgsz}"
         current = str(model_export.get("output_dir") or "").strip()
         if not current:
             return
@@ -132,6 +136,15 @@ class SettingsService:
             model_export["output_dir"] = str(
                 self.project_root / "data" / "models" / "model_exports"
             )
+
+    @staticmethod
+    def _migrate_training_config(payload: dict[str, Any]) -> None:
+        training = payload.get("training")
+        if not isinstance(training, dict):
+            return
+        imgsz = training.get("imgsz")
+        if isinstance(imgsz, int) and not isinstance(imgsz, bool):
+            training["imgsz"] = f"{imgsz}×{imgsz}"
 
     def reset_to_defaults(self) -> AppSettings:
         defaults = build_default_settings(self.project_root)

@@ -11,6 +11,7 @@ from src.services.model_export.capabilities import (
 )
 from src.services.model_export.formats import resolve_export_format
 from src.services.model_export.types import ModelExportConfig
+from src.services.model_export.image_size import parse_image_size
 
 
 def app_cli_command(*args: str) -> list[str]:
@@ -40,7 +41,7 @@ def build_model_export_command(
         *prefix,
         f"model={config.model_path}",
         f"format={spec.argument}",
-        f"imgsz={int(config.imgsz)}",
+        f"imgsz={parse_image_size(config.imgsz)[1]}x{parse_image_size(config.imgsz)[0]}",
         f"quantize={quantize}",
         f"output_dir={config.output_dir}",
     ]
@@ -91,7 +92,7 @@ def build_model_export_command(
 def build_export_command(
     model_path: str,
     export_format: str,
-    imgsz: int | str = 640,
+    imgsz: int | str | tuple[int, int] = 640,
 ) -> list[str]:
     spec = resolve_export_format(export_format)
     return build_model_export_command(
@@ -99,7 +100,7 @@ def build_export_command(
             model_path=Path(model_path),
             output_dir=Path(model_path).resolve().parent,
             export_format=spec.argument,
-            imgsz=int(imgsz),
+            imgsz=imgsz,
             simplify=spec.argument in {"onnx", "engine"},
         )
     )

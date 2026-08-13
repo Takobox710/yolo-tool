@@ -24,6 +24,7 @@ from src.ui.features.training.state import (
     persist_augmentation,
     persist_model_selection,
     persist_training_text,
+    persist_training_image_size,
     persist_training_value,
     refresh_command_preview,
     refresh_train_status,
@@ -87,6 +88,9 @@ class TrainPage(BasePage):
 
     def _persist_training_value(self, key, value):
         return persist_training_value(self, key, value)
+
+    def _persist_training_image_size(self, value):
+        return persist_training_image_size(self, value)
 
     def _persist_model_selection(self, _value=""):
         return persist_model_selection(self)

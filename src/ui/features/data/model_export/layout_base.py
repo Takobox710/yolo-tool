@@ -6,6 +6,7 @@ from src.shared.qt import QDoubleSpinBox, QGridLayout, QHBoxLayout, QLineEdit, Q
 from src.ui.features.data.model_export.controls import configure_field_box as _configure_field_box, spin_control_field as _spin_control_field
 from src.ui.features.data.model_export.layout_primitives import _spin_field
 from src.ui.shared.page_base import Card
+from src.services.model_export.image_size import format_image_size
 
 
 def build_model_export_layout(page) -> None:
@@ -41,7 +42,7 @@ def _build_fixed_fields(page, settings) -> None:
         selected_format = format_names[0]
     page.format_box, page.format_combo = page.combo_field("目标格式", selected_format, format_names)
     page.precision_box, page.precision_combo = page.combo_field("导出精度", _precision_label(settings.precision), ["FP32", "FP16", "INT8"], help_text="精度、图简化、动态轴和 NMS 是相互独立的配置。")
-    page.imgsz_box, page.imgsz_edit = _text_field(page, "输入尺寸", str(settings.imgsz), placeholder="例如 640", help_text="SAM2/SAM2.1 固定使用 1024；其他格式使用 YOLO 输入尺寸。")
+    page.imgsz_box, page.imgsz_edit = _text_field(page, "输入尺寸", format_image_size(settings.imgsz), placeholder="例如 640×640 或 1280×720", help_text="按宽×高填写；单值 640 等同于 640×640。SAM2/SAM2.1 固定使用 1024×1024。")
     page.batch_box, page.batch_spin = _spin_field(page, "Batch", settings.batch, 1, 1024, "导出 batch；SAM2 固定为 1。")
     page.conf_spin = _double_spin(settings.nms_conf, "Conf", "NMS 置信度阈值；不支持 NMS 的格式会保留该值但不会传入命令。")
     page.iou_spin = _double_spin(settings.nms_iou, "IoU", "NMS IoU 阈值；不支持 NMS 的格式会保留该值但不会传入命令。")

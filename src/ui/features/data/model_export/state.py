@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.services.model_export import resolve_export_format
+from src.services.model_export.image_size import format_image_size, validate_image_size
 from src.services.runtime import invalidate_cache
 from src.services.runtime.variant import CPU_VARIANT, installed_variant
 
@@ -119,7 +120,7 @@ class ModelExportStateMixin:
             "model_path": str(config.model_path),
             "output_dir": self.resolve_path_text(self.output_edit),
             "format": config.export_format,
-            "imgsz": config.imgsz,
+            "imgsz": format_image_size(config.imgsz),
             "simplify": config.simplify,
             "precision": config.precision,
             "batch": config.batch,
@@ -233,7 +234,7 @@ class ModelExportStateMixin:
 
     def _persist_imgsz(self, text: str):
         try:
-            value = int(text)
+            value = format_image_size(validate_image_size(text))
         except ValueError:
             return
         self.update_setting("model_export", "imgsz", value=value)

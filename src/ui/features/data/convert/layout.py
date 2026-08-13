@@ -56,7 +56,7 @@ def build_convert_layout(page) -> None:
     param_grid.setVerticalSpacing(10)
     mode = LABELME_MODE if context.settings.conversion.use_labelme else YOLO_MODE
     page.mode_box, page.mode_combo = page.hint_combo_field("模式选择", mode, [LABELME_MODE, YOLO_MODE], "选择 Labelme 转换后划分数据集，或直接对已有 YOLO 标注进行数据集划分。")
-    page.task_box, page.task_combo = page.hint_combo_field("任务类型", context.settings.task.mode, ["detect", "obb", "seg"], "OBB 输出旋转框标签；seg 输出多边形标签；detect 输出普通矩形框标签。")
+    page.task_box, page.task_combo = page.hint_combo_field("任务类型", context.settings.task.mode, ["detect", "obb", "seg", "pose"], "OBB 输出旋转框标签；seg 输出多边形标签；pose 输出边界框与关键点标签；detect 输出普通矩形框标签。")
     ratios = dataset.split_ratios
     page.train_ratio_box, page.train_ratio_edit = page.hint_field("训练", str(ratios.train), "训练集比例，三项合计必须为 1.0。", placeholder="0.0 - 1.0")
     page.val_ratio_box, page.val_ratio_edit = page.hint_field("验证", str(ratios.val), "验证集比例，用于训练中评估模型。", placeholder="0.0 - 1.0")

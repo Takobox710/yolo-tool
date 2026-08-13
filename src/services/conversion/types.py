@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -25,10 +25,11 @@ class ConversionConfig:
     backup_existing: bool = True
     backup_yolo_files: bool = False
     class_name_mapping: dict[str, str] | None = None
+    pose_keypoint_count: int | None = None
 
     def validate(self) -> "ConversionConfig":
-        if self.task_mode not in {"obb", "detect", "seg"}:
-            raise ValueError("task_mode 必须是 obb、detect 或 seg")
+        if self.task_mode not in {"obb", "detect", "seg", "pose"}:
+            raise ValueError("task_mode 必须是 obb、detect、seg 或 pose")
         if self.source_format not in {"labelme", "yolo"}:
             raise ValueError("source_format 必须是 labelme 或 yolo")
         ratio_sum = self.train_ratio + self.val_ratio + self.test_ratio
@@ -54,6 +55,8 @@ class ConversionPreview:
     missing_labels: dict[str, list[str]]
     stats: dict[str, dict[str, int]]
     class_names: list[str]
+    invalid_images: dict[str, str] = field(default_factory=dict)
+    keypoint_count: int | None = None
 
 
 @dataclass
@@ -69,6 +72,8 @@ class ConversionResult:
     stats: dict[str, dict[str, int]]
     class_names: list[str]
     backup_dir: Path | None = None
+    invalid_images: dict[str, str] = field(default_factory=dict)
+    keypoint_count: int | None = None
 
 
 @dataclass

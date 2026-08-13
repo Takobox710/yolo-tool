@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from src.services.annotation.sam_assist import sam_geometry_from_mask
+from src.services.annotation.sam_path_compat import SamAsciiPathStager
+from src.services.annotation.sam3_compat import load_sam3_components
 from src.services.annotation.sam_onnx_canvas import Sam2OnnxCanvasRuntime
 
 
@@ -20,11 +22,10 @@ class _Sam3CanvasRuntime:
 
         if not torch.cuda.is_available():
             raise RuntimeError("SAM 3 画布辅助标注需要 CUDA GPU，当前环境未检测到 CUDA。")
-        from sam3.model.sam3_image_processor import Sam3Processor
-        from sam3.model_builder import build_sam3_image_model
+        Sam3Processor, build_sam3_image_model = load_sam3_components()
 
         self.model = build_sam3_image_model(
-            checkpoint_path=str(checkpoint_path.resolve()),
+            checkpoint_path=str(checkpoint_path),
             load_from_HF=False,
             device="cuda",
             compile=False,
@@ -83,6 +84,7 @@ class SamAssistRuntime:
         self.sam3_runtime: _Sam3CanvasRuntime | None = None
         self.sam2_onnx_runtime: Sam2OnnxCanvasRuntime | None = None
         self.runtime_kind = ""
+        self._path_stager = SamAsciiPathStager()
         self.device = ""
         self.model_generation = 0
         self.image_generation = 0
@@ -107,16 +109,17 @@ class SamAssistRuntime:
             raise ValueError("缺少 SAM 模型配置。")
 
         self.release_model()
+        self._path_stager = SamAsciiPathStager()
         self.runtime_kind = backend
         if backend == "sam2_onnx":
             self.sam2_onnx_runtime = Sam2OnnxCanvasRuntime()
-            self.sam2_onnx_runtime.load_model(checkpoint)
+            self.sam2_onnx_runtime.load_model(self._path_stager.stage_directory(checkpoint))
             self.device = "onnx-cpu"
         elif backend == "sam3":
             import torch
 
             self.sam3_runtime = _Sam3CanvasRuntime()
-            self.sam3_runtime.load_model(checkpoint)
+            self.sam3_runtime.load_model(self._path_stager.stage_file(checkpoint))
             self.device = "cuda"
         else:
             import torch
@@ -125,9 +128,10 @@ class SamAssistRuntime:
             from sam2.sam2_image_predictor import SAM2ImagePredictor
 
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            runtime_checkpoint = self._path_stager.stage_file(checkpoint)
             self.model = build_sam2(
                 str(config_name),
-                ckpt_path=str(checkpoint.resolve()),
+                ckpt_path=str(runtime_checkpoint),
                 device=self.device,
             )
             self.predictor = SAM2ImagePredictor(self.model)
@@ -150,39 +154,28 @@ class SamAssistRuntime:
         path = Path(image_path)
         if not path.is_file():
             raise FileNotFoundError(f"待标注图片不存在：{path}")
-        if self.runtime_kind == "sam3":
-            if self.sam3_runtime is None:
-                raise RuntimeError("SAM 3 模型尚未加载。")
-            self.sam3_runtime.set_image(path)
-            self.image_generation = int(image_generation)
-            self.image_path = str(path.resolve())
-            return {
-                "state": "image_ready",
-                "model_generation": self.model_generation,
-                "image_generation": self.image_generation,
-                "image_path": self.image_path,
-            }
-        if self.runtime_kind == "sam2_onnx":
-            if self.sam2_onnx_runtime is None:
-                raise RuntimeError("SAM2 ONNX 模型尚未加载。")
-            self.sam2_onnx_runtime.set_image(path)
-            self.image_generation = int(image_generation)
-            self.image_path = str(path.resolve())
-            return {
-                "state": "image_ready",
-                "model_generation": self.model_generation,
-                "image_generation": self.image_generation,
-                "image_path": self.image_path,
-            }
+        runtime_path = self._path_stager.stage_file(path)
+        try:
+            if self.runtime_kind == "sam3":
+                if self.sam3_runtime is None:
+                    raise RuntimeError("SAM 3 模型尚未加载。")
+                self.sam3_runtime.set_image(runtime_path)
+            elif self.runtime_kind == "sam2_onnx":
+                if self.sam2_onnx_runtime is None:
+                    raise RuntimeError("SAM2 ONNX 模型尚未加载。")
+                self.sam2_onnx_runtime.set_image(runtime_path)
+            else:
+                from PIL import Image
+                import numpy as np
+                import torch
 
-        from PIL import Image
-        import numpy as np
-        import torch
+                with Image.open(runtime_path) as image:
+                    image_array = np.asarray(image.convert("RGB")).copy()
+                with torch.inference_mode(), self._autocast_context(torch):
+                    self.predictor.set_image(image_array)
+        finally:
+            self._path_stager.discard_file(runtime_path)
 
-        with Image.open(path) as image:
-            image_array = np.asarray(image.convert("RGB")).copy()
-        with torch.inference_mode(), self._autocast_context(torch):
-            self.predictor.set_image(image_array)
         self.image_generation = int(image_generation)
         self.image_path = str(path.resolve())
         return {
@@ -264,6 +257,7 @@ class SamAssistRuntime:
             self.sam2_onnx_runtime.close()
         self.sam2_onnx_runtime = None
         self.runtime_kind = ""
+        self._path_stager.close()
         self.model_generation = 0
         self.image_generation = 0
         self.image_path = ""

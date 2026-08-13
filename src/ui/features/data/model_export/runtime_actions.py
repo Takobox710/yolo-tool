@@ -10,6 +10,7 @@ from src.services.model_export import (
     export_capability,
     resolve_export_format,
 )
+from src.services.model_export.image_size import format_image_size
 from src.services.runtime import spawn_structured_process, stop_process
 from src.shared.paths import ROOT
 from src.shared.qt import QMessageBox, QTimer
@@ -38,7 +39,7 @@ def preview_export(page) -> None:
                 f"模型类型：{page._current_model_kind().upper()}",
                 f"导出精度：{config.precision}",
                 f"目标产物：{target}",
-                f"输入尺寸：{config.imgsz} x {config.imgsz}",
+                f"输入尺寸：{format_image_size(config.imgsz)}",
                 f"Batch：{config.batch}",
                 f"动态轴：batch={config.dynamic_batch}, height={config.dynamic_height}, width={config.dynamic_width}",
                 f"NMS：{config.nms}",
