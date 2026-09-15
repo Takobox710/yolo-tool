@@ -9,7 +9,10 @@ import time
 from dataclasses import dataclass
 from queue import Queue
 
-from src.services.runtime.windows_spawn import hidden_subprocess_kwargs
+from src.services.runtime.windows_spawn import (
+    hidden_subprocess_kwargs,
+    utf8_subprocess_env,
+)
 
 try:
     import psutil
@@ -45,6 +48,7 @@ def spawn_logged_process(command: list[str], cwd: str, queue: Queue) -> ProcessH
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        env=utf8_subprocess_env(),
         **hidden_subprocess_kwargs(),
     )
 
@@ -73,6 +77,7 @@ def spawn_structured_process(command: list[str], cwd: str, queue: Queue) -> Proc
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        env=utf8_subprocess_env(),
         **hidden_subprocess_kwargs(),
     )
 
@@ -114,6 +119,7 @@ def spawn_interactive_structured_process(
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        env=utf8_subprocess_env(),
         **hidden_subprocess_kwargs(),
     )
 

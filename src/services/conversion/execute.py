@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from collections import defaultdict
+from collections.abc import Callable
 
 from src.services.conversion.backup import (
     backup_converted_outputs,
@@ -35,12 +36,26 @@ from src.services.conversion.types import (
     ConversionResult,
 )
 
+ProgressCallback = Callable[[str, int], None]
 
-def preview_conversion(config: ConversionConfig) -> ConversionPreview:
+
+def _report_progress(
+    progress: ProgressCallback | None, message: str, value: int
+) -> None:
+    if progress is not None:
+        progress(message, max(0, min(100, int(value))))
+
+
+def preview_conversion(
+    config: ConversionConfig,
+    progress: ProgressCallback | None = None,
+) -> ConversionPreview:
+    _report_progress(progress, "扫描输入文件", 0)
     active = config.validate()
     labeled, unlabeled = collect_inputs(active)
     if not labeled:
         raise ValueError("没有找到可转换的已标注图片")
+    _report_progress(progress, "识别类别", 15)
     class_names = detect_class_names(active, labeled)
     active.class_names = class_names
     split_map = split_labeled(labeled, active)
@@ -48,6 +63,9 @@ def preview_conversion(config: ConversionConfig) -> ConversionPreview:
     missing_labels: defaultdict[str, list[str]] = defaultdict(list)
     total_boxes = 0
     invalid_images: dict[str, str] = {}
+    total_items = sum(len(pairs) for pairs in split_map.values())
+    processed_items = 0
+    _report_progress(progress, "解析标注", 25)
     for split, pairs in split_map.items():
         for _image_path, label_source_path in pairs:
             try:
@@ -65,6 +83,14 @@ def preview_conversion(config: ConversionConfig) -> ConversionPreview:
                 label_source_path.name,
             )
             total_boxes += len(lines)
+            processed_items += 1
+            if total_items:
+                _report_progress(
+                    progress,
+                    "解析标注",
+                    25 + int(processed_items * 70 / total_items),
+                )
+    _report_progress(progress, "预览完成", 100)
     return ConversionPreview(
         labeled_train_count=len(split_map["train"]),
         labeled_val_count=len(split_map["val"]),
@@ -82,10 +108,23 @@ def preview_conversion(config: ConversionConfig) -> ConversionPreview:
     )
 
 
-def run_conversion(config: ConversionConfig) -> ConversionResult:
+def run_conversion(
+    config: ConversionConfig,
+    progress: ProgressCallback | None = None,
+) -> ConversionResult:
+    _report_progress(progress, "扫描输入文件", 0)
     active = config.validate()
     if active.task_mode == "pose":
-        preview = preview_conversion(active)
+        preview = preview_conversion(
+            active,
+            progress=(
+                None
+                if progress is None
+                else lambda message, value: _report_progress(
+                    progress, message, int(value * 0.2)
+                )
+            ),
+        )
         if preview.invalid_images:
             details = "; ".join(
                 f"{name}: {reason}" for name, reason in sorted(preview.invalid_images.items())
@@ -94,15 +133,20 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
     labeled, unlabeled = collect_inputs(active)
     if not labeled:
         raise ValueError("没有找到可转换的已标注图片")
+    _report_progress(progress, "识别类别", 20)
     class_names = detect_class_names(active, labeled)
     active.class_names = class_names
     split_map = split_labeled(labeled, active)
+    _report_progress(progress, "准备输出目录", 25)
     backup_dir = _prepare_output_dirs(active)
     active_splits = tuple(split for split, pairs in split_map.items() if pairs)
 
     stats = build_empty_stats()
     missing_labels: defaultdict[str, list[str]] = defaultdict(list)
     total_boxes = 0
+    total_items = sum(len(pairs) for pairs in split_map.values())
+    processed_items = 0
+    _report_progress(progress, "写入数据集", 30)
     for split, pairs in split_map.items():
         if not pairs:
             continue
@@ -124,10 +168,20 @@ def run_conversion(config: ConversionConfig) -> ConversionResult:
                 label_source_path.name,
             )
             total_boxes += len(lines)
+            processed_items += 1
+            if total_items:
+                _report_progress(
+                    progress,
+                    "写入数据集",
+                    30 + int(processed_items * 65 / total_items),
+                )
 
+    _report_progress(progress, "生成 data.yaml", 96)
     yaml_path = write_data_yaml(active, active_splits)
     if active.backup_yolo_files:
+        _report_progress(progress, "备份标注文件", 98)
         backup_dir = backup_converted_outputs(active, yaml_path)
+    _report_progress(progress, "划分完成", 100)
     return ConversionResult(
         labeled_train_count=len(split_map["train"]),
         labeled_val_count=len(split_map["val"]),

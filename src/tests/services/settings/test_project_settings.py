@@ -23,6 +23,9 @@ def test_settings_service_loads_and_merges_defaults(tmp_path):
     assert settings.training.epochs == 12
     assert settings.training.batch == 16
     assert settings.image_resize.canvas_size == 960
+    assert settings.image_resize.mode == "画布压缩"
+    assert settings.image_resize.aspect_ratio == "1:1"
+    assert settings.image_resize.resolution == "960×960"
     assert settings.features.show_help_icons is True
     assert settings.features.show_last_training_models is False
     assert settings.task.mode == "detect"
@@ -209,3 +212,19 @@ def test_settings_service_migrates_square_training_size_to_width_height_text(tmp
     result = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
 
     assert result.settings.training.imgsz == "960×960"
+
+
+def test_settings_service_discards_legacy_validation_image_size(tmp_path):
+    from src.services.settings import SettingsService
+
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps({"validation": {"imgsz": 960}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    result = SettingsService(settings_path=settings_path, project_root=tmp_path).load()
+    persisted = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    assert not hasattr(result.settings.validation, "imgsz")
+    assert "imgsz" not in persisted["validation"]

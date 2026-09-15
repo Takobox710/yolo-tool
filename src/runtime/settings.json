@@ -31,6 +31,9 @@
     "source_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images",
     "long_edge": 960,
     "canvas_size": 960,
+    "mode": "画布压缩",
+    "aspect_ratio": "1:1",
+    "resolution": "960×960",
     "background": "white",
     "output_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images_resized",
     "backup_dir": "D:\\ruanjian\\User\\Python\\yolo_tool\\images_backup"

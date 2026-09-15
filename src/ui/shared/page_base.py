@@ -167,11 +167,21 @@ def _legacy_context(host) -> WorkbenchContext:
             original_save(settings_to_dict(value))
 
     host_background = getattr(host, "run_background", None)
-    run_background = (
-        (lambda kind, fn, receiver=None: host_background(kind, fn))
-        if callable(host_background)
-        else None
-    )
+    def run_background(
+        kind,
+        fn,
+        receiver=None,
+        *,
+        accepts_progress=False,
+    ):
+        if not callable(host_background):
+            return None
+        return host_background(
+            kind,
+            fn,
+            receiver=receiver,
+            accepts_progress=accepts_progress,
+        )
 
     def refresh_validation_models() -> None:
         for page in getattr(host, "pages", {}).values():

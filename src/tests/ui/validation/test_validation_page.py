@@ -87,6 +87,30 @@ def test_validation_page_lists_training_best_and_last_models_by_feature_flag(tmp
     assert "train-2\\last.pt" not in items
 
 
+def test_validation_page_uses_model_native_prediction_size(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from src.services.settings import build_default_settings
+    from src.shared.qt import QApplication
+    from src.ui.features.validation.page import ValidatePage
+
+    app = QApplication.instance() or QApplication([])
+    fake_app = SimpleNamespace(
+        settings=build_default_settings(tmp_path),
+        settings_service=SimpleNamespace(save=lambda _data: None),
+        run_background=lambda _kind, _fn: None,
+        status=SimpleNamespace(setText=lambda _text: None),
+        training_handle=None,
+        validation_handle=None,
+    )
+    page = ValidatePage(fake_app)
+
+    assert not hasattr(page, "imgsz_box")
+    assert not hasattr(page, "imgsz_combo")
+    assert "imgsz" not in page.config()
+    page.close()
+
+
 def test_validation_page_supports_dataset_val_mode(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

@@ -18,7 +18,7 @@ CPU 变体只发布 `YOLOTool_CPU_Setup_<版本>.exe` 一体式安装包。CPU �
 
 ## Pixi 环境
 
-GPU 完整发布先生成完整 `dist/YOLOTool` 供基础环境包提取 `_internal`，基础包归档完成后再生成 `-ProgramOnly` 的程序 staging。CPU 发布只生成一次完整 `dist/CPU/YOLOTool`，Inno Setup 直接从该目录组装一体式安装器。
+GPU 完整发布先生成完整 `dist/YOLOTool` 供基础环境包提取 `_internal`，基础包归档完成后会以 `-ProgramOnly -Clean` 明确重建程序 staging，确保安装器中的 `YOLOTool.exe` 不重复内嵌基础运行时。CPU 发布只生成一次完整 `dist/CPU/YOLOTool`，Inno Setup 直接从该目录组装一体式安装器。
 
 - `default`：构建 GPU 主程序、基础包和附加包，完整冻结源使用 GPU `onnxruntime-gpu`；GPU BaseEnv 生成时改用 `release-cpu` 中同版本 CPU ONNX Runtime，GPU ORT 作为 ExtraEnv 的隔离覆盖层提供。默认环境同时承担开发和 GPU 发布职责。
 - `cpu` / `release-cpu`：构建 CPU 一体式安装器，使用 CPU Torch、CPU `onnxruntime`，并内置 CPU-only OpenVINO、NNCF、NCNN、PNNX；OpenVINO GPU/NPU/自动设备插件不进入冻结目录，CPU 环境的锁定依赖和冻结内容通过 `src.devtools.cpu_package_guard` 检查。

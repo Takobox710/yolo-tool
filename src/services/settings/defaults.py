@@ -50,6 +50,9 @@ def build_default_settings(project_root: Path = ROOT) -> AppSettings:
             source_dir=str(project_root / "images"),
             long_edge=960,
             canvas_size=960,
+            mode="画布压缩",
+            aspect_ratio="1:1",
+            resolution="960×960",
             background="white",
             output_dir=str(project_root / "images_resized"),
             backup_dir=str(project_root / "images_backup"),
@@ -91,7 +94,6 @@ def build_default_settings(project_root: Path = ROOT) -> AppSettings:
             camera_index=0,
             confidence=0.25,
             iou=0.45,
-            imgsz=640,
             save_dir=str(project_root / "result" / "gui_val"),
         ),
         conversion=ConversionSettings(

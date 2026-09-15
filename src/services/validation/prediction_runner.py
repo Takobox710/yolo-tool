@@ -78,7 +78,6 @@ def run_prediction(
             source=str(image_path),
             conf=config.get("confidence", 0.25),
             iou=config.get("iou", 0.45),
-            imgsz=config.get("imgsz", 640),
             verbose=False,
         )[0]
         elapsed = time.perf_counter() - start
@@ -124,7 +123,6 @@ def run_prediction(
                     source=frame,
                     conf=config.get("confidence", 0.25),
                     iou=config.get("iou", 0.45),
-                    imgsz=config.get("imgsz", 640),
                     verbose=False,
                 )[0]
                 elapsed = time.perf_counter() - start

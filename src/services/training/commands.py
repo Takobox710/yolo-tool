@@ -107,7 +107,6 @@ def build_val_command(config: dict) -> list[str]:
         ("data", config.get("data")),
         ("conf", config.get("confidence")),
         ("iou", config.get("iou")),
-        ("imgsz", config.get("imgsz")),
         ("project", config.get("save_dir")),
     ]
     for key, value in fields:

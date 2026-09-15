@@ -79,10 +79,22 @@ class WorkbenchContext:
             return "等待程序日志..."
         return str(self._program_log())
 
-    def run_background(self, kind: str, fn: Callable[[], Any], receiver=None):
+    def run_background(
+        self,
+        kind: str,
+        fn: Callable[[], Any],
+        receiver=None,
+        *,
+        accepts_progress: bool = False,
+    ):
         if self._run_background is None:
             return None
-        return self._run_background(kind, fn, receiver=receiver)
+        return self._run_background(
+            kind,
+            fn,
+            receiver=receiver,
+            accepts_progress=accepts_progress,
+        )
 
     def switch_project_root(self, project_root: str | Path) -> None:
         if self._switch_project is not None:

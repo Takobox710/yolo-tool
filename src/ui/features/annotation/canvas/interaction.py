@@ -28,9 +28,6 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
             if image_point is None:
                 self.cancel_sam_hover()
                 return
-            if self._hit_test(image_point) >= 0:
-                self.cancel_sam_hover()
-                return
             if self._confirm_sam_preview():
                 self.update()
                 return
@@ -112,7 +109,7 @@ class AnnotationCanvasInteractionMixin(AnnotationCanvasEditingMixin):
         image_point = self._widget_to_image(event.position(), clamp=True)
         if self._sam_shape_supported():
             inside_point = self._widget_to_image(event.position())
-            if inside_point is None or self._hit_test(inside_point) >= 0:
+            if inside_point is None:
                 self.cancel_sam_hover()
                 return
             if self.sam_hover_callback is not None:

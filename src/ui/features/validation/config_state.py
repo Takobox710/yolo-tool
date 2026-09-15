@@ -36,10 +36,6 @@ def config(page):
         iou = float(page.iou_edit.text())
     except ValueError as exc:
         raise ValueError("IoU 必须是数字。") from exc
-    try:
-        imgsz = int(page.imgsz_combo.currentText())
-    except ValueError as exc:
-        raise ValueError("图片尺寸必须是整数。") from exc
     return {
         "model_path": model_path,
         "source_mode": page.mode_combo.currentText(),
@@ -51,7 +47,6 @@ def config(page):
         "camera_index": int(page.camera_combo.currentText()),
         "confidence": confidence,
         "iou": iou,
-        "imgsz": imgsz,
         "save_dir": page.resolve_path_text(page.save_edit),
     }
 

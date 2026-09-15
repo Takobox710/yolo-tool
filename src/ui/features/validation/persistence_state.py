@@ -30,9 +30,6 @@ def connect_validation_persistence(page):
     page.iou_edit.textChanged.connect(
         lambda text: page._persist_validation_numeric("iou", text)
     )
-    page.imgsz_combo.currentTextChanged.connect(
-        lambda text: page._persist_validation_integer("imgsz", text)
-    )
 
 
 def persist_validation_model(page, _text: str = ""):
@@ -83,20 +80,11 @@ def persist_validation_numeric(page, key: str, text: str):
     page._persist_validation_value(key, value)
 
 
-def persist_validation_integer(page, key: str, text: str):
-    try:
-        value = int(text)
-    except ValueError:
-        value = text
-    page._persist_validation_value(key, value)
-
-
 __all__ = [
     "connect_validation_persistence",
     "handle_data_path_changed",
     "handle_source_input_changed",
     "handle_source_scope_changed",
-    "persist_validation_integer",
     "persist_validation_model",
     "persist_validation_numeric",
     "persist_validation_value",

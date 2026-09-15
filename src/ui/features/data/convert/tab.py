@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import traceback
 from pathlib import Path
 
 from src.services.conversion import (
@@ -22,6 +21,11 @@ from src.ui.features.data.convert.layout import (
 class ConvertTab(BasePage):
     def __init__(self, context):
         super().__init__(context)
+        self._conversion_worker = None
+        self._conversion_config = None
+        self._conversion_preview = False
+        self._conversion_progress_value = -1
+        self._conversion_progress_message = ""
         build_convert_layout(self)
         self._connect_persistence()
         self.task_combo.currentTextChanged.connect(self.refresh_mode_state)
@@ -185,19 +189,92 @@ class ConvertTab(BasePage):
             )
 
     def preview(self):
-        try:
-            config = self.config()
-            result = preview_conversion(config)
-            self.log.setPlainText(
-                format_conversion_result(result, config, preview=True)
-            )
-        except Exception as exc:
-            self.log.setPlainText(str(exc))
+        self._start_conversion(preview=True)
 
     def run(self):
+        self._start_conversion(preview=False)
+
+    def _start_conversion(self, *, preview: bool) -> None:
+        if self._conversion_worker is not None:
+            return
         try:
             config = self.config()
-            result = run_conversion(config)
-            self.log.setPlainText(format_conversion_result(result, config))
-        except Exception:
-            self.log.setPlainText(traceback.format_exc())
+        except Exception as exc:
+            self._set_conversion_running(False)
+            self.log.setPlainText(f"无法读取划分参数：{exc}")
+            return
+
+        kind = "conversion_preview" if preview else "conversion_run"
+        runner = preview_conversion if preview else run_conversion
+        self._conversion_config = config
+        self._conversion_preview = preview
+        self._set_conversion_running(True)
+        worker = self.context.run_background(
+            kind,
+            lambda report: runner(config, progress=report),
+            receiver=self,
+            accepts_progress=True,
+        )
+        if worker is None:
+            self._conversion_config = None
+            self._set_conversion_running(False)
+            self.log.setPlainText("无法启动后台划分任务，请检查当前运行环境。")
+            return
+
+        self._conversion_worker = worker
+        worker.progress.connect(self._conversion_progress)
+        worker.finished_with_payload.connect(self._conversion_finished_with_payload)
+        worker.finished.connect(lambda: self._finish_conversion(worker))
+
+    def _set_conversion_running(self, running: bool) -> None:
+        self.preview_button.setEnabled(not running)
+        self.run_button.setEnabled(not running)
+        self.preview_button.setText(
+            "预览划分 0%" if running and self._conversion_preview else "预览划分"
+        )
+        self.run_button.setText(
+            "执行划分 0%" if running and not self._conversion_preview else "执行划分"
+        )
+        if running:
+            action = "预览划分" if self._conversion_preview else "执行划分"
+            self.log.setPlainText(f"正在{action}，请稍候...")
+
+    def _conversion_progress(self, message: str, value: int) -> None:
+        value = max(0, min(100, int(value)))
+        if (
+            value < 100
+            and message == self._conversion_progress_message
+            and value - self._conversion_progress_value < 5
+        ):
+            return
+        self._conversion_progress_message = message
+        self._conversion_progress_value = value
+        button = self.preview_button if self._conversion_preview else self.run_button
+        action = "预览划分" if self._conversion_preview else "执行划分"
+        button.setText(f"{action} {value}%")
+        self.log.setPlainText(f"{message}：{value}%")
+
+    def _conversion_finished_with_payload(self, _kind: str, payload) -> None:
+        if isinstance(payload, dict) and payload.get("error"):
+            action = "预览" if self._conversion_preview else "执行"
+            self.log.setPlainText(f"{action}失败：{payload['error']}")
+
+    def _finish_conversion(self, worker) -> None:
+        if self._conversion_worker is worker:
+            self._conversion_worker = None
+        self._conversion_config = None
+        self._conversion_progress_value = -1
+        self._conversion_progress_message = ""
+        self._set_conversion_running(False)
+
+    def apply_conversion_preview(self, payload) -> None:
+        config = self._conversion_config
+        if config is not None:
+            self.log.setPlainText(
+                format_conversion_result(payload, config, preview=True)
+            )
+
+    def apply_conversion_run(self, payload) -> None:
+        config = self._conversion_config
+        if config is not None:
+            self.log.setPlainText(format_conversion_result(payload, config))

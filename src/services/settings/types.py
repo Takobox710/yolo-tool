@@ -63,6 +63,9 @@ class ImageResizeSettings:
     source_dir: str
     long_edge: int
     canvas_size: int
+    mode: str
+    aspect_ratio: str
+    resolution: str
     background: str
     output_dir: str
     backup_dir: str
@@ -108,7 +111,6 @@ class ValidationSettings:
     camera_index: int
     confidence: float
     iou: float
-    imgsz: int
     save_dir: str
 
 

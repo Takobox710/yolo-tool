@@ -43,6 +43,7 @@ def test_annotation_canvas_sam_preview_confirms_without_manual_drawing():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from PySide6.QtGui import QMouseEvent, QPointingDevice, QPixmap
+    from src.services.annotation import EditableAnnotation
     from src.shared.qt import QApplication, QEvent, Qt
     from src.ui.features.annotation.canvas.widget import AnnotationCanvas
 
@@ -51,6 +52,9 @@ def test_annotation_canvas_sam_preview_confirms_without_manual_drawing():
     canvas.resize(420, 360)
     canvas.pixmap = QPixmap(100, 100)
     canvas.image_size = (100, 100)
+    canvas.annotations.append(
+        EditableAnnotation(0, "rect", [(0.0, 0.0), (30.0, 0.0), (30.0, 30.0), (0.0, 30.0)])
+    )
     canvas.set_draw_shape("circle")
     canvas.set_sam_assist_enabled(True)
     assert canvas.draw_shape == "rect"
@@ -79,9 +83,10 @@ def test_annotation_canvas_sam_preview_confirms_without_manual_drawing():
 
     canvas.mousePressEvent(event)
 
-    assert len(canvas.annotations) == 1
-    assert canvas.annotations[0].shape == "rect"
-    assert canvas.annotations[0].points == [(10.0, 10.0), (40.0, 10.0), (40.0, 50.0), (10.0, 50.0)]
+    assert len(canvas.annotations) == 2
+    assert canvas.annotations[0].points == [(0.0, 0.0), (30.0, 0.0), (30.0, 30.0), (0.0, 30.0)]
+    assert canvas.annotations[1].shape == "rect"
+    assert canvas.annotations[1].points == [(10.0, 10.0), (40.0, 10.0), (40.0, 50.0), (10.0, 50.0)]
     assert changed == [True]
     assert canvas.drag_start is None
 
@@ -165,3 +170,40 @@ def test_annotation_canvas_sam_without_preview_requests_hover_and_blocks_manual_
     assert canvas.annotations == []
     assert canvas.polygon_points == []
     assert canvas.drag_start is None
+
+
+def test_annotation_canvas_sam_hover_ignores_existing_annotations():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtGui import QMouseEvent, QPointingDevice, QPixmap
+    from src.services.annotation import EditableAnnotation
+    from src.shared.qt import QApplication, QEvent, Qt
+    from src.ui.features.annotation.canvas.widget import AnnotationCanvas
+
+    app = QApplication.instance() or QApplication([])
+    canvas = AnnotationCanvas()
+    canvas.resize(420, 360)
+    canvas.pixmap = QPixmap(100, 100)
+    canvas.image_size = (100, 100)
+    canvas.annotations.append(
+        EditableAnnotation(0, "rect", [(10.0, 10.0), (80.0, 10.0), (80.0, 80.0), (10.0, 80.0)])
+    )
+    canvas.set_draw_shape("rect")
+    canvas.set_sam_assist_enabled(True)
+    requests = []
+    canvas.sam_hover_callback = lambda point, shape: requests.append((point, shape))
+    position = canvas._image_to_widget((50.0, 50.0))
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        position,
+        position,
+        position,
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        QPointingDevice.primaryPointingDevice(),
+    )
+
+    canvas.mouseMoveEvent(event)
+
+    assert requests == [((50.0, 50.0), "rect")]

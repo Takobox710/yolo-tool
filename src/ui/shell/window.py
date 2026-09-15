@@ -154,13 +154,20 @@ class WorkbenchWindow(QMainWindow):
     def ensure_page(self, key: str):
         return ensure_page(self, key)
 
-    def run_background(self, kind: str, fn, *, receiver=None):
+    def run_background(
+        self,
+        kind: str,
+        fn,
+        *,
+        receiver=None,
+        accepts_progress: bool = False,
+    ):
         lease = self.context.tasks.begin(kind, generation=self.context.generation)
         if lease is None:
             return None
         if should_log_background_kind(kind):
             self.append_program_log(f"开始后台任务：{kind}")
-        worker = Worker(kind, fn)
+        worker = Worker(kind, fn, accepts_progress=accepts_progress)
         self.workers.append(worker)
         worker.finished_with_payload.connect(
             lambda task_kind, payload, target=receiver, task_lease=lease: self.handle_background(
@@ -171,6 +178,7 @@ class WorkbenchWindow(QMainWindow):
             lambda w=worker, task_lease=lease: self._finish_background(w, task_lease)
         )
         worker.start()
+        return worker
 
     def _finish_background(self, worker, lease) -> None:
         if worker in self.workers:

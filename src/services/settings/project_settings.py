@@ -92,6 +92,8 @@ class SettingsService:
         migrated = int(payload.get("schema_version", 0) or 0) != 1
         self._migrate_training_config(payload)
         self._migrate_model_export_config(payload)
+        self._migrate_image_resize_config(payload)
+        self._migrate_validation_config(payload)
         payload["schema_version"] = 1
         payload.setdefault("project", {})["root"] = str(self.project_root)
         merged = deep_merge(settings_to_dict(defaults), payload)
@@ -145,6 +147,26 @@ class SettingsService:
         imgsz = training.get("imgsz")
         if isinstance(imgsz, int) and not isinstance(imgsz, bool):
             training["imgsz"] = f"{imgsz}×{imgsz}"
+
+    @staticmethod
+    def _migrate_image_resize_config(payload: dict[str, Any]) -> None:
+        image_resize = payload.get("image_resize")
+        if not isinstance(image_resize, dict):
+            return
+        canvas_size = image_resize.get("canvas_size", 960)
+        if "resolution" not in image_resize:
+            if isinstance(canvas_size, int) and not isinstance(canvas_size, bool):
+                image_resize["resolution"] = f"{canvas_size}×{canvas_size}"
+            else:
+                image_resize["resolution"] = "960×960"
+        image_resize.setdefault("mode", "画布压缩")
+        image_resize.setdefault("aspect_ratio", "1:1")
+
+    @staticmethod
+    def _migrate_validation_config(payload: dict[str, Any]) -> None:
+        validation = payload.get("validation")
+        if isinstance(validation, dict):
+            validation.pop("imgsz", None)
 
     def reset_to_defaults(self) -> AppSettings:
         defaults = build_default_settings(self.project_root)

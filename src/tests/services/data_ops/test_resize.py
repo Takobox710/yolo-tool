@@ -72,3 +72,67 @@ def test_resize_recursively_scans_and_preserves_relative_structure(tmp_path):
     assert (tmp_path / "out" / "10" / "2" / "3.jpg").exists()
     assert (tmp_path / "backup" / "10" / "2" / "3.jpg").exists()
     assert result.processed_count == 3
+
+
+def test_canvas_resize_outputs_selected_ratio_with_centered_padding(tmp_path):
+    from PIL import Image
+
+    from src.services.data_ops import ResizeConfig, run_resize
+
+    source = tmp_path / "images"
+    source.mkdir()
+    make_image(source / "wide.jpg", size=(1200, 600), color="red")
+
+    run_resize(
+        ResizeConfig(
+            source_dir=source,
+            output_dir=tmp_path / "out",
+            backup_dir=tmp_path / "backup",
+            aspect_ratio="4:3",
+            resolution="640×480",
+            background="black",
+        )
+    )
+
+    with Image.open(tmp_path / "out" / "wide.jpg") as image:
+        assert image.size == (640, 480)
+        assert image.getpixel((10, 10)) == (0, 0, 0)
+        red = image.getpixel((320, 240))
+        assert red[0] > 200 and red[1] < 30 and red[2] < 30
+
+
+def test_crop_resize_center_crops_to_selected_ratio_and_resolution(tmp_path):
+    from PIL import Image
+
+    from src.services.data_ops import (
+        RESIZE_MODE_CROP,
+        ResizeConfig,
+        preview_resize,
+        run_resize,
+    )
+
+    source = tmp_path / "images"
+    source.mkdir()
+    image = Image.new("RGB", (1200, 600), "red")
+    image.paste("blue", (0, 0, 300, 600))
+    image.paste("green", (900, 0, 1200, 600))
+    image.save(source / "wide.jpg")
+    config = ResizeConfig(
+        source_dir=source,
+        output_dir=tmp_path / "out",
+        backup_dir=tmp_path / "backup",
+        mode=RESIZE_MODE_CROP,
+        aspect_ratio="4:3",
+        resolution="640×480",
+    )
+
+    preview = preview_resize(config)
+    result = run_resize(config)
+
+    assert preview.items[0].crop_box == (200, 0, 1000, 600)
+    assert preview.items[0].output_size == (640, 480)
+    assert result.processed_count == 1
+    with Image.open(tmp_path / "out" / "wide.jpg") as image:
+        assert image.size == (640, 480)
+        pixel = image.getpixel((320, 240))
+        assert pixel[0] > 200 and pixel[1] < 30 and pixel[2] < 30

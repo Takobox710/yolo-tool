@@ -91,10 +91,19 @@ def test_archive_builders_preserve_the_alternate_archive_format():
 
 def test_gpu_full_packaging_rebuilds_program_only_installer_after_base_runtime():
     package_script = Path("installer/package_windows.ps1").read_text(encoding="utf-8")
+    full_gpu_section = _section(
+        package_script,
+        "if ($BuildBaseRuntimeModels -and -not $IntegratedRuntime) {",
+        "if ($BuildModelExportRuntime) {",
+    )
 
     assert 'if ($BuildBaseRuntimeModels -and -not $IntegratedRuntime)' in package_script
     assert "-Mode release -Clean:$Clean -PackageType Program `" in package_script
     assert "ProgramOnly:$ProgramOnly" in package_script
+    assert "正在重新构建仅程序 EXE 和程序 staging" in full_gpu_section
+    assert "-Mode release -Clean -PackageType Program `" in full_gpu_section
+    assert "-ProgramOnly `" in full_gpu_section
+    assert "Program-only build failed after base runtime build" in full_gpu_section
     assert 'Join-Path $ProgramStaging "_internal"' in package_script
     assert "拒绝生成重复携带运行环境的安装器" in package_script
 

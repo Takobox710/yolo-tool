@@ -361,3 +361,38 @@ def test_conversion_skips_empty_split_directories_even_when_ratio_is_nonzero(tmp
     assert "train:" not in yaml_text
     assert "val: data/val/images" in yaml_text
     assert "test:" not in yaml_text
+
+
+def test_run_conversion_reports_monotonic_progress(tmp_path):
+    from src.services.conversion import ConversionConfig, run_conversion
+
+    images = tmp_path / "images"
+    labels = tmp_path / "yolo_labels"
+    images.mkdir()
+    labels.mkdir()
+    make_image(images / "one.jpg")
+    (labels / "one.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+    progress: list[tuple[str, int]] = []
+
+    run_conversion(
+        ConversionConfig(
+            task_mode="detect",
+            source_format="yolo",
+            images_dir=images,
+            annotations_dir=labels,
+            output_dir=tmp_path / "data",
+            labels_dir=tmp_path / "labels",
+            class_names=["weld"],
+            train_ratio=1.0,
+            val_ratio=0.0,
+            test_ratio=0.0,
+        ),
+        progress=lambda message, value: progress.append((message, value)),
+    )
+
+    assert progress[0] == ("扫描输入文件", 0)
+    assert progress[-1] == ("划分完成", 100)
+    assert any(message == "写入数据集" for message, _value in progress)
+    assert [value for _message, value in progress] == sorted(
+        value for _message, value in progress
+    )

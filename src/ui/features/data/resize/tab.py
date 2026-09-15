@@ -3,9 +3,22 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from src.services.data_ops import ResizeConfig, preview_resize, run_resize
+from src.services.data_ops import (
+    RESIZE_MODE_CANVAS,
+    RESIZE_MODE_CROP,
+    ResizeConfig,
+    preview_resize,
+    run_resize,
+)
 from src.ui.shared.page_base import BasePage
-from src.shared.qt import QGridLayout, QHBoxLayout, QPushButton, QTextEdit, QVBoxLayout
+from src.shared.qt import (
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+)
 
 class ResizeTab(BasePage):
     def __init__(self, context):
@@ -35,10 +48,20 @@ class ResizeTab(BasePage):
             self.choose_dir,
             "选择压缩结果输出目录",
         )
-        self.canvas_box, self.canvas_edit = self.field(
+        self.mode_box, self.mode_combo = self.combo_field(
+            "处理方式",
+            resize.mode,
+            [RESIZE_MODE_CANVAS, RESIZE_MODE_CROP],
+        )
+        self.ratio_box, self.ratio_combo = self.combo_field(
+            "图片比例",
+            resize.aspect_ratio,
+            ["1:1", "4:3", "16:9", "3:4", "9:16"],
+        )
+        self.size_box, self.size_edit = self.field(
             "画布尺寸",
-            str(resize.canvas_size),
-            placeholder="例如 960",
+            resize.resolution,
+            placeholder="例如 640×480",
         )
         self.bg_box, self.bg_combo = self.combo_field(
             "背景颜色",
@@ -55,7 +78,9 @@ class ResizeTab(BasePage):
                 self.source_box,
                 self.backup_box,
                 self.output_box,
-                self.canvas_box,
+                self.mode_box,
+                self.ratio_box,
+                self.size_box,
                 self.output_mode_box,
                 self.bg_box,
             ]
@@ -65,7 +90,7 @@ class ResizeTab(BasePage):
             "备份原始图片",
             resize.backup_enabled,
         )
-        grid.addWidget(backup_toggle_box, 2, 0)
+        grid.addWidget(backup_toggle_box, 3, 0)
         layout.addLayout(grid)
         actions = QHBoxLayout()
         preview_button = QPushButton("预览压缩")
@@ -83,6 +108,7 @@ class ResizeTab(BasePage):
         self.prepare_readonly_text(self.log)
         layout.addWidget(self.log, 1)
         self._connect_persistence()
+        self._sync_mode_controls()
 
     def on_setting_changed(self, keys, value):
         if keys != ("image_resize", "source_dir"):
@@ -96,24 +122,40 @@ class ResizeTab(BasePage):
             source_dir=self.path_from_edit(self.source_edit),
             output_dir=self.path_from_edit(self.output_edit),
             backup_dir=self.path_from_edit(self.backup_edit),
-            canvas_size=int(self.canvas_edit.text()),
+            canvas_size=resize_value(self.size_edit.text()),
+            mode=self.mode_combo.currentText(),
+            aspect_ratio=self.ratio_combo.currentText(),
+            resolution=self.size_edit.text(),
             background=self.bg_combo.currentText(),
             backup_enabled=self.backup_check.isChecked(),
         )
 
     def preview(self):
-        result = preview_resize(self.config())
+        try:
+            result = preview_resize(self.config())
+        except ValueError as exc:
+            self.log.setPlainText(f"无法预览：{exc}")
+            return
         self.log.setPlainText(
-            f"计划处理 {len(result.items)} 张图片\n输出方式: {self.output_mode_combo.currentText()}\n"
+            f"计划处理 {len(result.items)} 张图片\n处理方式: {self.mode_combo.currentText()}\n"
+            f"图片比例: {self.ratio_combo.currentText()}\n输出方式: {self.output_mode_combo.currentText()}\n"
         )
         source_root = self.path_from_edit(self.source_edit)
         for item in result.items[:80]:
-            self.log.append(
-                f"{item.source.relative_to(source_root)}: {item.original_size} -> {item.resized_size}, scale={item.scale:.3f}"
+            detail = (
+                f"{item.source.relative_to(source_root)}: {item.original_size} -> "
+                f"{item.output_size}, scale={item.scale:.3f}"
             )
+            if item.crop_box:
+                detail += f", 裁剪区域={item.crop_box}"
+            self.log.append(detail)
 
     def run(self):
-        result = run_resize(self.config())
+        try:
+            result = run_resize(self.config())
+        except ValueError as exc:
+            self.log.append(f"压缩失败：{exc}")
+            return
         self.log.append(
             f"\n压缩完成: {result.processed_count} 张，输出目录: {result.output_dir}"
         )
@@ -148,7 +190,9 @@ class ResizeTab(BasePage):
                 "image_resize", "backup_enabled", value=bool(checked)
             )
         )
-        self.canvas_edit.textChanged.connect(self._persist_canvas_size)
+        self.mode_combo.currentTextChanged.connect(self._set_resize_mode)
+        self.ratio_combo.currentTextChanged.connect(self._set_aspect_ratio)
+        self.size_edit.textChanged.connect(self._persist_resolution)
         self.bg_combo.currentTextChanged.connect(
             lambda value: self.update_setting("image_resize", "background", value=value)
         )
@@ -158,9 +202,36 @@ class ResizeTab(BasePage):
             )
         )
 
-    def _persist_canvas_size(self, text: str):
+    def _set_resize_mode(self, value: str):
+        self.update_setting("image_resize", "mode", value=value)
+        self._sync_mode_controls()
+
+    def _set_aspect_ratio(self, value: str):
+        self.update_setting("image_resize", "aspect_ratio", value=value)
+
+    def _persist_resolution(self, text: str):
         try:
-            value = int(text)
+            value = resize_value(text)
         except ValueError:
             return
+        self.update_setting("image_resize", "resolution", value=text)
         self.update_setting("image_resize", "canvas_size", value=value)
+
+    def _sync_mode_controls(self):
+        is_canvas = self.mode_combo.currentText() == RESIZE_MODE_CANVAS
+        label = self.size_box.findChild(QLabel, "fieldLabel")
+        if label is not None:
+            self._set_help_target(
+                label,
+                "画布尺寸" if is_canvas else "输出分辨率",
+                "画布压缩使用该尺寸创建补边画布；裁剪模式使用该尺寸输出裁剪结果。",
+            )
+        self.bg_box.setEnabled(is_canvas)
+
+
+def resize_value(text: str) -> int:
+    normalized = str(text).strip().lower().replace("×", "x")
+    width, separator, height = normalized.partition("x")
+    if not separator:
+        return int(width)
+    return max(int(width), int(height))

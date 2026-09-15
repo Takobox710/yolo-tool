@@ -148,7 +148,6 @@ def test_build_val_command_uses_app_cli_val_entry(tmp_path):
             "data": str(tmp_path / "data.yaml"),
             "confidence": 0.25,
             "iou": 0.45,
-            "imgsz": 960,
             "save_dir": str(tmp_path / "result" / "gui_val"),
         }
     )
@@ -157,7 +156,7 @@ def test_build_val_command_uses_app_cli_val_entry(tmp_path):
     assert "obb" in command
     assert "val" in command
     assert f"data={tmp_path / 'data.yaml'}" in command
-    assert "imgsz=960" in command
+    assert not any(field.startswith("imgsz=") for field in command)
 
 
 def test_repair_validation_path_if_needed_restores_val_from_train(tmp_path):

@@ -45,7 +45,6 @@ from src.ui.features.validation.state import (
     handle_video_progress,
     handle_source_input_changed,
     handle_source_scope_changed,
-    persist_validation_integer,
     persist_validation_model,
     persist_validation_numeric,
     persist_validation_value,

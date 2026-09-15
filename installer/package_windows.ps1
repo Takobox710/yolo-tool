@@ -174,7 +174,20 @@ try {
         $BaseStepTimer.Stop()
         Write-StepElapsed "[2/5] 基础环境包步骤完成" $BaseStepTimer
 
-        $ProgramOnlyStepTimer = $null
+        # The complete frozen output above belongs exclusively to BaseEnv.
+        # Rebuild the installer program layer without external runtime modules.
+        $ProgramOnlyStepTimer = [System.Diagnostics.Stopwatch]::StartNew()
+        Write-Step "[3/5] 正在重新构建仅程序 EXE 和程序 staging..."
+        & (Join-Path $PSScriptRoot "build_windows.ps1") `
+            -Mode release -Clean -PackageType Program `
+            -ProgramOnly `
+            -Variant $Variant `
+            -RuntimeVersion $RuntimeVersion -RequiredRuntimeVersion $RequiredRuntimeVersion
+        if ($LASTEXITCODE -ne 0) {
+            throw "Program-only build failed after base runtime build with exit code $LASTEXITCODE"
+        }
+        $ProgramOnlyStepTimer.Stop()
+        Write-StepElapsed "[3/5] 仅程序 EXE 和 staging 构建完成" $ProgramOnlyStepTimer
     }
     if ($BuildModelExportRuntime) {
         $ExtensionStepTimer = [System.Diagnostics.Stopwatch]::StartNew()

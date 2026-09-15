@@ -41,6 +41,39 @@ def test_logged_process_uses_hidden_windows_subprocess(monkeypatch):
     assert calls["creationflags"] == getattr(runtime_service.subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def test_interactive_structured_process_forces_utf8_stdio(monkeypatch):
+    from queue import Queue
+
+    from src.services.runtime import process_runner as runtime_service
+
+    calls = {}
+
+    class FakeStdout:
+        def __iter__(self):
+            return iter(())
+
+    class FakeProcess:
+        stdout = FakeStdout()
+
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        calls["command"] = command
+        calls["env"] = kwargs.get("env")
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime_service.subprocess, "Popen", fake_popen)
+
+    handle = runtime_service.spawn_interactive_structured_process(
+        ["demo"], str(Path.cwd()), Queue()
+    )
+    handle.thread.join(timeout=1)
+
+    assert calls["command"] == ["demo"]
+    assert calls["env"]["PYTHONIOENCODING"] == "utf-8"
+
+
 def test_logged_process_cleans_terminal_escape_sequences(monkeypatch):
     from queue import Queue
 

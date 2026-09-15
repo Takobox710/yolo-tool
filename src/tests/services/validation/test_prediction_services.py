@@ -75,11 +75,14 @@ def test_video_prediction_writes_mp4_without_frame_labels(monkeypatch, tmp_path)
         def plot(self, img=None):
             return img
 
+    calls = []
+
     class FakeYOLO:
         def __init__(self, _model_path):
             pass
 
-        def predict(self, **_kwargs):
+        def predict(self, **kwargs):
+            calls.append(kwargs)
             return [FakeResult()]
 
     monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
@@ -112,6 +115,7 @@ def test_video_prediction_writes_mp4_without_frame_labels(monkeypatch, tmp_path)
     assert result_video.exists()
     assert not (result_dirs[0] / "labels").exists()
     assert len(written_frames) == 3
+    assert calls and all("imgsz" not in call for call in calls)
     completed = [payload for event, payload in events if event == "video_completed"]
     assert completed
     assert completed[-1]["payload"]["result_path"] == str(result_video)

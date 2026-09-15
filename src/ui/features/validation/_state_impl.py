@@ -25,7 +25,6 @@ from src.ui.features.validation.persistence_state import (
     handle_data_path_changed,
     handle_source_input_changed,
     handle_source_scope_changed,
-    persist_validation_integer,
     persist_validation_model,
     persist_validation_numeric,
     persist_validation_value,

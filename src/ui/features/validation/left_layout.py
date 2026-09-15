@@ -43,9 +43,7 @@ def build_validation_left_layout(page, context, split) -> None:
     conf_row = QHBoxLayout()
     page.conf_box, page.conf_edit = page.field("置信度", str(validation.confidence), placeholder="例如 0.25")
     page.iou_box, page.iou_edit = page.field("IoU", str(validation.iou), placeholder="例如 0.45")
-    page.imgsz_box, page.imgsz_combo = page.combo_field("图片尺寸", str(validation.imgsz), ["640", "960", "1280"], editable=True, placeholder="例如 640")
-    page.imgsz_combo.setMinimumContentsLength(5)
-    for widget in (page.conf_box, page.iou_box, page.imgsz_box):
+    for widget in (page.conf_box, page.iou_box):
         conf_row.addWidget(widget)
     left_column.addLayout(conf_row)
     page.mode_box, page.mode_combo = page.combo_field("检测模式", stored_mode, ["图片检测", "视频检测", "摄像头检测", "数据集验证"])
@@ -81,7 +79,7 @@ def build_validation_left_layout(page, context, split) -> None:
     page.prepare_readonly_text(page.detect_log)
     page.detect_log.setMinimumHeight(180)
     left_column.addWidget(page.detect_log, 1)
-    for field_box in (model_box, page.conf_box, page.iou_box, page.imgsz_box, page.mode_box, page.source_box, page.data_box, page.source_scope_box, page.camera_box, page.save_box):
+    for field_box in (model_box, page.conf_box, page.iou_box, page.mode_box, page.source_box, page.data_box, page.source_scope_box, page.camera_box, page.save_box):
         field_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
     split.addWidget(left_shell)
 

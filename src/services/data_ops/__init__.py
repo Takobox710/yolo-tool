@@ -16,6 +16,8 @@ from src.services.data_ops.rename import (
     preview_rename,
 )
 from src.services.data_ops.resize import (
+    RESIZE_MODE_CANVAS,
+    RESIZE_MODE_CROP,
     ResizeConfig,
     ResizePlanItem,
     ResizePreview,
@@ -28,6 +30,8 @@ from src.services.data_ops.sorting import natural_sort_key
 __all__ = [
     "RenamePlanItem",
     "RenameResult",
+    "RESIZE_MODE_CANVAS",
+    "RESIZE_MODE_CROP",
     "ResizeConfig",
     "ResizePlanItem",
     "ResizePreview",

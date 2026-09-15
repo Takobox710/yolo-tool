@@ -106,8 +106,8 @@ yolo_tool/
 
 ### `src/services/runtime/`
 
-- `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程。
-- `windows_spawn.py` 提供 Windows 隐藏窗口参数，确保打包后的后台任务不弹终端。
+- `process_runner.py` 统一后台子进程启动、日志转发、结构化输出和停止流程；所有文本子进程按 UTF-8 读写，避免 Windows 本地代码页破坏含中文的 JSON 路径。
+- `windows_spawn.py` 提供 Windows 隐藏窗口参数和子进程 UTF-8 I/O 环境，确保打包后的后台任务不弹终端，并保持 SAM/AI 运行时路径协议稳定。
 - `environment_probe.py` 提供 Python、依赖版本、Torch/CUDA 和系统状态检测；依赖版本优先读取 `importlib.metadata`，冻结态缺少发行版元数据时回退读取模块的 `__version__`。GUI 启动不强制比较运行环境版本；安装器调用的 `--runtime-probe` 仍不加载这些模块，只比较程序清单要求的运行时版本与 `_internal` 基础环境清单中的版本。
 - Release 更新服务按职责拆为 `release_catalog.py`（Release 检查和资源解析）、`release_download.py`（流式下载）与 `release_installer.py`（安装器生命周期），`release_updates.py` 只保留兼容 façade；GPU 环境包版本来自 `YOLOTool_BaseEnv_<版本>.7z.001/.002` 或 `YOLOTool_ExtraEnv_<版本>.7z` 文件名，并与 `install-instance.ini` / `package-info.ini` 的包版本比较。CPU 实例只选择带 `_CPU_` 的 Setup，不查找 CPU BaseEnv/ExtraEnv；GPU 实例只选择旧命名资源，基础包分卷作为同一个逻辑资源下载，缺少任一分卷时不允许选择安装。网络请求和文件下载必须放入后台 worker，不能在 Qt 主线程直接执行。
 - `installer/YOLOTool.spec` 在 `YOLO_TOOL_PROGRAM_ONLY=1` 时只分析应用代码，第三方运行时模块由基础包 `_internal/` 提供；`src/devtools/runtime_package_boundaries.py` 的 `PROGRAM_EXTERNAL_RUNTIME_EXCLUDES` 集中维护程序-only 排除集，覆盖 NumPy、SciPy、Pandas、TorchVision、SAM2/SAM3、timm 及其纯 Python 依赖，避免程序层与旧 v3 环境的原生扩展混用。程序本体明确收集 `ctypes.util` 和 `ctypes.wintypes`，兼容 Cryptodome 在 Python 3.12 Windows 下从 CFFI 回退到 ctypes 的导入链。打包链路只保留实际需要的 `installer/hooks/hook-torch.py` 与 `installer/hooks/program_external_runtime.py`：前者收集完整环境所需的 Torch 源码、动态库和隐藏导入，后者只在程序-only 模式注册固定的后端 DLL 目录和基础包路径，不递归扫描运行时目录；已排除的 PySide6 deploy_lib 和 tensorboard 模块不再配置空 hook。基础环境构建由 `src/devtools/base_runtime_builder.py` 与 `package_files.py` 负责，`release_package.py` 仅保留兼容导出；动态导入标准库打入 `python_stdlib.zip`，第三方纯 Python 源码过滤测试、示例、打包工具、测试框架和未使用的 Windows COM/数据库源码。
@@ -150,7 +150,7 @@ yolo_tool/
 - 摄像头检测模式由 `state.py` 隐藏批量结果工具栏，避免无效工具栏占用右侧实时预览区顶部间距。
 - 摄像头检测模式仍由 `state.py` 保留左侧启动/停止按钮，按钮可见性与右侧批量导航工具栏独立控制。
 - 视频文件检测按输入后缀自动进入视频进度模式，后台每秒发送一次进度事件并写出 MP4 结果；视频检测不生成帧级 YOLO TXT 标注。
-- 验证页视频模式由 `src/ui/features/validation/video_player.py` 管理源视频与结果视频的 Qt 播放器，页面加载时暂停在当前视频第一帧；源视频作为播放时钟，顶部滑块同步拖动两侧视频，播放按钮与检测按钮状态分离，两个视频面板使用等权横向伸缩，后续批量视频事件不得替换当前预览。
+- 验证页预测不保存或传递 `imgsz`；`prediction_runner.py` 与打包后的 `cli_predict.py` 均不覆盖模型原生推理尺寸，旧项目设置中的 `validation.imgsz` 会在加载时移除。视频模式由 `src/ui/features/validation/video_player.py` 管理源视频与结果视频的 Qt 播放器，页面加载时暂停在当前视频第一帧；源视频作为播放时钟，顶部滑块同步拖动两侧视频，播放按钮与检测按钮状态分离，两个视频面板使用等权横向伸缩，后续批量视频事件不得替换当前预览。
 - 验证页在图片检测与视频检测间切换时，由 `mode_state.py` 暂停页面绘制，完成所有模式控件和播放器状态更新后再统一刷新；`source_state.py`、`config_state.py`、`persistence_state.py`、`log_state.py` 分别承载输入源、检测配置、设置持久化和日志状态，`state.py` 保留兼容导出，避免视频切换为图片时出现中间画面闪动。
 - 验证页源视频播放器监听 `playbackStateChanged` 和 `mediaStatusChanged`；视频自然结束时由页面统一恢复播放按钮状态并暂停结果视频。
 - 验证页拖放由 `ValidationPageActionsMixin` 识别本地图片/视频文件并更新模式与输入源；输入源选项通过 `source_selection` 区分批量目录和单文件选择，`collect_prediction_sources()` 对图片检测/视频检测模式同时支持目录和单文件路径，复用同一检测 worker。
@@ -188,11 +188,12 @@ yolo_tool/
 - 数据集划分页的“模式选择”用 `conversion.use_labelme` 兼容保存 Labelme 转换模式或 YOLO 原生划分模式；模式选择独占转换参数区首行，线标注转换宽度继续读取 `dataset.line_to_obb.half_width`。
 - `backup.py` 负责旧产物清理与备份；未启用备份时不主动创建 `old/` 目录。
 - `formatting.py` 负责转换结果说明文本。
-- `execute.py` 保留为转换总流程装配入口。
+- `execute.py` 保留为转换总流程装配入口，并通过可选阶段回调向 UI 后台任务报告扫描、解析、写入和备份进度。
 
 ### `src/services/data_ops/`
 
 - 负责批量重命名、图片压缩和项目内路径显示转换。
+- 图片压缩服务以 `ResizeConfig.mode` 区分“画布压缩”和“裁剪”：前者按目标比例缩放并补齐画布，后者按中心裁剪目标比例后输出指定分辨率；`image_resize.mode`、`aspect_ratio` 与 `resolution` 为项目级持久化设置，旧 `canvas_size` 会迁移为方形分辨率以保持兼容。
 - `relative_path_from_project()` 用于验证页自定义输入源的相对路径显示；路径解析仍由 `resolve_project_path()` 统一处理，项目外路径使用 `..` 表示。
 - 图片压缩页的“打开结果文件夹”属于页面层轻交互，直接基于当前“输出目录”字段解析后的路径打开目录，不额外下沉到服务层。
 
@@ -210,6 +211,7 @@ yolo_tool/
 - `WorkbenchWindow` 默认尺寸为 `1100 x 740`，最小尺寸为 `800 x 600`；项目内路径在 UI 中优先显示为相对路径，写入文件时由设置存储层解析/序列化。
 - 页面通过上下文提交设置变更并接收字段路径通知；控件刷新期间阻断信号，避免通知回写造成重复保存。
 - 项目路径字段分为三组共享路径：`paths.images_dir`（数据集划分、标注预览、批量重命名、数据标注）、`paths.annotations_dir`（数据标注、数据集划分、批量重命名）和 `paths.labels_dir`（标注预览、数据集划分）；图片压缩源目录单独使用 `image_resize.source_dir`。
+- 数据集划分页的预览和执行通过 `WorkbenchContext.run_background()` 调用转换服务，支持进度信号回调；任务运行期间两个操作按钮禁用，完成后或失败后恢复。
 - 数据处理页的 `ModelExportTab` 负责模型转换页面装配，格式、路径、依赖、进程命令和扩展安装规则均由 `src/services/model_export/` 提供；与系统设置页共用附加包拖放处理。页面安装附加包时不再显示解压百分比进度条。
 - `src/ui/features/data/model_export/tab.py` 仅保留页面生命周期和兼容入口；`visibility.py` 负责格式/模型能力驱动的控件显隐，`compat.py` 集中保留历史页面方法委托，`selection.py` 负责模型/校准集选择，`config.py` 负责配置采集与路径解析，`availability.py` 负责格式与精度能力状态，`runtime_actions.py` 负责预览、启动、轮询、停止和结果收尾，`state.py` 继续负责设置持久化与格式选项缓存。
 - `layout.py` 是稳定的兼容导出入口；`layout_base.py` 负责基础字段与卡片，`layout_actions.py` 负责动作区，`layout_responsive.py` 负责选项重排与卡片比例，`layout_components.py` 仅保留兼容协调，格式专属控件仍位于 `layout_options.py`。这些模块通过参数化页面对象共享控件工厂，不改变模型转换页面布局或设置字段。
@@ -220,7 +222,7 @@ yolo_tool/
 - `src/ui/features/annotation/canvas/configuration.py` 负责画布线宽、镜像编辑、交互模式、显示开关和十字线配置；`widget.py` 通过兼容方法转发，避免 Qt 入口重新承载配置细节。
 - `src/services/annotation/history.py` 保存不可变标注快照和最近 5 次操作；`src/ui/features/annotation/canvas/history.py` 只负责把新增、删除、拖动、变形和类别修改的提交边界通知页面。换页不产生历史，撤销/恢复按历史项所属图片自动定位；选中和未发生实际几何变化的鼠标操作不触发脏状态或历史记录。
 - `src/ui/features/annotation/sam/controller.py` 负责模型发现、项目级模型与高级参数保存、首帧立即提交与 `50~120 ms` 自适应移动调度（同一形状下小于 `2 px` 的微小移动过滤）、模型/图片编码状态及页面生命周期；参数保存只使旧悬停请求失效，不重载模型或图片 embedding。移动期间保留最近完成的预览帧，并使用失效代次隔离离开、命中标注、确认、切图和切模式前的结果。`sam/runtime.py` 通过隐藏子进程维持一个在途预测，只保留一个最新待发送坐标。
-- 标注画布只持有 SAM 启用状态、预览几何和输入回调，不导入 Torch、SAM2、OpenCV 或子进程实现。SAM 预览为独立绿色图层，复刻 LabelPaw 的纯绿色不透明边缘与低透明度填充，边框使用较粗、较长且 `cosmetic` 的固定像素虚线，确认时创建正式 `EditableAnnotation` 并复用 `_finish_annotation()`；命中已有标注的悬停不发起请求。
+- 标注画布只持有 SAM 启用状态、预览几何和输入回调，不导入 Torch、SAM2、OpenCV 或子进程实现。SAM 预览为独立绿色图层，复刻 LabelPaw 的纯绿色不透明边缘与低透明度填充，边框使用较粗、较长且 `cosmetic` 的固定像素虚线，确认时创建正式 `EditableAnnotation` 并复用 `_finish_annotation()`；已有标注不作为 SAM 悬停或点击推理的拦截条件。
 - `DrawShapeDialog` 与画布右键菜单共用 `AnimatedToggleSwitch`；窗口控件布局位于 `draw_shape_layout.py`，兼容对话框保留 SAM 回调和高级设置协调。`240 px` 宽的窗口在模型框右侧提供 `50 x 36 px` 的紧凑`高级`按钮，SAM 标题行距窗口顶部 `12 px`，模型下拉框允许横向压缩并省略过长名称；`sam/settings_dialog.py` 保留参数读写与模型操作，`settings_model.py` 负责默认值和对数换算，`settings_layout.py` 装配独立参数窗口。高级窗口顶部通过模型下拉框切换候选 checkpoint，并可直接打开当前模型目录；取消不提交模型切换，保存后由标注窗口同步选择。最小掩码面积与轮廓简化比例共用对齐滑块/数值列，前者使用对数刻度覆盖 `1~100000000 px²`；最低预测质量、最小掩码面积和轮廓简化比例的数值框均关闭上下调按钮，保留直接输入和滑块联动。SAM 图标只保留在“画标注框”窗口，右键菜单的 SAM 行置于菜单底部、与标注形状之间使用分隔线并使用普通自定义菜单行间距，后者只负责同步开关；SAM 开启时只允许矩形、普通有向矩形、镜像有向矩形、多边形和编辑模式。
 - 标注页快捷键由 `src/ui/features/annotation/shortcuts.py` 集中注册；`W` 与左侧 `画标注框(W)` 按钮共用 `enable_draw_mode()`，`V/R/O/M/P/C/L` 持续切换对应画布模式，`L` 仅在直线扩展启用时生效。
 - `DrawShapeDialog` 的“编辑”选项与下方形状列表共用一个连续外框，中间使用固定 `2 px` 高的较粗分隔线，不额外保留垂直布局间距。

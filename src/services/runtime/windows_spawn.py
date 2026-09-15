@@ -9,3 +9,12 @@ def hidden_subprocess_kwargs() -> dict[str, int]:
         return {}
     flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return {"creationflags": flag} if flag else {}
+
+
+def utf8_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+__all__ = ["hidden_subprocess_kwargs", "utf8_subprocess_env"]
