@@ -33,7 +33,7 @@ pixi run app-qt
 pixi run python -m src.main
 ```
 
-也可以双击 `src/open_yolo_tool.pyw`。程序启动后默认进入主页；项目目录和项目设置在系统设置中管理，当前项目设置保存到 `data/runtime/settings.json`。
+也可以双击 `src/open_yolo_tool.pyw`。程序启动后默认进入主页；项目目录和项目设置在系统设置中管理，当前项目设置保存到 `data/runtime/settings.json`。界面默认使用亮色，可在系统设置中手动开启深色模式。
 
 ## 功能总览
 
@@ -46,7 +46,7 @@ pixi run python -m src.main
 | 模型训练 | 自动识别任务类型，支持方形与矩形批次训练、增强参数、命令编辑和中途停止。 |
 | 模型验证 | 图片、视频、摄像头和数据集验证；按模式保存图片、标签或视频结果。 |
 | 模型转换 | YOLO 支持 ONNX、TorchScript、OpenVINO、TensorRT、NCNN；支持 SAM 模型导出。 |
-| 系统设置 | 环境状态、项目设置、默认值恢复、Release 检查和 GPU/CPU 更新资源选择。 |
+| 系统设置 | 环境状态、项目设置、亮色/深色外观、默认值恢复、Release 检查和 GPU/CPU 更新资源选择。 |
 
 ## 环境与任务
 
@@ -101,7 +101,7 @@ pixi run -e release-cpu python -m src.devtools.cpu_package_guard
 | `result/` | 训练结果和验证结果目录。 |
 | `result/gui_val/` | 模型验证默认输出目录。 |
 | `data/runtime/settings.json` | 当前项目设置。 |
-| `data/runtime/app_state.json` | 应用级最近项目状态。 |
+| `data/runtime/app_state.json` | 应用级最近项目与深色模式状态。 |
 
 项目数据、训练结果、用户模型和运行时设置属于本地工作数据；`.pixi/`、`build/`、`dist/` 和训练产物不应提交到 Git。
 

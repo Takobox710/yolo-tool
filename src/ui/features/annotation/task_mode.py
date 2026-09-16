@@ -37,11 +37,13 @@ class AnnotationTaskModeMixin:
         self.output_mode_combo.blockSignals(True)
         if self.output_mode in YOLO_MODES:
             self.output_mode_combo.setCurrentText(self.output_mode)
-            self.output_mode_combo.setStyleSheet("")
+            self.output_mode_combo.setProperty("warning", False)
         else:
             self.output_mode_combo.setCurrentIndex(-1)
             self.output_mode_combo.setPlaceholderText("未选择")
-            self.output_mode_combo.setStyleSheet("color: #C62828;")
+            self.output_mode_combo.setProperty("warning", True)
+        self.output_mode_combo.style().unpolish(self.output_mode_combo)
+        self.output_mode_combo.style().polish(self.output_mode_combo)
         self.output_mode_combo.blockSignals(False)
 
     def on_setting_changed(self, keys, value):

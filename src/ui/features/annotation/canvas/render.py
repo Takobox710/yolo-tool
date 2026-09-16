@@ -11,6 +11,8 @@ from src.ui.features.annotation.canvas.handle_render import (
     class_color,
 )
 from src.ui.features.annotation.canvas.geometry import mirror_edit_points
+from src.shared.theme import theme_colors
+from src.ui.shared.theme import current_theme_mode
 
 
 SHORT_CURSOR_CLEARANCE = 20.0
@@ -28,14 +30,15 @@ class AnnotationCanvasRenderMixin(AnnotationCanvasHandleRenderMixin):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#F2F5F9"))
+        colors = theme_colors(current_theme_mode())
+        painter.fillRect(self.rect(), QColor(colors.canvas_bg))
         if self.pixmap is None:
-            painter.setPen(QColor("#26394D"))
+            painter.setPen(QColor(colors.text_muted))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "请打开图片文件夹")
             return
         target = self._image_rect()
         painter.drawPixmap(target, self.pixmap, QRectF(self.pixmap.rect()))
-        painter.setPen(QPen(QColor("#D9E3EC"), 1))
+        painter.setPen(QPen(QColor(colors.canvas_border), 1))
         painter.drawRect(target)
         for index, annotation in enumerate(self.annotations):
             draw_kwargs = {
@@ -103,7 +106,7 @@ class AnnotationCanvasRenderMixin(AnnotationCanvasHandleRenderMixin):
             painter.drawLine(QPointF(x_pos, vertical_bottom), QPointF(x_pos, float(self.height())))
     def _crosshair_color(self) -> QColor:
         if self.pixmap is None or self.crosshair_position is None:
-            return QColor("#404040")
+            return QColor(theme_colors(current_theme_mode()).text_muted)
         image_point = self._widget_to_image(QPointF(*self.crosshair_position), clamp=True)
         image = self.pixmap.toImage()
         x_pos = min(max(round(image_point[0]), 0), image.width() - 1)

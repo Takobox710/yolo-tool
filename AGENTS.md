@@ -107,7 +107,7 @@ yolo_tool/
 ## 设置与路径规则
 
 - 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
-- 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
+- 应用级最近项目与深色模式状态保存到应用根目录 `data/runtime/app_state.json`，主题默认亮色且不自动跟随 Windows。
 - `src/runtime/settings.json` 只作为源码内默认配置参考，不作为当前项目唯一落点。
 - 程序启动默认进入主页，不按 `last_page` 自动恢复页面。
 - `data/models/` 是统一基础模型目录；训练和验证模型列表优先使用该目录。

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from src.services.data_ops import display_project_path, resolve_project_path
+from src.shared.theme import build_draw_shape_style
 from src.ui.shared.assets import load_sam_assist_icon
+from src.ui.shared.theme import current_theme_mode
 from src.ui.shared.widgets.toggle_switch import AnimatedToggleSwitch
 from src.shared.qt import (
     QCheckBox,
@@ -137,88 +139,7 @@ def build_dialog_ui(
         dialog._shape_buttons[value] = button
     layout.addWidget(list_frame)
     layout.addStretch(1)
-    dialog.setStyleSheet(
-        """
-        QFrame#drawShapeList {
-            background: #FFFFFF;
-            border: 1px solid #D9E3EC;
-            border-radius: 10px;
-        }
-        QFrame#drawShapeDivider {
-            background: #D9E3EC;
-        }
-        QPushButton#drawShapeEditOption {
-            background: #FFFFFF;
-            color: #14233A;
-            border: 0;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-            padding: 10px 14px;
-            text-align: center;
-            font-size: 15px;
-        }
-        QPushButton#drawShapeEditOption:hover {
-            background: #F5F8FB;
-        }
-        QPushButton#drawShapeOptionSingle,
-        QPushButton#drawShapeOptionFirst,
-        QPushButton#drawShapeOption,
-        QPushButton#drawShapeOptionLast {
-            background: #FFFFFF;
-            color: #14233A;
-            border: 0;
-            border-radius: 0;
-            padding: 10px 14px;
-            text-align: center;
-            font-size: 15px;
-        }
-        QPushButton#drawShapeOptionSingle {
-            border-radius: 10px;
-        }
-        QPushButton#drawShapeOptionFirst {
-            border-top-left-radius: 0;
-            border-top-right-radius: 0;
-            border-bottom: 1px solid #E6EDF4;
-        }
-        QPushButton#drawShapeOption {
-            border-bottom: 1px solid #E6EDF4;
-        }
-        QPushButton#drawShapeOptionLast {
-            border-bottom-left-radius: 10px;
-            border-bottom-right-radius: 10px;
-        }
-        QPushButton#drawShapeOptionSingle:hover,
-        QPushButton#drawShapeOptionFirst:hover,
-        QPushButton#drawShapeOption:hover,
-        QPushButton#drawShapeOptionLast:hover {
-            background: #F5F8FB;
-        }
-        QPushButton#drawShapeOptionSingle:disabled,
-        QPushButton#drawShapeOptionFirst:disabled,
-        QPushButton#drawShapeOption:disabled,
-        QPushButton#drawShapeOptionLast:disabled {
-            background: #F3F5F7;
-            color: #9AA7B4;
-        }
-        QPushButton#samAdvancedButton {
-            background: #FFFFFF;
-            color: #24364B;
-            border: 1px solid #CFD9E3;
-            border-radius: 6px;
-            padding: 0 8px;
-            font-size: 14px;
-        }
-        QPushButton#samAdvancedButton:hover {
-            background: #F4F8FB;
-            border-color: #AEBECD;
-        }
-        QPushButton#samAdvancedButton:disabled {
-            background: #F3F5F7;
-            color: #9AA7B4;
-            border-color: #DDE4EA;
-        }
-        """
-    )
+    dialog.setStyleSheet(build_draw_shape_style(current_theme_mode()))
 
     dialog._refresh_sam_shape_availability()
 

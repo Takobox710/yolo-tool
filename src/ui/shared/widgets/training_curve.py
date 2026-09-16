@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QLabel
 
 from src.ui.shared.widgets.chart_primitives import _begin_chart_paint, _finish_chart_paint
+from src.shared.theme import theme_colors
+from src.ui.shared.theme import current_theme_mode
 
 class TrainingCurveWidget(QLabel):
     """Responsive training curve renderer with a compact summary header."""
@@ -26,6 +28,14 @@ class TrainingCurveWidget(QLabel):
         super().resizeEvent(event)
         self._redraw()
 
+    def changeEvent(self, event):  # noqa: N802 - Qt API name
+        super().changeEvent(event)
+        if (
+            hasattr(self, "_data")
+            and event.type() in {QEvent.Type.PaletteChange, QEvent.Type.StyleChange}
+        ):
+            self._redraw()
+
     def refresh_for_device_pixel_ratio(self) -> None:
         self._redraw()
 
@@ -33,6 +43,7 @@ class TrainingCurveWidget(QLabel):
         width = max(self.width(), 1)
         height = max(self.height(), 1)
         pixmap, painter, dpr = _begin_chart_paint(self, width, height)
+        theme = theme_colors(current_theme_mode())
 
         map50 = self._find_column("metrics/mAP50(", exclude="95")
         box_loss = "val/box_loss" if self._data.get("val/box_loss") else "train/box_loss"
@@ -50,7 +61,7 @@ class TrainingCurveWidget(QLabel):
         self._draw_axes(painter, left, top, chart_w, chart_h, epoch_values)
 
         if not self._data:
-            painter.setPen(QColor("#94A2AD"))
+            painter.setPen(QColor(theme.chart_muted))
             painter.setFont(QFont("Microsoft YaHei UI", 11))
             painter.drawText(left, top, chart_w, chart_h, Qt.AlignmentFlag.AlignCenter, "暂无训练记录\n请先进行模型训练")
             _finish_chart_paint(self, pixmap, painter, dpr)
@@ -97,6 +108,7 @@ class TrainingCurveWidget(QLabel):
         width: int,
         axis_left: int,
     ) -> None:
+        theme = theme_colors(current_theme_mode())
         painter.setFont(QFont("Microsoft YaHei UI", 9))
         axis_font = QFont("Microsoft YaHei UI", 8)
         x = max(0, axis_left - 8 - QFontMetrics(axis_font).horizontalAdvance("1.0"))
@@ -105,7 +117,7 @@ class TrainingCurveWidget(QLabel):
             text_w = painter.fontMetrics().horizontalAdvance(text) + 18
             if x + text_w > width - 8:
                 break
-            painter.setPen(QColor("#5B6773"))
+            painter.setPen(QColor(theme.text_muted))
             painter.drawText(x, 12, text_w, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
             x += text_w + 10
 
@@ -118,15 +130,16 @@ class TrainingCurveWidget(QLabel):
         height: int,
         epoch_values: list[float],
     ) -> None:
+        theme = theme_colors(current_theme_mode())
         painter.setFont(QFont("Microsoft YaHei UI", 8))
-        painter.setPen(QPen(QColor("#000000"), 1))
+        painter.setPen(QPen(QColor(theme.chart_axis), 1))
         painter.drawLine(x, y + height, x + width, y + height)
         painter.drawLine(x, y, x, y + height)
-        painter.setPen(QPen(QColor("#E9EEF3"), 1))
+        painter.setPen(QPen(QColor(theme.chart_grid_minor), 1))
         for tick in range(1, 5):
             ty = y + round(height * tick / 5)
             painter.drawLine(x, ty, x + width, ty)
-        painter.setPen(QColor("#000000"))
+        painter.setPen(QColor(theme.chart_axis))
         for tick in range(6):
             value = tick / 5
             ty = y + height - round(value * height)
@@ -185,6 +198,7 @@ class TrainingCurveWidget(QLabel):
             painter.drawEllipse(int(last_x - 3), int(last_y - 3), 6, 6)
 
     def _draw_legend(self, painter: QPainter, width: int, height: int, series) -> None:
+        theme = theme_colors(current_theme_mode())
         painter.setFont(QFont("Microsoft YaHei UI", 8))
         fm = painter.fontMetrics()
         active = [(color, label) for key, color, label, _ in series if self._data.get(key)]
@@ -194,7 +208,7 @@ class TrainingCurveWidget(QLabel):
         for color, label in active:
             painter.setPen(QPen(color, 3))
             painter.drawLine(x, y + 8, x + 16, y + 8)
-            painter.setPen(QColor("#14233A"))
+            painter.setPen(QColor(theme.chart_label))
             item_w = fm.horizontalAdvance(label) + 30
             painter.drawText(x + 20, y, item_w - 20, 16, Qt.AlignmentFlag.AlignVCenter, label)
             x += item_w

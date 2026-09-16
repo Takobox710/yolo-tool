@@ -54,6 +54,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode 
 
 开发快包输出到 `dist/YOLOTool-dev/`，用于本地验证 GUI 和隐藏 CLI，不作为用户安装发布物。完整冻结输出会同时写入根目录 `release-manifest.json` 和 `runtime-manifest.json`，因此可直接启动；运行时清单只用于安装器 `--runtime-probe` 和诊断流程，GUI 启动不再因清单或版本不匹配强制退出。`-ProgramOnly` 输出仍需要已有基础环境才能提供完整功能，但安装器允许在缺少新基础包时保留旧环境完成程序更新。
 
+打包脚本会在 `data/runtime/app_state.json` 写入最近项目和 `theme_mode: light`。程序更新、安装和卸载保留该文件，因此用户手动开启的深色模式不会被普通发布流程重置。
+
 SAM 智能辅助标注复用基础包 v3 的 SAM 2/2.1 代码、配置、Torch/CUDA、OpenCV、Pillow；GPU 基础包携带 `data/models/sam2.1_hiera_base_plus.pt`，CPU 一体式运行时携带 `data/models/sam2.1_hiera_tiny.pt`。模型目录会识别全部 `sam` 前缀权重，未知自定义名称只显示、不猜测配置。SAM 3 官方代码固定在提交 `6dbb02bd38288df755dfa1378000a861e65b84f6`，以 Windows 推理专用 vendor wheel 和许可证随基础包发布；同一 runtime 同时提供文本预标注和启用实例交互的 CUDA 画布单点预测。wheel 放宽 NumPy 元数据以兼容项目 NumPy 2.x，并使用 OpenCV fallback 替代 Triton，明确不包含 Flash Attention、Triton 或训练依赖；vendor 代码使用的 `pkg_resources.resource_filename()` 由程序层在缺失时通过 `importlib.resources` 兼容，因此普通 Program 更新即可修复已有基础环境。SAM 运行时在把 checkpoint、SAM2 ONNX 目录或待识别图片交给后端前，兼容软件安装目录、项目目录和文件名中的中文路径：优先采用 Windows ASCII 短路径，不能取得时在 ASCII 临时目录创建仅会话有效的硬链接或副本，并在运行时关闭时清理。官方 `sam3.pt` checkpoint 不打包、不进 git，由用户自行放入 `data/models/`；它可在 CUDA 下用于画布点提示辅助标注和 AI 文本预标注。GUI 通过 `YOLOTool.exe --sam-assist-runtime` 与 `YOLOTool.exe --yolo-ai-runtime` 启动交互式隐藏子进程；程序层必须包含对应 CLI 分发代码、SAM3 路径与资源兼容模块以及由 `src/assets.qrc` 编译进 `assets_rc.py` 的 `sam_assist.svg`。
 
 冻结程序包含系统设置页的 GitHub Release 检查逻辑，不新增运行时依赖；用户需要能访问 `api.github.com` 才能获得版本检查结果。检查失败不会影响程序启动、训练或验证。更新窗口将选中的资源下载到 Windows Shell 解析出的真实 `Downloads` 文件夹；环境包更新通过 Release 文件名版本与本机安装清单或 `package-info.ini` 版本比较，Release 始终携带同版本环境包时不会误报更新。源码开发态使用 `installer/base-runtime-models-version.txt` 和 `installer/model-export-runtime-version.txt` 作为当前环境包版本；基础包缺失按环境缺失处理，附加包缺失只显示可选下载安装提示，不触发“环境包也有更新”；仅当已安装附加包的版本低于 Release 时才触发附加包更新提示。程序与更高版本基础包同时需要更新时默认选择两者，仅程序更新时默认选择程序包，程序-only 场景的同版本提示使用普通文字，手动勾选同版本基础包时显示红色重装提醒，基础包单独留下时在进度条下方显示不可安装的红色提醒。附加环境包在仅勾选附加包、同时勾选程序包或三项全部勾选时，按是否已有附加包显示自动安装、替换或组合状态提示，三项全选时合并确认基础包重装和附加包替换。已有安装但缺少更新基础包时，安装器保留旧环境并警告版本不匹配或环境不完整，继续完成程序更新；首次安装缺少基础包时在组件页直接阻止提交，安装提交阶段不会生成没有运行环境的程序-only 首次安装。附加包可以在程序内热安装或替换。下载按钮右侧提供暂停和停止，下载期间可隐藏窗口且后台任务继续，重新打开时复用原窗口；安装器启动失败会在窗口中显示为可恢复错误。
@@ -123,7 +125,7 @@ GPU 安装器在压缩包校验页结束后使用普通百分比进度条显示�
 
 卸载单个实例会删除程序、`_internal/`、该实例附加环境，以及 `managed-models.json` 登记的官方模型。以下内容保留：
 
-- `data/runtime/settings.json` 项目设置及同目录的最近项目状态
+- `data/runtime/settings.json` 项目设置及同目录的最近项目和深色模式状态
 - 用户自行加入的模型
 - `images/`、`labels/`、`result/`
 

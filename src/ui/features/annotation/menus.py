@@ -11,6 +11,7 @@ from src.shared.qt import (
     QWidget,
     QWidgetAction,
 )
+from src.ui.shared.theme import current_colors
 
 
 class AnnotationMenuMixin:
@@ -25,33 +26,36 @@ class AnnotationMenuMixin:
         menu: QMenu,
         text: str,
         *,
-        color: str = "#14233A",
-        hover_background: str = "#F5F8FB",
+        color: str | None = None,
+        hover_background: str | None = None,
         trailing_text: str = "",
         show_submenu_arrow: bool = False,
     ) -> QWidgetAction:
+        colors = current_colors()
+        resolved_color = color or colors.text
+        resolved_hover = hover_background or colors.surface_alt
         action = QWidgetAction(menu)
         container = QWidget(menu)
         layout = QHBoxLayout(container)
         layout.setContentsMargins(26, 6, 26, 6)
         layout.setSpacing(12)
         label = QLabel(text, container)
-        label.setStyleSheet(f"color: {color};")
+        label.setStyleSheet(f"color: {resolved_color};")
         layout.addWidget(label)
         layout.addStretch(1)
         if trailing_text:
             trailing_label = QLabel(trailing_text, container)
-            trailing_label.setStyleSheet("color: #6B7280;")
+            trailing_label.setStyleSheet(f"color: {colors.text_muted};")
             trailing_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(trailing_label)
         if show_submenu_arrow:
             arrow_label = QLabel("›", container)
-            arrow_label.setStyleSheet("color: #6B7280;")
+            arrow_label.setStyleSheet(f"color: {colors.text_muted};")
             arrow_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(arrow_label)
         container.setStyleSheet(
             f"QWidget {{ background: transparent; }}"
-            f"QWidget:hover {{ background: {hover_background}; }}"
+            f"QWidget:hover {{ background: {resolved_hover}; }}"
         )
         container.mousePressEvent = lambda _event: action.trigger()
         action.setDefaultWidget(container)
@@ -65,11 +69,12 @@ class AnnotationMenuMixin:
         *,
         trailing_text: str = "",
     ) -> QWidgetAction:
+        colors = current_colors()
         return self._add_menu_button_action(
             menu,
             text,
-            color="#C62828",
-            hover_background="#FCE8E6",
+            color=colors.warning,
+            hover_background=colors.warning_bg,
             trailing_text=trailing_text,
         )
 

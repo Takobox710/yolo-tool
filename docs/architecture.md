@@ -93,10 +93,10 @@ yolo_tool/
 
 - `model.py` 使用嵌套 `slots=True` dataclass 定义 `AppSettings` 及各设置分区，并提供字典编解码和字段级类型回退。
 - `types.py` 只保存设置域 dataclass；`model.py` 负责序列化和类型校验，并继续 re-export 原有 dataclass 导入路径，避免设置 JSON 格式和调用方发生变化。
-- `defaults.py` 提供默认设置构造；`project_settings.py` 负责 schema v0 迁移、字段级校验、损坏配置备份、项目路径序列化/反序列化与最近项目状态读写。
+- `defaults.py` 提供默认设置构造；`project_settings.py` 负责 schema v0 迁移、字段级校验、损坏配置备份、项目路径序列化/反序列化，以及最近项目和 `theme_mode` 应用状态的兼容读写。
 - `SettingsService.load()` 返回 `SettingsLoadResult`，携带设置、迁移状态和问题列表；`save()` 只接受类型化 `AppSettings`，未知字段忽略并报告，保存前再次校验。
 - 当前项目配置保存到当前项目目录 `data/runtime/settings.json`。
-- 应用级最近项目状态保存到应用根目录 `data/runtime/app_state.json`。
+- 应用级最近项目和主题状态保存到应用根目录 `data/runtime/app_state.json`。`theme_mode` 只允许 `light` / `dark`，旧文件缺失或非法值按亮色处理；保存最近项目和保存主题必须互相保留另一字段。
 - `src/runtime/settings.json` 仅作为源码内默认配置参考。
 - 设置文件写入 `schema_version: 1`；旧版本或无版本文件按 v0 迁移，保持原有字段含义、相对路径存储、外部绝对路径和裸模型名规则。训练与模型导出的旧整数 `imgsz` 分别迁移为等宽高文本，避免设置层丢失矩形输入信息。
 - `model_export` 节点保存 `model_path`、`output_dir`、`format`、`imgsz`、`precision`、`batch`、三项动态轴、`simplify`、NMS 参数、`opset`、TensorRT `workspace`、TorchScript `optimize`、校准数据、校准样本数和量化后验证参数。`imgsz` 持久化为“宽×高”文本，导出服务内部统一为 `(height, width)`，旧整数值迁移为等宽高；旧 `simplify` 字段继续读取，旧 `format=sam2_onnx` 在加载时迁移为 `onnx`。扩展安装状态从当前安装目录 `_internal/extensions/` 下的活动清单读取，不写入项目设置。旧版本位于 `%LOCALAPPDATA%/YOLOTool/instances/<实例ID>/extensions/` 或 `%LOCALAPPDATA%/YOLOTool/extensions/` 的扩展会在升级时迁移，同盘使用原子移动，跨盘复制完成后删除旧目录。
@@ -200,6 +200,8 @@ yolo_tool/
 ## UI 约定
 
 - `src/ui/shell/window.py` 中的 `WorkbenchWindow` 是唯一主窗口实现。
+- `src/shared/theme.py` 定义亮色/深色语义色令牌、全局 QSS 和独立对话框样式；`src/ui/shared/theme.py` 负责 Qt `QPalette`、基础样式和运行时切换。亮色保留启动时探测到的 Windows 原生样式，避免改变图片列表、下拉弹出层、复选框和对勾；只有深色使用 Fusion。应用启动时在创建主窗口前应用主题，设置页通过 `WorkbenchContext` 的应用级主题回调切换，不把该偏好写入项目 `AppSettings`。
+- 主题样式必须覆盖原生控件和应用自绘控件。图表、训练曲线、标注画布等自绘内容使用当前语义色并在 `PaletteChange` / `StyleChange` 时重绘；局部对话框样式必须按当前主题生成，复用的隐藏更新窗口在再次显示前重新应用样式。
 - 页面统一接收 `src/ui/shared/context.py` 的 `WorkbenchContext`，页面不再持有窗口对象、访问 `page.app` 或探测宿主任意属性。上下文集中提供当前 `AppSettings`、设置服务、日志、后台调用、项目切换和页面刷新回调。
 - 设置修改先更新类型化模型，再由 `WorkbenchContext.save_settings()` 比较快照、持久化并广播实际变化字段；项目切换和恢复默认设置通过上下文替换设置并递增 generation。
 - `src/ui/shared/tasks.py` 的 `TaskCoordinator` 为训练、验证、模型转换、AI 预标注和普通后台任务提供唯一任务租约；重复启动被拒绝，停止/完成按 token 校验，页面销毁或项目 generation 变化后的回调不得污染新页面。
@@ -265,7 +267,7 @@ yolo_tool/
 - 根目录仅保留 `打包程序.bat` 批处理入口，并通过 PowerShell 7 调用脚本。它使用 1 至 9 的数字菜单，覆盖 GPU+CPU 全量发布、GPU 全量发布、GPU BaseEnv/ExtraEnv 单卷与分卷归档、复用已有 GPU 环境包的程序安装器、CPU 全量发布和开发快包；菜单将参数数组转换为命名参数后调用子脚本，避免开关参数被误作为 `Variant` 等位置参数。CPU 发布不生成 BaseEnv/ExtraEnv 压缩包。
 
 - PyInstaller 入口是 `src/main.py`，规格文件为 `installer/YOLOTool.spec`。
-- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、`app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；应用图标和 `sam_assist.svg` 由 PyInstaller/Qt 资源模块随程序本体提供。
+- 打包脚本 `installer/build_windows.ps1` 负责正式版与开发快包，并在产物目录生成默认 `settings.json`、含默认 `theme_mode: light` 的 `app_state.json`；完整冻结输出还会写入根目录兼容清单，使 `dist/YOLOTool` 可直接启动，程序-only 输出仍依赖已安装基础环境；应用图标和 `sam_assist.svg` 由 PyInstaller/Qt 资源模块随程序本体提供。
 - GPU 基础包模型来源固定为 `data/models/yolo11s.pt`、`data/models/yolo26n.pt`、`data/models/yolov8n.pt` 和 `data/models/sam2.1_hiera_base_plus.pt`；CPU 基础包将最后一个替换为 `data/models/sam2.1_hiera_tiny.pt`。模型由 PowerShell 复制到对应冻结产物根目录的 `data/models/`，再进入 GPU BaseEnv 或 CPU 一体式运行时 staging；spec 不收集用户 checkpoint。SAM3 代码与推理依赖随基础包 v3 提供，但官方 `sam3.pt` 不进入源码、基础包或程序包，用户需自行接受条款并放入项目或程序根目录 `data/models/`。
 - `src/services/runtime/metadata.py` 统一解析 `_internal/yolotool_metadata/`，并为旧安装保留根目录清单回退；`release_manifest.py` 负责环境兼容，`install_instance.py` 将附加环境放入 `_internal/extensions/` 并迁移旧 `%LOCALAPPDATA%` 目录，`managed_models.py` 只清理清单登记的官方模型路径。
 - `src/devtools/program_package.py` 生成 `Program` staging；`base_runtime_spec.py`、`base_runtime_dependencies.py`、`base_runtime_staging.py` 分担基础包模型/依赖/staging，`base_runtime_builder.py` 保留兼容入口；`model_export_collector.py` 与 `model_export_staging.py` 分担 ExtraEnv 收集和清单生成，`model_export_package.py` 保留 CLI 与兼容入口。两者共用 `archive_builder.py` 的 7-Zip 参数、卷大小限制和失败校验，默认单卷，显式开启分卷时才生成最多两个 `.7z.001/.002` 分卷；`package_files.py` 负责复制、清单和源码过滤，`release_package.py` 只保留兼容导出。

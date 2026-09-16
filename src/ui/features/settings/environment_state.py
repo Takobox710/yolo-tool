@@ -25,6 +25,15 @@ def build_control_widgets(page) -> list:
         check.setChecked(getattr(page.context.settings.features, setting))
         check.stateChanged.connect(callback)
         widgets.append(box)
+    box, check = page.checkbox_with_help(
+        "深色模式",
+        page.context.theme_mode() == "dark",
+        help_text="仅影响本程序界面，不改变 Windows 系统设置。",
+    )
+    page.dark_mode_check = check
+    check.setChecked(page.context.theme_mode() == "dark")
+    check.stateChanged.connect(page._toggle_dark_mode)
+    widgets.append(box)
     return widgets
 
 
@@ -48,6 +57,12 @@ def toggle_show_last_training_models(page, state):
     page.context.settings.features.show_last_training_models = state == Qt.CheckState.Checked.value
     page.save_settings()
     page.context.refresh_validation_models()
+
+
+def toggle_dark_mode(page, state):
+    page.context.set_theme_mode(
+        "dark" if state == Qt.CheckState.Checked.value else "light"
+    )
 
 
 def reset_defaults(page):
@@ -85,6 +100,13 @@ def reset_defaults(page):
 
 
 def auto_refresh(page):
+    check = getattr(page, "dark_mode_check", None)
+    if check is not None:
+        enabled = page.context.theme_mode() == "dark"
+        if check.isChecked() != enabled:
+            check.blockSignals(True)
+            check.setChecked(enabled)
+            check.blockSignals(False)
     page._refresh_count += 1
     page.context.run_background("env_auto", lambda: load_env_payload(page))
 
@@ -128,5 +150,6 @@ def format_torch_status(cuda: dict[str, str]) -> str:
 __all__ = [
     "apply_env_data", "auto_refresh", "build_control_widgets", "format_dependency_status",
     "format_torch_status", "load_env_payload", "reset_defaults", "toggle_custom_cmd",
-    "toggle_distribution_mode", "toggle_help_icons", "toggle_show_last_training_models",
+    "toggle_dark_mode", "toggle_distribution_mode", "toggle_help_icons",
+    "toggle_show_last_training_models",
 ]

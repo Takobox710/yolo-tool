@@ -44,7 +44,29 @@ class AnnotationFileListRenderMixin:
             return
         widget = self.file_list.itemWidget(item)
         if isinstance(widget, AnnotationFileListItemWidget):
+            widget.refresh_for_theme()
+            item.setSizeHint(widget.sizeHint())
             widget.sync_from_item()
+
+    def refresh_for_theme(self) -> None:
+        if not hasattr(self, "file_list"):
+            return
+        if hasattr(self, "_cached_file_item_size_hint"):
+            del self._cached_file_item_size_hint
+        standard_hint = self._standard_file_item_size_hint()
+        for row in range(self.file_list.count()):
+            item = self.file_list.item(row)
+            if item is None:
+                continue
+            widget = self.file_list.itemWidget(item)
+            if isinstance(widget, AnnotationFileListItemWidget):
+                widget.refresh_for_theme()
+                item.setSizeHint(widget.sizeHint())
+            else:
+                item.setSizeHint(standard_hint)
+        self.file_list.updateGeometries()
+        self.file_list.viewport().update()
+        self._decorate_visible_rows()
 
     def _decorate_visible_rows(self) -> None:
         if self.file_list.count() == 0:

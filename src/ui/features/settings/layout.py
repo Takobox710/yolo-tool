@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.ui.features.settings.constants import STATUS_CARD_LABELS
+from src.ui.shared.theme import current_colors
 from src.shared.qt import (
     QColor,
     QFrame,
@@ -127,11 +128,12 @@ def build_settings_layout(page) -> None:
 
 
 def _build_update_icon():
+    colors = current_colors()
     pixmap = QPixmap(32, 32)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(QPen(QColor("#208FD4"), 2.2))
+    painter.setPen(QPen(QColor(colors.accent), 2.2))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawEllipse(3.5, 3.5, 25, 25)
     painter.drawLine(16, 22, 16, 10)

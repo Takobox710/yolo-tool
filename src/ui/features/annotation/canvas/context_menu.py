@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtGui import QAction, QKeySequence
 from src.shared.qt import QHBoxLayout, QLabel, QMenu, Qt, QWidget, QWidgetAction
 from src.ui.shared.widgets.toggle_switch import AnimatedToggleSwitch
+from src.ui.shared.theme import current_colors
 
 
 class AnnotationCanvasContextMenuMixin:
@@ -196,28 +197,31 @@ class AnnotationCanvasContextMenuMixin:
         menu: QMenu,
         text: str,
         *,
-        color: str = "#14233A",
-        hover_background: str = "#F5F8FB",
+        color: str | None = None,
+        hover_background: str | None = None,
         trailing_text: str = "",
     ) -> QWidgetAction:
+        colors = current_colors()
+        resolved_color = color or colors.text
+        resolved_hover = hover_background or colors.surface_alt
         action = QWidgetAction(menu)
         container = QWidget(menu)
         layout = QHBoxLayout(container)
         layout.setContentsMargins(36, 6, 14, 6)
         layout.setSpacing(0)
         label = QLabel(text, container)
-        label.setStyleSheet(f"color: {color};")
+        label.setStyleSheet(f"color: {resolved_color};")
         layout.addWidget(label)
         layout.addStretch(1)
         if trailing_text:
             trailing_label = QLabel(trailing_text, container)
-            trailing_label.setStyleSheet("color: #14233A;")
+            trailing_label.setStyleSheet(f"color: {colors.text};")
             trailing_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             trailing_label.setFixedWidth(34)
             layout.addWidget(trailing_label)
         container.setStyleSheet(
             f"QWidget {{ background: transparent; }}"
-            f"QWidget:hover {{ background: {hover_background}; }}"
+            f"QWidget:hover {{ background: {resolved_hover}; }}"
         )
         container.mousePressEvent = lambda _event: action.trigger()
         action.setDefaultWidget(container)

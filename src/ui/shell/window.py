@@ -3,10 +3,11 @@ from __future__ import annotations
 from collections import deque
 from pathlib import Path
 
-from src.shared.theme import STYLE
-from src.services.settings import SettingsService
+from src.shared.theme import build_style as _build_style
+from src.services.settings import SettingsService, load_app_state, save_theme_mode
 from src.services.runtime import stop_process
-from src.shared.qt import QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QIcon, QTimer, Qt
+from src.shared.qt import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QIcon, QTimer, Qt
+from src.shared.theme import normalize_theme_mode
 from src.ui.shell.close_guard import confirm_close_if_needed
 from src.ui.shell.navigation import ensure_page, reload_pages, show_page
 from src.ui.shell.page_registry import PAGE_ORDER, PAGE_TITLES, create_page
@@ -14,16 +15,23 @@ from src.ui.shell.program_log import append_program_log, program_log_text, shoul
 from src.ui.shared.page_base import BasePage
 from src.ui.shared.assets import load_app_icon
 from src.ui.shared.context import WorkbenchContext
+from src.ui.shared.theme import apply_theme
 from src.ui.shared.widgets.base import load_nav_icon
 from src.ui.shared.workers import Worker
 
 
 class WorkbenchWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, theme_mode: object | None = None):
         super().__init__()
         self._program_logs: deque[str] = deque(maxlen=600)
         settings_service = SettingsService()
         load_result = settings_service.load()
+        self._theme_mode = normalize_theme_mode(
+            load_app_state().theme_mode if theme_mode is None else theme_mode
+        )
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, self._theme_mode)
         self.context = WorkbenchContext(
             settings_service,
             load_result,
@@ -35,6 +43,8 @@ class WorkbenchWindow(QMainWindow):
             reset_settings=self.reset_project_settings,
             refresh_help_icons=self.refresh_help_icon_visibility,
             refresh_validation_models=self.refresh_validation_model_options,
+            get_theme_mode=self.theme_mode,
+            set_theme_mode=self.set_theme_mode,
         )
         self.workers: list[Worker] = []
         self.pages: dict[str, QWidget] = {}
@@ -63,6 +73,28 @@ class WorkbenchWindow(QMainWindow):
     @property
     def settings(self):
         return self.context.settings
+
+    def theme_mode(self) -> str:
+        return self._theme_mode
+
+    def set_theme_mode(self, mode: object) -> None:
+        normalized = normalize_theme_mode(mode)
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, normalized)
+        save_theme_mode(
+            normalized,
+            fallback=Path(self.settings.project.root),
+        )
+        self._theme_mode = normalized
+        self.refresh_theme_styles()
+
+    def refresh_theme_styles(self) -> None:
+        for page in self.pages.values():
+            target = getattr(page, "inner_page", page)
+            hook = getattr(target, "refresh_for_theme", None)
+            if hook:
+                hook()
 
     def _build(self):
         root = QWidget()
@@ -300,5 +332,5 @@ class WorkbenchWindow(QMainWindow):
         if self._warmup_page_queue:
             self._page_warmup_timer.start(0)
 
-def build_style() -> str:
-    return STYLE
+def build_style(mode: object = "light") -> str:
+    return _build_style(mode)

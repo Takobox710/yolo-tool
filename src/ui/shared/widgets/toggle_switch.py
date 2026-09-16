@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Property, QEasingCurve, QRectF, QSize
+from PySide6.QtCore import Property, QEasingCurve, QEvent, QRectF, QSize
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QAbstractButton
 
 from src.shared.qt import QPropertyAnimation, Qt
+from src.shared.theme import theme_colors
+from src.ui.shared.theme import current_theme_mode
 
 
 class AnimatedToggleSwitch(QAbstractButton):
@@ -47,11 +49,17 @@ class AnimatedToggleSwitch(QAbstractButton):
 
     thumbPosition = Property(float, _get_thumb_position, _set_thumb_position)
 
+    def changeEvent(self, event) -> None:  # noqa: N802 - Qt API name
+        super().changeEvent(event)
+        if event.type() in {QEvent.Type.PaletteChange, QEvent.Type.StyleChange}:
+            self.update()
+
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt API name
         del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        track = QColor("#22C55E") if self.isChecked() else QColor("#8493A3")
+        colors = theme_colors(current_theme_mode())
+        track = QColor(colors.success) if self.isChecked() else QColor(colors.disabled_text)
         if not self.isEnabled():
             track.setAlpha(110)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -60,12 +68,12 @@ class AnimatedToggleSwitch(QAbstractButton):
         painter.drawRoundedRect(QRectF(0, 0, self.width(), self.height()), radius, radius)
         diameter = float(max(12, min(20, self.height() - 4)))
         left = 2.0 + self._thumb_position * (self.width() - diameter - 4.0)
-        painter.setBrush(QColor("#FFFFFF"))
+        painter.setBrush(QColor(colors.surface))
         top = (self.height() - diameter) / 2.0
         painter.drawEllipse(QRectF(left, top, diameter, diameter))
         if self.hasFocus():
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor("#208FD4"), 1))
+            painter.setPen(QPen(QColor(colors.accent), 1))
             focus_radius = max(1.0, (self.height() - 1) / 2.0)
             painter.drawRoundedRect(
                 QRectF(0.5, 0.5, self.width() - 1, self.height() - 1),

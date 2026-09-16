@@ -228,3 +228,49 @@ def test_settings_service_discards_legacy_validation_image_size(tmp_path):
 
     assert not hasattr(result.settings.validation, "imgsz")
     assert "imgsz" not in persisted["validation"]
+
+
+def test_app_state_defaults_to_light_and_preserves_theme(tmp_path):
+    from src.services.settings import (
+        load_app_state,
+        save_last_project_root,
+        save_theme_mode,
+    )
+
+    project_root = tmp_path / "project-a"
+    other_root = tmp_path / "project-b"
+    project_root.mkdir()
+    other_root.mkdir()
+    state_path = tmp_path / "app_state.json"
+    state_path.write_text(
+        json.dumps({"last_project_root": str(project_root)}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    state = load_app_state(state_path)
+    assert state.last_project_root == str(project_root.resolve())
+    assert state.theme_mode == "light"
+
+    save_theme_mode("dark", state_path)
+    save_last_project_root(other_root, state_path)
+    state = load_app_state(state_path)
+
+    assert state.last_project_root == str(other_root.resolve())
+    assert state.theme_mode == "dark"
+
+
+def test_app_state_invalid_theme_falls_back_to_light(tmp_path):
+    from src.services.settings import load_app_state
+
+    state_path = tmp_path / "app_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "last_project_root": str(tmp_path),
+                "theme_mode": "system",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_app_state(state_path).theme_mode == "light"

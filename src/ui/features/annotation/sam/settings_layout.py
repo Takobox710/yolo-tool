@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.shared.theme import build_sam_advanced_style
 from src.shared.qt import (
     QAbstractSpinBox,
     QButtonGroup,
@@ -16,6 +17,7 @@ from src.shared.qt import (
     Qt,
     QVBoxLayout,
 )
+from src.ui.shared.theme import current_theme_mode
 
 
 def build_model_section(dialog, root: QVBoxLayout) -> None:
@@ -165,47 +167,7 @@ def separator() -> QFrame:
 
 
 def apply_style(dialog) -> None:
-    dialog.setStyleSheet(
-        """
-        QDialog#samAdvancedDialog { background: #FFFFFF; color: #14233A; }
-        QLabel { color: #14233A; font-size: 14px; }
-        QLabel#samAdvancedCaption { color: #69798A; }
-        QLabel#samAdvancedSectionTitle { font-size: 16px; font-weight: 600; }
-        QFrame#samAdvancedSeparator { background: #E2E8EF; border: 0; }
-        QPushButton { min-height: 34px; padding: 0 16px; border: 1px solid #CFD9E3;
-            border-radius: 6px; background: #FFFFFF; color: #24364B; }
-        QPushButton:hover { background: #F4F8FB; border-color: #AEBECD; }
-        QPushButton#samSegmentLeft, QPushButton#samSegmentRight { min-height: 32px;
-            padding: 0 12px; border-radius: 0; }
-        QPushButton#samSegmentLeft { border-top-left-radius: 6px;
-            border-bottom-left-radius: 6px; }
-        QPushButton#samSegmentRight { border-left: 0; border-top-right-radius: 6px;
-            border-bottom-right-radius: 6px; }
-        QPushButton#samSegmentLeft:checked, QPushButton#samSegmentRight:checked {
-            background: #E8F7F0; border-color: #20A66A; color: #147548; font-weight: 600; }
-        QPushButton#samAdvancedReset { background: transparent; color: #52667A; }
-        QPushButton#samAdvancedSave { background: #15965C; border-color: #15965C;
-            color: #FFFFFF; font-weight: 600; min-width: 72px; }
-        QPushButton#samAdvancedSave:hover { background: #117E4D; border-color: #117E4D; }
-        QComboBox#samAdvancedModelCombo { min-height: 32px; border: 1px solid #CFD9E3;
-            border-radius: 6px; padding: 0 8px; background: #FFFFFF; color: #14233A; }
-        QComboBox#samAdvancedModelCombo:focus { border-color: #15965C; }
-        QPushButton#samOpenModelFolder { min-height: 32px; padding: 0 8px;
-            border: 1px solid #CFD9E3; border-radius: 6px;
-            background: #FFFFFF; color: #24364B; }
-        QPushButton#samOpenModelFolder:hover { background: #F4F8FB;
-            border-color: #AEBECD; }
-        QPushButton#samOpenModelFolder:disabled { background: #F3F5F7;
-            color: #9AA7B4; border-color: #DDE4EA; }
-        QSpinBox, QDoubleSpinBox { min-height: 32px; border: 1px solid #CFD9E3;
-            border-radius: 6px; padding: 0 8px; background: #FFFFFF; }
-        QSpinBox:focus, QDoubleSpinBox:focus { border-color: #15965C; }
-        QSlider::groove:horizontal { height: 4px; border-radius: 2px; background: #DCE5EC; }
-        QSlider::sub-page:horizontal { background: #20A66A; border-radius: 2px; }
-        QSlider::handle:horizontal { width: 16px; margin: -6px 0; border-radius: 8px;
-            background: #FFFFFF; border: 2px solid #15965C; }
-        """
-    )
+    dialog.setStyleSheet(build_sam_advanced_style(current_theme_mode()))
 
 
 __all__ = [

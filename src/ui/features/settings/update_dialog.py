@@ -51,7 +51,7 @@ from src.ui.features.settings.update_dialog_layout import (
 from src.ui.features.settings.update_dialog_download import ReleaseUpdateDownloadMixin
 from src.ui.features.settings.update_dialog_install import (
     ReleaseUpdateInstallMixin,
-    _DIALOG_STYLE,
+    apply_release_dialog_style,
 )
 from src.ui.features.settings.update_dialog_selection import ReleaseUpdateSelectionMixin
 from src.ui.shared.workers import Worker
@@ -88,11 +88,15 @@ class ReleaseUpdateDialog(
         self.setMinimumSize(680, 610)
         self.resize(720, 660)
         self.setSizeGripEnabled(False)
-        self.setStyleSheet(_DIALOG_STYLE)
+        apply_release_dialog_style(self)
         self._build_layout()
         # Force the per-dialog stylesheet to be polished before the first
         # expose, avoiding a transient default-white paint on Windows.
         self.ensurePolished()
+
+    def showEvent(self, event):  # noqa: N802 - Qt API name
+        apply_release_dialog_style(self)
+        super().showEvent(event)
 
     def _build_layout(self) -> None:
         build_release_update_layout(self)

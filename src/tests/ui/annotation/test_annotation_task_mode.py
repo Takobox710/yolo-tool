@@ -88,7 +88,7 @@ def test_annotation_page_hides_yolo_task_controls_until_yolo_setting_enabled(tmp
     assert page.output_mode_label.isHidden() is False
     assert page.output_mode_combo.isHidden() is False
     assert page.output_mode_combo.currentIndex() == -1
-    assert "C62828" in page.output_mode_combo.styleSheet()
+    assert page.output_mode_combo.property("warning") is True
 
 def test_annotation_page_detects_global_yolo_mode_and_keeps_it_across_images(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

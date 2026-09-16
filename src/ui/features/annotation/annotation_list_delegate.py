@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from src.shared.qt import QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem, Qt
+from src.ui.shared.theme import current_colors
 
 
 KEYPOINT_WARNING = "（未被标注框框住）"
-WARNING_COLOR = "#C62828"
 
 
 class AnnotationListDelegate(QStyledItemDelegate):
@@ -39,7 +39,7 @@ class AnnotationListDelegate(QStyledItemDelegate):
         painter.setFont(styled.font)
         painter.setPen(label_color)
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, visible_label)
-        painter.setPen(WARNING_COLOR)
+        painter.setPen(current_colors().warning)
         warning_rect = text_rect.adjusted(metrics.horizontalAdvance(visible_label), 0, 0, 0)
         painter.drawText(warning_rect, Qt.AlignmentFlag.AlignVCenter, warning)
         painter.restore()

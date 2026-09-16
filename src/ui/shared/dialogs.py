@@ -124,16 +124,16 @@ class ClassMappingDialog(QDialog):
                 color: palette(text);
                 border: 1px solid palette(mid);
                 gridline-color: palette(mid);
-                selection-background-color: #DCEEFF;
-                selection-color: palette(text);
+                selection-background-color: palette(highlight);
+                selection-color: palette(highlighted-text);
             }
             QTableWidget::item {
                 padding: 4px;
                 border: none;
             }
             QTableWidget::item:selected {
-                background: #DCEEFF;
-                color: palette(text);
+                background: palette(highlight);
+                color: palette(highlighted-text);
             }
             QTableWidget QLineEdit {
                 background: palette(base);

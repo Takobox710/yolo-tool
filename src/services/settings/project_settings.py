@@ -20,6 +20,7 @@ from src.services.settings.storage import (
     serialize_settings_for_storage,
 )
 from src.shared.paths import ROOT, RUNTIME_ROOT
+from src.shared.theme import normalize_theme_mode
 
 
 APP_STATE_PATH = RUNTIME_ROOT / "app_state.json"
@@ -28,35 +29,88 @@ APP_STATE_PATH = RUNTIME_ROOT / "app_state.json"
 @dataclass(slots=True)
 class AppState:
     last_project_root: str = str(ROOT)
+    theme_mode: str = "light"
 
 
 def project_settings_path(project_root: Path = ROOT) -> Path:
     return Path(project_root) / "data" / "runtime" / "settings.json"
 
 
-def load_last_project_root(app_state_path: Path | None = None, fallback: Path = ROOT) -> Path:
+def load_app_state(
+    app_state_path: Path | None = None,
+    fallback: Path = ROOT,
+) -> AppState:
     fallback = Path(fallback)
     app_state_path = Path(app_state_path or APP_STATE_PATH)
     try:
         payload = json.loads(app_state_path.read_text(encoding="utf-8"))
-        candidate = Path(str(payload.get("last_project_root") or "")).expanduser()
-    except (json.JSONDecodeError, OSError, TypeError):
-        return fallback
+    except (json.JSONDecodeError, OSError):
+        return AppState(last_project_root=str(fallback), theme_mode="light")
+    if not isinstance(payload, dict):
+        return AppState(last_project_root=str(fallback), theme_mode="light")
+    candidate = Path(str(payload.get("last_project_root") or "")).expanduser()
     if not candidate.exists():
-        return fallback
-    return candidate.resolve()
+        candidate = fallback
+    return AppState(
+        last_project_root=str(candidate.resolve()),
+        theme_mode=normalize_theme_mode(payload.get("theme_mode")),
+    )
+
+
+def save_app_state(
+    state: AppState,
+    app_state_path: Path | None = None,
+) -> None:
+    app_state_path = Path(app_state_path or APP_STATE_PATH)
+    app_state_path.parent.mkdir(parents=True, exist_ok=True)
+    normalized = AppState(
+        last_project_root=str(Path(state.last_project_root).resolve()),
+        theme_mode=normalize_theme_mode(state.theme_mode),
+    )
+    app_state_path.write_text(
+        json.dumps(
+            {
+                "last_project_root": normalized.last_project_root,
+                "theme_mode": normalized.theme_mode,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def load_last_project_root(app_state_path: Path | None = None, fallback: Path = ROOT) -> Path:
+    return Path(load_app_state(app_state_path, fallback).last_project_root)
 
 
 def save_last_project_root(
     project_root: Path, app_state_path: Path | None = None
 ) -> None:
-    app_state_path = Path(app_state_path or APP_STATE_PATH)
-    app_state_path.parent.mkdir(parents=True, exist_ok=True)
-    state = AppState(last_project_root=str(Path(project_root).resolve()))
-    app_state_path.write_text(
-        json.dumps({"last_project_root": state.last_project_root}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    resolved_path = Path(app_state_path or APP_STATE_PATH)
+    current = load_app_state(resolved_path, fallback=Path(project_root))
+    save_app_state(
+        AppState(
+            last_project_root=str(Path(project_root).resolve()),
+            theme_mode=current.theme_mode,
+        ),
+        resolved_path,
     )
+
+
+def save_theme_mode(
+    theme_mode: object,
+    app_state_path: Path | None = None,
+    fallback: Path = ROOT,
+) -> AppState:
+    resolved_path = Path(app_state_path or APP_STATE_PATH)
+    current = load_app_state(resolved_path, fallback=fallback)
+    state = AppState(
+        last_project_root=current.last_project_root,
+        theme_mode=normalize_theme_mode(theme_mode),
+    )
+    save_app_state(state, resolved_path)
+    return state
 
 
 class SettingsService:
@@ -205,8 +259,11 @@ __all__ = [
     "build_default_settings",
     "deep_merge",
     "deserialize_settings_from_storage",
+    "load_app_state",
     "load_last_project_root",
     "project_settings_path",
+    "save_app_state",
     "save_last_project_root",
+    "save_theme_mode",
     "serialize_settings_for_storage",
 ]

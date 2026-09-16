@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from math import ceil
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QEvent, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QLabel
 
@@ -15,6 +15,8 @@ from src.ui.shared.widgets.chart_primitives import (
     _begin_chart_paint,
     _finish_chart_paint,
 )
+from src.shared.theme import theme_colors
+from src.ui.shared.theme import current_theme_mode
 
 class DatasetDistributionWidget(QLabel):
     """Responsive dataset split bar chart for the home page."""
@@ -115,6 +117,14 @@ class DatasetDistributionWidget(QLabel):
         super().resizeEvent(event)
         self._redraw()
 
+    def changeEvent(self, event):  # noqa: N802 - Qt API name
+        super().changeEvent(event)
+        if (
+            hasattr(self, "_bars")
+            and event.type() in {QEvent.Type.PaletteChange, QEvent.Type.StyleChange}
+        ):
+            self._redraw()
+
     def refresh_for_device_pixel_ratio(self) -> None:
         self._redraw()
 
@@ -122,6 +132,7 @@ class DatasetDistributionWidget(QLabel):
         width = max(self.width(), 1)
         height = max(self.height(), 1)
         pixmap, painter, dpr = _begin_chart_paint(self, width, height)
+        theme = theme_colors(current_theme_mode())
 
         if self._chart_mode == "multi" and self._bars:
             total = self._bars[0][1]
@@ -138,7 +149,7 @@ class DatasetDistributionWidget(QLabel):
             QColor("#F97316"),
         ]
 
-        painter.setPen(QColor("#14233A"))
+        painter.setPen(QColor(theme.chart_label))
         painter.setFont(QFont("Microsoft YaHei UI", 11, QFont.Weight.Bold))
         if self._show_total_summary:
             painter.drawText(
@@ -168,10 +179,10 @@ class DatasetDistributionWidget(QLabel):
         chart_w = right - left
         chart_h = bottom - plot_top
         axis_h = bottom - axis_top
-        painter.setPen(QPen(QColor("#D7E0EA"), 1))
+        painter.setPen(QPen(QColor(theme.chart_grid_major), 1))
         painter.drawLine(left, bottom, right, bottom)
         painter.drawLine(left, axis_top, left, bottom)
-        painter.setPen(QPen(QColor("#EDF2F7"), 1))
+        painter.setPen(QPen(QColor(theme.chart_grid_minor), 1))
         for tick in range(1, 5):
             y = bottom - round(axis_h * tick / 5)
             painter.drawLine(left, y, right, y)
@@ -200,7 +211,7 @@ class DatasetDistributionWidget(QLabel):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(colors[index % len(colors)])
             painter.drawRect(x, y, bar_width, bar_h)
-            painter.setPen(QColor("#14233A"))
+            painter.setPen(QColor(theme.chart_label))
             painter.setFont(QFont("Microsoft YaHei UI", 10, QFont.Weight.Bold))
             painter.drawText(
                 x - 18,
@@ -211,7 +222,7 @@ class DatasetDistributionWidget(QLabel):
                 str(count),
             )
             painter.setFont(QFont("Microsoft YaHei UI", 9))
-            painter.setPen(QColor("#5B6773"))
+            painter.setPen(QColor(theme.text_muted))
             label = f"{label_text} {percent:.0f}%"
             painter.drawText(
                 round(left + slot_w * index),
@@ -223,7 +234,7 @@ class DatasetDistributionWidget(QLabel):
             )
 
         if not total or not self._bars:
-            painter.setPen(QColor("#94A2AD"))
+            painter.setPen(QColor(theme.chart_muted))
             painter.setFont(QFont("Microsoft YaHei UI", 10))
             painter.drawText(
                 left,

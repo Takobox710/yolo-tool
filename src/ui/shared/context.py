@@ -30,6 +30,8 @@ class WorkbenchContext:
         reset_settings: Callable[..., AppSettings] | None = None,
         refresh_help_icons: Callable[[], None] | None = None,
         refresh_validation_models: Callable[[], None] | None = None,
+        get_theme_mode: Callable[[], str] | None = None,
+        set_theme_mode: Callable[[str], None] | None = None,
     ) -> None:
         self.settings_service = settings_service
         self.settings = load_result.settings
@@ -45,6 +47,8 @@ class WorkbenchContext:
         self._reset_settings = reset_settings
         self._refresh_help_icons = refresh_help_icons
         self._refresh_validation_models = refresh_validation_models
+        self._get_theme_mode = get_theme_mode
+        self._set_theme_mode = set_theme_mode
         self._saved_snapshot = _snapshot(self.settings)
 
     @property
@@ -112,6 +116,15 @@ class WorkbenchContext:
     def refresh_validation_models(self) -> None:
         if self._refresh_validation_models is not None:
             self._refresh_validation_models()
+
+    def theme_mode(self) -> str:
+        if self._get_theme_mode is None:
+            return "light"
+        return str(self._get_theme_mode())
+
+    def set_theme_mode(self, mode: str) -> None:
+        if self._set_theme_mode is not None:
+            self._set_theme_mode(mode)
 
 
 def _snapshot(value: Any) -> Any:

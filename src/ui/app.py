@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from src.shared.qt import QApplication, QFont, Qt
-from src.ui.shell.window import WorkbenchWindow, build_style
+from src.services.settings import load_app_state
+from src.ui.shell.window import WorkbenchWindow
 from src.ui.shared.assets import load_app_icon
+from src.ui.shared.theme import apply_theme
 
 
 def run_app() -> None:
@@ -12,8 +14,9 @@ def run_app() -> None:
         app.setWindowIcon(app_icon)
     app.setFont(QFont("Microsoft YaHei UI", 10))
     app.setEffectEnabled(Qt.UIEffect.UI_AnimateTooltip, False)
-    app.setStyleSheet(build_style())
-    window = WorkbenchWindow()
+    app_state = load_app_state()
+    theme_mode = apply_theme(app, app_state.theme_mode)
+    window = WorkbenchWindow(theme_mode=theme_mode)
     window.show()
     raise SystemExit(app.exec())
 

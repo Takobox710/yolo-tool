@@ -13,6 +13,7 @@ from src.ui.features.settings.state import (
     open_release_update_dialog,
     reset_defaults,
     toggle_custom_cmd,
+    toggle_dark_mode,
     toggle_distribution_mode,
     toggle_help_icons,
     toggle_show_last_training_models,
@@ -52,6 +53,9 @@ class SettingsPage(ModelExportPackageDropMixin, BasePage):
 
     def _toggle_show_last_training_models(self, state):
         return toggle_show_last_training_models(self, state)
+
+    def _toggle_dark_mode(self, state):
+        return toggle_dark_mode(self, state)
 
     def _reset_defaults(self):
         return reset_defaults(self)
