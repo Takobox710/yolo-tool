@@ -151,3 +151,5 @@ def test_program_only_spec_skips_external_runtime_analysis():
     assert "collect_submodules(\"ultralytics\"" in spec
     assert "pyi_rth_pyside6.py" in spec
     assert '"ctypes.util"' in spec
+    assert '"logging.config"' in spec
+    assert '"logging.handlers"' in spec

@@ -4,9 +4,9 @@
 
 ## 目录摘要
 
-- `src`: 447 个文件，49630 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
+- `src`: 448 个文件，49690 行文本；主源码目录，包含入口、共享层、服务层、UI 与测试。
 - `docs`: 8 个文件，977 行文本；架构、规格、打包与代码清单文档。
-- `installer`: 16 个文件，2905 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
+- `installer`: 16 个文件，2911 行文本；Windows 打包脚本、PyInstaller 与 Inno Setup 配置。
 
 ## 文件清单
 
@@ -40,6 +40,7 @@
 | `src/bootstrap/cli_validation.py` | 17 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/handlers.py` | 103 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/bootstrap/runtime_protocol.py` | 13 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
+| `src/bootstrap/stdio.py` | 19 | 启动装配、GUI/CLI 分发与应用上下文入口。 |
 | `src/data/runtime/app_state.json` | 3 | 仓库文件。 |
 | `src/data/runtime/settings.json` | 119 | 仓库文件。 |
 | `src/devtools/__init__.py` | 1 | 仓库文件。 |
@@ -60,7 +61,7 @@
 | `src/devtools/release_package.py` | 90 | 仓库文件。 |
 | `src/devtools/runtime_package_boundaries.py` | 131 | 仓库文件。 |
 | `src/devtools/window_lifecycle_monitor.py` | 295 | 仓库文件。 |
-| `src/main.py` | 53 | 仓库文件。 |
+| `src/main.py` | 57 | 仓库文件。 |
 | `src/open_yolo_tool.pyw` | 32 | 仓库文件。 |
 | `src/runtime/settings.json` | 158 | 源码内默认配置参考。 |
 | `src/services/__init__.py` | 2 | 服务层与可测试业务逻辑实现。 |
@@ -184,12 +185,12 @@
 | `src/tests/helpers/ui_paths.py` | 69 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/helpers/ui_source.py` | 18 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/__init__.py` | 1 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/integration/test_app_entry.py` | 228 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/integration/test_app_entry.py` | 263 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_cli_facades.py` | 18 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_cpu_package_guard.py` | 54 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_installer_artifacts.py` | 102 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_installer_lifecycle.py` | 118 | pytest 测试、结构约束与回归用例。 |
-| `src/tests/integration/test_installer_packaging_wiring.py` | 153 | pytest 测试、结构约束与回归用例。 |
+| `src/tests/integration/test_installer_packaging_wiring.py` | 155 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_installer_variants.py` | 136 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_model_export_packaging.py` | 135 | pytest 测试、结构约束与回归用例。 |
 | `src/tests/integration/test_refactor_facades.py` | 25 | pytest 测试、结构约束与回归用例。 |
@@ -485,4 +486,4 @@
 | `installer/vendor/sam3-0.1.0-py3-none-any.whl` | 0 | Windows 打包脚本与安装配置。 |
 | `installer/vendor/sam3-LICENSE.txt` | 61 | Windows 打包脚本与安装配置。 |
 | `installer/yolo_tool.iss` | 1550 | Windows 打包脚本与安装配置。 |
-| `installer/YOLOTool.spec` | 314 | Windows 打包脚本与安装配置。 |
+| `installer/YOLOTool.spec` | 320 | Windows 打包脚本与安装配置。 |

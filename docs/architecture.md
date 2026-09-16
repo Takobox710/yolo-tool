@@ -61,7 +61,7 @@ yolo_tool/
 
 ## 分层边界
 
-- `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-export-probe`、`--yolo-ort-probe`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label`、`--sam-assist-runtime` 等隐藏 CLI。
+- `src/main.py` 是唯一桌面可执行入口，同时负责分流 `--yolo-train`、`--yolo-export`、`--yolo-export-probe`、`--yolo-ort-probe`、`--yolo-val`、`--yolo-predict`、`--yolo-ai-label`、`--sam-assist-runtime` 等隐藏 CLI；入口启动早期强制将可用的标准输入、标准输出和标准错误配置为 UTF-8，保证冻结子进程的中文路径和结构化 JSON 协议不依赖 Windows 本地代码页。
 - `src/devtools/window_lifecycle_monitor.py` 是 Windows 原生窗口诊断工具，通过 Win32 事件钩子以 JSONL 记录顶层窗口的创建、显示、移动/缩放、标题变化和销毁事件；用于排查短暂闪现的窗口，不能作为应用运行时依赖。更新对话框的动态可见控件必须在构造时传入对话框父对象，防止 Qt 先为无父控件创建原生顶层窗口。
 - `src/app.py` 与 `src/bootstrap/app_factory.py` 负责 GUI 应用创建，不承载业务规则。
 - `src/bootstrap/cli_dispatch.py` 是唯一 CLI 分发入口；打包后 `YOLOTool.exe --yolo-*` 最终也进入这里。

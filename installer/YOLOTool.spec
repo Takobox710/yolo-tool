@@ -113,7 +113,13 @@ if is_program_only:
     # libraries. The program update only carries the application graph.
     datas = []
     binaries = []
-    hiddenimports = ["src.assets_rc", "ctypes.util", "ctypes.wintypes"]
+    hiddenimports = [
+        "src.assets_rc",
+        "ctypes.util",
+        "ctypes.wintypes",
+        "logging.config",
+        "logging.handlers",
+    ]
     hook_paths = []
     runtime_hooks = [
         str(

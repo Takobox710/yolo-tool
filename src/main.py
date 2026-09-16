@@ -15,6 +15,10 @@ def main() -> None:
     # workers; freeze_support() must run before normal GUI startup branching.
     freeze_support()
 
+    from src.bootstrap.stdio import configure_utf8_stdio
+
+    configure_utf8_stdio()
+
     flag = sys.argv[1] if len(sys.argv) > 1 else None
     if flag in {None, "--yolo-export", "--yolo-export-probe"}:
         from src.services.model_export.activation import activate_installed_extension

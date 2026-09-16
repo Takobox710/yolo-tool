@@ -44,7 +44,7 @@ Windows 安装器回归测试位于 `src/tests/integration/`，按安装生命�
 pwsh -NoProfile -ExecutionPolicy Bypass -File installer\build_windows.ps1 -Mode release -PackageType Program -ProgramOnly -Clean
 ```
 
-`-ProgramOnly` 使用外置运行时构建路径：不扫描 Torch、Ultralytics、OpenVINO、NCNN、ONNX Runtime 等第三方子模块和动态库，只把应用代码、必要的 PySide6 hook 和外置运行时连接 hook 编译进 `YOLOTool.exe`，运行时复用目标目录已有的 `_internal/`。Program-only 同时排除 NumPy、SciPy、Pandas、TorchVision、SAM2/SAM3、timm 及其纯 Python 依赖，避免 EXE 的 Python 层与旧 v3 基础包中的原生扩展混用；这些模块统一由 BaseEnv 或 ExtraEnv 提供。基础包同时保留 PyInstaller 通常嵌入程序 PYZ 的标准库动态导入模块，避免 `python312.dll` 入口缺失。程序更新包构建不会重复分析约 1.7 GB 的基础环境；完整环境构建仍使用完整 spec，确保基础包拥有全部后端和版本元数据。
+`-ProgramOnly` 使用外置运行时构建路径：不扫描 Torch、Ultralytics、OpenVINO、NCNN、ONNX Runtime 等第三方子模块和动态库，只把应用代码、必要的 PySide6 hook 和外置运行时连接 hook 编译进 `YOLOTool.exe`，运行时复用目标目录已有的 `_internal/`。Program-only 同时排除 NumPy、SciPy、Pandas、TorchVision、SAM2/SAM3、timm 及其纯 Python 依赖，避免 EXE 的 Python 层与旧 v3 基础包中的原生扩展混用；这些模块统一由 BaseEnv 或 ExtraEnv 提供。基础包同时保留 PyInstaller 通常嵌入程序 PYZ 的标准库动态导入模块，避免 `python312.dll` 入口缺失；程序层仍显式打包 `logging.config` 与 `logging.handlers`，防止冻结的 `logging` 包遮蔽外部标准库压缩包中的同包子模块。程序更新包构建不会重复分析约 1.7 GB 的基础环境；完整环境构建仍使用完整 spec，确保基础包拥有全部后端和版本元数据。
 
 开发快包：
 
@@ -117,7 +117,7 @@ Program 与基础环境先进入 `{app}\.install-staging/`。开始解压基础�
 
 ## 卸载与数据
 
-隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注、SAM 辅助标注和运行时维护划分的 handler；`cli_validation.py` 与 `cli_annotation.py` 保留兼容转发，具体实现分别拆入 `cli_val.py`/`cli_predict.py` 和 `cli_annotation_labels.py`/`cli_annotation_batch.py`/`cli_annotation_runtime.py`/`cli_sam_runtime.py`，`src/train_cli.py` 只保留 `run_*_cli` 兼容转发。冻结态与开发态继续使用同一命令协议。`--sam-assist-runtime` 从标准输入逐行接收 `load_model`、`set_image`、`predict_point`、`shutdown` JSON 命令，并以结构化行返回请求 ID、状态、错误或几何，不输出完整 mask。
+隐藏 CLI 由 `src/bootstrap/cli_dispatch.py` 的唯一 flag 映射分发到按训练、验证/预测、模型导出、AI 标注、SAM 辅助标注和运行时维护划分的 handler；`cli_validation.py` 与 `cli_annotation.py` 保留兼容转发，具体实现分别拆入 `cli_val.py`/`cli_predict.py` 和 `cli_annotation_labels.py`/`cli_annotation_batch.py`/`cli_annotation_runtime.py`/`cli_sam_runtime.py`，`src/train_cli.py` 只保留 `run_*_cli` 兼容转发。冻结态与开发态继续使用同一命令协议，且 `src/main.py` 在分发前显式将可用标准流重配置为 UTF-8，避免冻结解释器忽略 `PYTHONIOENCODING` 后按 GBK 破坏中文路径。`--sam-assist-runtime` 从标准输入逐行接收 `load_model`、`set_image`、`predict_point`、`shutdown` JSON 命令，并以结构化行返回请求 ID、状态、错误或几何，不输出完整 mask。
 
 安装提交前的 `YOLOTool.exe --runtime-probe` 只读取程序清单和 `_internal` 基础环境清单，比较 `required_runtime_version` 与 `runtime_version`；不导入 Torch、PySide6、ONNX、ONNX Runtime、Ultralytics 或 OpenCV。比较不一致或自检无法完成时只显示“部分功能可能无法使用”的警告，不撤销已经完成的文件切换。附加包后台安装不显示解压百分比进度条。
 

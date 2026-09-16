@@ -142,6 +142,41 @@ def test_direct_script_hidden_cli_entries_have_package_context():
         assert "attempted relative import" not in result.stderr
 
 
+def test_configure_utf8_stdio_reconfigures_hidden_cli_streams(monkeypatch):
+    from src.bootstrap import stdio
+
+    calls = []
+
+    class FakeStream:
+        def __init__(self, name):
+            self.name = name
+
+        def reconfigure(self, **kwargs):
+            calls.append((self.name, kwargs))
+
+    monkeypatch.setattr(stdio.sys, "stdin", FakeStream("stdin"))
+    monkeypatch.setattr(stdio.sys, "stdout", FakeStream("stdout"))
+    monkeypatch.setattr(stdio.sys, "stderr", FakeStream("stderr"))
+
+    stdio.configure_utf8_stdio()
+
+    assert calls == [
+        ("stdin", {"encoding": "utf-8"}),
+        ("stdout", {"encoding": "utf-8"}),
+        ("stderr", {"encoding": "utf-8"}),
+    ]
+
+
+def test_configure_utf8_stdio_ignores_missing_streams(monkeypatch):
+    from src.bootstrap import stdio
+
+    monkeypatch.setattr(stdio.sys, "stdin", None)
+    monkeypatch.setattr(stdio.sys, "stdout", None)
+    monkeypatch.setattr(stdio.sys, "stderr", None)
+
+    stdio.configure_utf8_stdio()
+
+
 def test_windows_packaging_files_document_project_local_runtime_settings():
     assert PACKAGING_SPEC.exists()
     assert PACKAGING_SCRIPT.exists()
